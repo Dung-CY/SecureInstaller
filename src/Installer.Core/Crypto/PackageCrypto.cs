@@ -57,6 +57,13 @@ public static class PackageCrypto
         }
     }
 
+    /// <summary>Decrypts a package stream into <paramref name="output"/>, streaming one chunk at a time.</summary>
+    /// <remarks>
+    /// Each chunk is written to <paramref name="output"/> as soon as it authenticates, but truncation or
+    /// tampering of a later chunk is only detected afterwards. The output is therefore untrusted until this
+    /// method returns normally. If <see cref="PackageCorruptException"/> (or any exception) is thrown, the
+    /// output may already hold a valid-looking prefix; the caller must discard or delete whatever was written.
+    /// </remarks>
     public static void Decrypt(Stream cipher, Stream output, byte[] key32)
     {
         CheckKey(key32);

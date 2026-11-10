@@ -63,6 +63,46 @@ public class PackageCryptoTests
         Assert.Throws<PackageCorruptException>(() => PackageCrypto.DecryptBytes(enc, key));
     }
 
+    private const int Full = 4 + PackageCrypto.ChunkSize + 16;
+
+    [Fact]
+    public void Trailing_byte_after_final_chunk_throws_PackageCorrupt()
+    {
+        var key = Key();
+        var enc = PackageCrypto.EncryptBytes(Rand(1000), key);
+        var bad = enc.Concat(new byte[] { 0 }).ToArray();
+        Assert.Throws<PackageCorruptException>(() => PackageCrypto.DecryptBytes(bad, key));
+    }
+
+    [Fact]
+    public void Swapped_chunks_throw_PackageCorrupt()
+    {
+        var key = Key();
+        var enc = PackageCrypto.EncryptBytes(Rand(2 * PackageCrypto.ChunkSize + PackageCrypto.ChunkSize / 2), key);
+        var swapped = (byte[])enc.Clone();
+        Array.Copy(enc, 13 + Full, swapped, 13, Full);
+        Array.Copy(enc, 13, swapped, 13 + Full, Full);
+        Assert.Throws<PackageCorruptException>(() => PackageCrypto.DecryptBytes(swapped, key));
+    }
+
+    [Fact]
+    public void Length_prefix_over_chunk_size_throws_PackageCorrupt()
+    {
+        var key = Key();
+        var enc = PackageCrypto.EncryptBytes(Rand(100), key);
+        BitConverter.GetBytes(PackageCrypto.ChunkSize + 1).CopyTo(enc, 13);
+        Assert.Throws<PackageCorruptException>(() => PackageCrypto.DecryptBytes(enc, key));
+    }
+
+    [Fact]
+    public void Exact_multiple_truncated_at_boundary_throws_PackageCorrupt()
+    {
+        var key = Key();
+        var enc = PackageCrypto.EncryptBytes(Rand(2 * PackageCrypto.ChunkSize), key);
+        var truncated = enc.AsSpan(0, 13 + Full).ToArray();
+        Assert.Throws<PackageCorruptException>(() => PackageCrypto.DecryptBytes(truncated, key));
+    }
+
     private sealed class CountingSink : Stream
     {
         public long Count;
