@@ -143,4 +143,16 @@ public class PostActionRunnerTests : IDisposable
         Assert.Equal("Đường dẫn nguồn không hợp lệ", r[0].Error);
         Assert.False(File.Exists(dst));
     }
+
+    [Fact]
+    public void Delete_refuses_ads_suffix()
+    {
+        var sr = Environment.ExpandEnvironmentVariables("%SystemRoot%");
+        var r = PostActionRunner.Run(new[]
+        {
+            new PostAction("delete", null, sr + "::$INDEX_ALLOCATION"),
+            new PostAction("delete", null, Path.Combine(_root, "f.txt:stream")),
+        }, Extras);
+        Assert.All(r, x => { Assert.False(x.Ok); Assert.Equal("Đường dẫn đích không hợp lệ", x.Error); });
+    }
 }

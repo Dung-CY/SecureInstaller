@@ -20,7 +20,8 @@ public sealed class TempWorkspace : IDisposable
         {
             new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
             new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-            WindowsIdentity.GetCurrent().User,
+            // Elevated: no user rule, so a non-elevated same-user process cannot tamper with decrypted installers.
+            IsElevated() ? null : WindowsIdentity.GetCurrent().User,
         };
         foreach (var sid in sids.Where(s => s != null).Distinct())
         {
@@ -30,6 +31,12 @@ public sealed class TempWorkspace : IDisposable
         }
         new DirectoryInfo(path).Create(security);
         return new TempWorkspace(path);
+    }
+
+    internal static bool IsElevated()
+    {
+        using var id = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     public void Dispose()
@@ -46,6 +53,11 @@ public sealed class TempWorkspace : IDisposable
             try
             {
                 if (!Directory.Exists(path)) return true;
+                if (IsReparsePoint(path))
+                {
+                    Directory.Delete(path, false); // removes only the link
+                    return true;
+                }
                 ClearAttributes(path);
                 Directory.Delete(path, true);
                 return true;
@@ -65,8 +77,15 @@ public sealed class TempWorkspace : IDisposable
         IgnoreInaccessible = true,
     };
 
+    private static bool IsReparsePoint(string path)
+    {
+        try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; }
+        catch { return false; }
+    }
+
     private static void ClearAttributes(string path)
     {
+        if (IsReparsePoint(path)) return;
         try
         {
             foreach (var e in Directory.EnumerateFileSystemEntries(path, "*", Recurse))
@@ -82,6 +101,7 @@ public sealed class TempWorkspace : IDisposable
     {
         try
         {
+            if (IsReparsePoint(path)) { NativePaths.DeleteOnReboot(path); return; }
             var entries = Directory.EnumerateFileSystemEntries(path, "*", Recurse).ToList();
             foreach (var f in entries.Where(File.Exists)) NativePaths.DeleteOnReboot(f);
             foreach (var d in entries.Where(Directory.Exists).OrderByDescending(x => x.Length))

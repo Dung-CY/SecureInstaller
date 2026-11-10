@@ -32,7 +32,8 @@ public class TempWorkspaceTests
         var sec = new DirectoryInfo(ws.Path).GetAccessControl();
         Assert.True(sec.AreAccessRulesProtected);
         var rules = sec.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToList();
-        Assert.Equal(3, rules.Count);
+        bool elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+        Assert.Equal(elevated ? 2 : 3, rules.Count);
         Assert.All(rules, r =>
         {
             Assert.False(r.IsInherited);
@@ -40,9 +41,13 @@ public class TempWorkspaceTests
             Assert.Equal(FileSystemRights.FullControl, r.FileSystemRights);
         });
         var sids = rules.Select(r => r.IdentityReference.Value).ToHashSet();
-        Assert.Contains(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value, sids);
-        Assert.Contains(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value, sids);
-        Assert.Contains(WindowsIdentity.GetCurrent().User!.Value, sids);
+        var expected = new HashSet<string>
+        {
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value,
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value,
+        };
+        if (!elevated) expected.Add(WindowsIdentity.GetCurrent().User!.Value);
+        Assert.True(expected.SetEquals(sids));
     }
 
     [Fact]
@@ -79,5 +84,42 @@ public class TempWorkspaceTests
             Assert.True(Directory.Exists(newDir));
         }
         finally { try { Directory.Delete(newDir, true); } catch { } try { Directory.Delete(oldDir, true); } catch { } }
+    }
+
+    [Fact]
+    public void SweepStale_does_not_follow_junction_root()
+    {
+        var tmp = System.IO.Path.GetTempPath();
+        var target = System.IO.Path.Combine(tmp, "SItarget_" + Guid.NewGuid().ToString("N"));
+        var junction = System.IO.Path.Combine(tmp, "SI_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(target);
+        var file = System.IO.Path.Combine(target, "keep.txt");
+        File.WriteAllText(file, "x");
+        File.SetAttributes(file, FileAttributes.ReadOnly);
+        try
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{junction}\" \"{target}\"")
+                { CreateNoWindow = true, UseShellExecute = false };
+                using var p = System.Diagnostics.Process.Start(psi)!;
+                p.WaitForExit();
+            }
+            catch { }
+            if (!Directory.Exists(junction))
+            {
+                try { Directory.CreateSymbolicLink(junction, target); } catch { }
+            }
+            if (!Directory.Exists(junction)) return; // cannot create links here
+            Directory.SetLastWriteTimeUtc(junction, DateTime.UtcNow.AddDays(-2));
+            TempWorkspace.SweepStale(TimeSpan.FromDays(1));
+            Assert.True(File.Exists(file));
+            Assert.True((File.GetAttributes(file) & FileAttributes.ReadOnly) != 0);
+        }
+        finally
+        {
+            try { if (Directory.Exists(junction)) Directory.Delete(junction, false); } catch { }
+            try { File.SetAttributes(file, FileAttributes.Normal); Directory.Delete(target, true); } catch { }
+        }
     }
 }

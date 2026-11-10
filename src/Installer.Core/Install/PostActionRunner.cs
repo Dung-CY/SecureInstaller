@@ -61,6 +61,8 @@ public static class PostActionRunner
     {
         if (string.IsNullOrWhiteSpace(dst)) return null;
         var expanded = Environment.ExpandEnvironmentVariables(dst);
+        // Reject alternate data streams / extra colons (only the drive colon at index 1 is allowed).
+        if (expanded.Length > 2 && expanded.IndexOf(':', 2) >= 0) return null;
         // Reject device/extended (\\?\, \\.\) and UNC prefixes.
         if (expanded.StartsWith("//") || expanded.StartsWith(new string(Path.DirectorySeparatorChar, 2))
             || expanded.StartsWith("/\\") || expanded.StartsWith("\\/")) return null;
