@@ -18,18 +18,38 @@ public sealed class MachineScanner
     public async Task<ScanReport> ScanAsync(Catalog catalog, IProgress<string>? step, CancellationToken ct)
     {
         step?.Report("Đang quét phần cứng");
-        var hardware = await Task.Run(() => _hw.Scan(), ct).ConfigureAwait(false);
+        HardwareInfo hardware;
+        try { hardware = await Task.Run(() => _hw.Scan(), ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            hardware = new HardwareInfo(Environment.MachineName, null, null, null, new(), new(), new(),
+                new() { "Hardware: " + ex.Message });
+        }
 
         step?.Report("Đang đọc lịch sử mạng");
-        var network = await _net.ScanAsync(ct).ConfigureAwait(false);
+        NetworkHistory network;
+        try { network = await _net.ScanAsync(ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { network = new NetworkHistory(new(), false); }
 
         step?.Report("Đang kiểm tra bản quyền");
-        var (win, office) = await Task.Run(() =>
-            (_lic.ScanWindows(catalog.CrackSignatures), _lic.ScanOffice(catalog.CrackSignatures)), ct).ConfigureAwait(false);
+        var win = await Task.Run(() => SafeLicense("Windows", () => _lic.ScanWindows(catalog.CrackSignatures)), ct).ConfigureAwait(false);
+        var office = await Task.Run(() => SafeLicense("Office", () => _lic.ScanOffice(catalog.CrackSignatures)), ct).ConfigureAwait(false);
 
         step?.Report("Đang tìm file theo từ khóa");
-        var keywords = await Task.Run(() => _kw.Scan(catalog.KeywordScan, ct), ct).ConfigureAwait(false);
+        KeywordScanResult keywords;
+        try { keywords = await Task.Run(() => _kw.Scan(catalog.KeywordScan, ct), ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { keywords = new KeywordScanResult(new(), false, false); }
 
         return new ScanReport(DateTimeOffset.Now, hardware, network, win, office, keywords);
+    }
+
+    private static LicenseInfo SafeLicense(string product, Func<LicenseInfo> scan)
+    {
+        try { return scan(); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new LicenseInfo(product, null, LicenseChannel.Unknown, null, null, null, LicenseVerdict.Unknown,
+                new() { "Không đọc được thông tin bản quyền" });
+        }
     }
 }

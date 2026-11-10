@@ -25,4 +25,17 @@ public class MachineScannerTests
         Assert.True(report.Network.InternetNow);
         Assert.NotNull(report.Keywords);
     }
+
+    [Fact]
+    public async Task MachineScanner_survives_failing_subscanner()
+    {
+        var wmi = new FakeWmi();
+        foreach (var c in new[] { "Win32_ComputerSystem", "Win32_BIOS", "Win32_DiskDrive", "Win32_NetworkAdapter", "SoftwareLicensingProduct", "OfficeSoftwareProtectionProduct" })
+            wmi.Throws.Add(c);
+        var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
+        var ms = new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, new FakeProbe()),
+            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
+        var report = await ms.ScanAsync(Catalog.Empty(), null, CancellationToken.None);
+        Assert.Equal(LicenseVerdict.Unknown, report.Windows.Verdict);
+    }
 }

@@ -9,8 +9,11 @@ public record KeywordScanResult(List<string> MatchedFiles, bool TimedOut, bool T
 public sealed class KeywordFileScanner
 {
     public const int MaxMatches = 1000;
-    private const int CheckEvery = 256;
 
+    /// <remarks>
+    /// The deadline and cancellation are checked for every enumerated file. A single blocked
+    /// directory read (for example on a dead network share) cannot be interrupted.
+    /// </remarks>
     public KeywordScanResult Scan(KeywordScanConfig cfg, CancellationToken ct)
     {
         var keywords = (cfg.Keywords ?? new())
@@ -32,7 +35,6 @@ public sealed class KeywordFileScanner
             IgnoreInaccessible = true,
             AttributesToSkip = FileAttributes.ReparsePoint,
         };
-        int counter = 0;
 
         foreach (var raw in cfg.Paths ?? new())
         {
@@ -44,27 +46,24 @@ public sealed class KeywordFileScanner
                 if (!Directory.Exists(root)) continue;
                 foreach (var file in Directory.EnumerateFiles(root, "*", opts))
                 {
-                    if (++counter % CheckEvery == 0 && Expired()) return new(matches, true, false);
+                    if (Expired()) return new(matches, true, false);
                     if (!NameMatches(Path.GetFileName(file), keywords)) continue;
                     if (!seen.Add(Path.GetFullPath(file))) continue;
                     if (matches.Count >= MaxMatches) return new(matches, false, true);
                     matches.Add(file);
                 }
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
         }
         return new(matches, false, false);
     }
 
+    /// <summary>Keywords must already be NFC-normalized and non-blank.</summary>
     internal static bool NameMatches(string fileName, IReadOnlyList<string> keywords)
     {
         var name = fileName.Normalize(NormalizationForm.FormC);
         foreach (var k in keywords)
-        {
-            if (string.IsNullOrWhiteSpace(k)) continue;
-            if (name.Contains(k.Normalize(NormalizationForm.FormC), StringComparison.OrdinalIgnoreCase)) return true;
-        }
+            if (name.Contains(k, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
 }

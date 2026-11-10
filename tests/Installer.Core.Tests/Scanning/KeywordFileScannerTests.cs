@@ -31,8 +31,7 @@ public class KeywordFileScannerTests : IDisposable
         var nfc = "mật".Normalize(NormalizationForm.FormC);
         Assert.NotEqual(nfd, nfd.Normalize(NormalizationForm.FormC));
         Assert.True(KeywordFileScanner.NameMatches(nfd, new[] { nfc }));
-        Assert.True(KeywordFileScanner.NameMatches(nfc, new[] { "MẬT".Normalize(NormalizationForm.FormD) }));
-        Assert.False(KeywordFileScanner.NameMatches(nfd, new[] { "  " }));
+        Assert.True(KeywordFileScanner.NameMatches(nfc, new[] { "MẬT".Normalize(NormalizationForm.FormC) }));
     }
 
     [Fact]
@@ -58,5 +57,24 @@ public class KeywordFileScannerTests : IDisposable
         var r = new KeywordFileScanner().Scan(Cfg(new[] { "mat" }, new[] { _root }), CancellationToken.None);
         Assert.Equal(1000, r.MatchedFiles.Count);
         Assert.True(r.Truncated);
+    }
+
+    [Fact]
+    public void Cancelled_token_returns_partial_TimedOut()
+    {
+        File.WriteAllText(Path.Combine(_root, "mat.txt"), "x");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var r = new KeywordFileScanner().Scan(Cfg(new[] { "mat" }, new[] { _root }, 60), cts.Token);
+        Assert.True(r.TimedOut);
+    }
+
+    [Fact]
+    public void Scan_finds_real_nfd_named_file()
+    {
+        var name = "Mật.txt".Normalize(NormalizationForm.FormD);
+        File.WriteAllText(Path.Combine(_root, name), "x");
+        var r = new KeywordFileScanner().Scan(Cfg(new[] { "mật".Normalize(NormalizationForm.FormC) }, new[] { _root }), CancellationToken.None);
+        Assert.Single(r.MatchedFiles);
     }
 }
