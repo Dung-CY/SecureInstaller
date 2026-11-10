@@ -39,7 +39,9 @@ public static class PostActionRunner
 
         var dst = ExpandDst(a.Dst);
         if (dst == null) return ErrDst;
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dst))!);
+        var parent = Path.GetDirectoryName(Path.GetFullPath(dst));
+        if (parent == null) return ErrDst;
+        Directory.CreateDirectory(parent);
         File.Copy(full, dst, true);
         return null;
     }
@@ -49,7 +51,7 @@ public static class PostActionRunner
         var dst = ExpandDst(a.Dst);
         if (dst == null) return ErrDst;
         var norm = Normalize(dst);
-        if (IsProtected(norm)) return ErrSys;
+        if (IsProtectedPath(norm)) return ErrSys;
         if (Directory.Exists(norm)) Directory.Delete(norm, true);
         else if (File.Exists(norm)) File.Delete(norm);
         return null;
@@ -59,13 +61,18 @@ public static class PostActionRunner
     {
         if (string.IsNullOrWhiteSpace(dst)) return null;
         var expanded = Environment.ExpandEnvironmentVariables(dst);
+        // Reject device/extended (\\?\, \\.\) and UNC prefixes.
+        if (expanded.StartsWith("//") || expanded.StartsWith(new string(Path.DirectorySeparatorChar, 2))
+            || expanded.StartsWith("/\\") || expanded.StartsWith("\\/")) return null;
         return Path.IsPathFullyQualified(expanded) ? expanded : null;
     }
 
     private static string Normalize(string p) => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-    private static bool IsProtected(string norm)
+    /// <summary>True when the (expanded, fully qualified) path is a drive root or a protected system folder.</summary>
+    internal static bool IsProtectedPath(string path)
     {
+        var norm = Normalize(NativePaths.ToLongPath(Normalize(path)));
         var root = Path.GetPathRoot(norm);
         if (norm.Length == 0 || (root != null && norm.Equals(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)))
             return true;
@@ -81,7 +88,7 @@ public static class PostActionRunner
         foreach (var c in candidates)
         {
             if (c.Contains('%') || !Path.IsPathFullyQualified(c)) continue;
-            if (norm.Equals(Normalize(c), StringComparison.OrdinalIgnoreCase)) return true;
+            if (norm.Equals(Normalize(NativePaths.ToLongPath(Normalize(c))),StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
     }

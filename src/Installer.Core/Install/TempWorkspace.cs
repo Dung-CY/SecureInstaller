@@ -7,7 +7,7 @@ namespace Installer.Core.Install;
 public sealed class TempWorkspace : IDisposable
 {
     public string Path { get; }
-    internal bool Deleted { get; private set; }
+    public bool Deleted { get; private set; }
 
     private TempWorkspace(string path) => Path = path;
 
@@ -35,22 +35,79 @@ public sealed class TempWorkspace : IDisposable
     public void Dispose()
     {
         if (Deleted) return;
+        Deleted = TryDelete(Path, true);
+    }
+
+    /// <summary>Deletes a workspace directory with retries; schedules delete-on-reboot when it fails.</summary>
+    private static bool TryDelete(string path, bool scheduleOnFailure)
+    {
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
             {
-                if (!Directory.Exists(Path)) { Deleted = true; return; }
-                foreach (var f in Directory.EnumerateFiles(Path, "*", SearchOption.AllDirectories))
-                {
-                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
-                }
-                Directory.Delete(Path, true);
-                Deleted = true;
-                return;
+                if (!Directory.Exists(path)) return true;
+                ClearAttributes(path);
+                Directory.Delete(path, true);
+                return true;
             }
             catch { }
             if (attempt < 2) Thread.Sleep(500);
         }
-        Deleted = !Directory.Exists(Path);
+        if (!Directory.Exists(path)) return true;
+        if (scheduleOnFailure) ScheduleDeleteOnReboot(path);
+        return false;
+    }
+
+    private static readonly EnumerationOptions Recurse = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        IgnoreInaccessible = true,
+    };
+
+    private static void ClearAttributes(string path)
+    {
+        try
+        {
+            foreach (var e in Directory.EnumerateFileSystemEntries(path, "*", Recurse))
+            {
+                try { File.SetAttributes(e, FileAttributes.Normal); } catch { }
+            }
+            File.SetAttributes(path, FileAttributes.Directory);
+        }
+        catch { }
+    }
+
+    private static void ScheduleDeleteOnReboot(string path)
+    {
+        try
+        {
+            var entries = Directory.EnumerateFileSystemEntries(path, "*", Recurse).ToList();
+            foreach (var f in entries.Where(File.Exists)) NativePaths.DeleteOnReboot(f);
+            foreach (var d in entries.Where(Directory.Exists).OrderByDescending(x => x.Length))
+                NativePaths.DeleteOnReboot(d);
+            NativePaths.DeleteOnReboot(path);
+        }
+        catch { }
+    }
+
+    /// <summary>Removes stale %TEMP%\SI_* workspaces older than the given age. Never throws.</summary>
+    public static int SweepStale(TimeSpan olderThan)
+    {
+        int count = 0;
+        try
+        {
+            var cutoff = DateTime.UtcNow - olderThan;
+            foreach (var d in Directory.EnumerateDirectories(System.IO.Path.GetTempPath(), "SI_*"))
+            {
+                try
+                {
+                    if (Directory.GetLastWriteTimeUtc(d) < cutoff && TryDelete(d, false)) count++;
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return count;
     }
 }

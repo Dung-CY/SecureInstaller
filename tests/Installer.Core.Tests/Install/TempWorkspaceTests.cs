@@ -44,4 +44,40 @@ public class TempWorkspaceTests
         Assert.Contains(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value, sids);
         Assert.Contains(WindowsIdentity.GetCurrent().User!.Value, sids);
     }
+
+    [Fact]
+    public void Dispose_with_locked_file_reports_not_deleted_and_does_not_throw()
+    {
+        var ws = TempWorkspace.Create();
+        var f = System.IO.Path.Combine(ws.Path, "locked.exe");
+        var fs = new FileStream(f, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        try
+        {
+            ws.Dispose();
+            Assert.False(ws.Deleted);
+        }
+        finally
+        {
+            fs.Dispose();
+            try { Directory.Delete(ws.Path, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void SweepStale_removes_old_workspaces_only()
+    {
+        var tmp = System.IO.Path.GetTempPath();
+        var oldDir = System.IO.Path.Combine(tmp, "SI_" + Guid.NewGuid().ToString("N"));
+        var newDir = System.IO.Path.Combine(tmp, "SI_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(oldDir); Directory.CreateDirectory(newDir);
+        try
+        {
+            Directory.SetLastWriteTimeUtc(oldDir, DateTime.UtcNow.AddDays(-2));
+            int n = TempWorkspace.SweepStale(TimeSpan.FromDays(1));
+            Assert.True(n >= 1);
+            Assert.False(Directory.Exists(oldDir));
+            Assert.True(Directory.Exists(newDir));
+        }
+        finally { try { Directory.Delete(newDir, true); } catch { } try { Directory.Delete(oldDir, true); } catch { } }
+    }
 }

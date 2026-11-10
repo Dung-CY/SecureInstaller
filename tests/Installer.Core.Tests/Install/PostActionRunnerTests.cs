@@ -94,4 +94,53 @@ public class PostActionRunnerTests : IDisposable
         Assert.True(r[3].Ok);
         Assert.True(File.Exists(dst));
     }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern uint GetShortPathNameW(string longPath, System.Text.StringBuilder shortPath, uint cch);
+
+    [Fact]
+    public void Delete_refuses_extended_and_unc_prefixes()
+    {
+        var targets = new[]
+        {
+            @"\\?\" + Environment.ExpandEnvironmentVariables("%SystemRoot%"),
+            @"\\.\C:\Windows",
+            @"\\localhost\C$\Windows",
+        };
+        var r = PostActionRunner.Run(targets.Select(t => new PostAction("delete", null, t)), Extras);
+        Assert.All(r, x => { Assert.False(x.Ok); Assert.Equal("Đường dẫn đích không hợp lệ", x.Error); });
+    }
+
+    [Fact]
+    public void Delete_refuses_short_name_of_program_files()
+    {
+        var pf = Environment.ExpandEnvironmentVariables("%ProgramFiles%");
+        var sb = new System.Text.StringBuilder(512);
+        GetShortPathNameW(pf, sb, 512);
+        var shortName = sb.ToString();
+        if (shortName.Length == 0 || shortName.Equals(pf, StringComparison.OrdinalIgnoreCase)) return; // 8.3 disabled
+        Assert.True(PostActionRunner.IsProtectedPath(shortName));
+        var r = PostActionRunner.Run(new[] { new PostAction("delete", null, shortName) }, Extras);
+        Assert.False(r[0].Ok);
+        Assert.Equal("Không được xóa thư mục hệ thống", r[0].Error);
+    }
+
+    [Fact]
+    public void Delete_allows_subfolder_of_protected_root_path_check()
+    {
+        var p = Environment.ExpandEnvironmentVariables("%ProgramData%") + Path.DirectorySeparatorChar + "SI_test_nonexistent";
+        Assert.False(PostActionRunner.IsProtectedPath(p));
+    }
+
+    [Fact]
+    public void Copy_rejects_prefix_confusion()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "extras2"));
+        File.WriteAllText(Path.Combine(_root, "extras2", "x.txt"), "x");
+        var dst = Path.Combine(_root, "o2", "x.txt");
+        var r = PostActionRunner.Run(new[] { new PostAction("copy", @"..\extras2\x.txt", dst) }, Extras);
+        Assert.False(r[0].Ok);
+        Assert.Equal("Đường dẫn nguồn không hợp lệ", r[0].Error);
+        Assert.False(File.Exists(dst));
+    }
 }
