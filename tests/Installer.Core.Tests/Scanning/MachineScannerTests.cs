@@ -38,4 +38,32 @@ public class MachineScannerTests
         var report = await ms.ScanAsync(Catalog.Empty(), null, CancellationToken.None);
         Assert.Equal(LicenseVerdict.Unknown, report.Windows.Verdict);
     }
+
+    private static MachineScanner Build(FakeProbe probe)
+    {
+        var wmi = new FakeWmi(); var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
+        return new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, probe),
+            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
+    }
+
+    [Fact]
+    public async Task Network_phase_exception_falls_back_and_report_is_produced()
+    {
+        var ms = Build(new FakeProbe(true) { Throw = new InvalidOperationException("boom") });
+        var report = await ms.ScanAsync(Catalog.Empty(), null, CancellationToken.None);
+        Assert.Empty(report.Network.Profiles);
+        Assert.False(report.Network.InternetNow);
+        Assert.False(string.IsNullOrEmpty(report.Hardware.Hostname));
+        Assert.NotNull(report.Windows);
+        Assert.NotNull(report.Keywords);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_propagates_from_MachineScanner()
+    {
+        var ms = Build(new FakeProbe(true));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ms.ScanAsync(Catalog.Empty(), null, cts.Token));
+    }
 }
