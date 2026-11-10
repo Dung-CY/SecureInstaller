@@ -51,4 +51,34 @@ public class ArgsTests : IDisposable
         Assert.Equal(1, Program.Run(new[] { "add-package", root, src, "--user", "admin", "--password", "wrong" }));
         Assert.Equal(2, Program.Run(new[] { "add-package", root }));
     }
+
+    [Fact]
+    public void Core_argument_exception_returns_1()
+    {
+        var root = Path.Combine(_tmp, "kho");
+        Assert.Equal(0, Program.Run(new[] { "init", root, "--user", "admin", "--password", "pw-123456" }));
+        Assert.Equal(1, Program.Run(new[] { "add-user", root, "  ", "--role", "user", "--new-password", "x1234567", "--user", "admin", "--password", "pw-123456" }));
+    }
+
+    [Fact]
+    public void Unknown_command_via_Run_returns_2() => Assert.Equal(2, Program.Run(new[] { "frobnicate" }));
+
+    [Fact]
+    public void Bad_role_returns_2()
+    {
+        var root = Path.Combine(_tmp, "kho");
+        Assert.Equal(0, Program.Run(new[] { "init", root, "--user", "admin", "--password", "pw-123456" }));
+        Assert.Equal(2, Program.Run(new[] { "add-user", root, "bob", "--role", "root", "--new-password", "x1234567", "--user", "admin", "--password", "pw-123456" }));
+    }
+
+    [Fact]
+    public void Password_flag_without_value_returns_2_without_prompting()
+        => Assert.Equal(2, Program.Run(new[] { "remove-user", _tmp, "bob", "--user", "admin", "--password", "--abc123" }));
+
+    [Fact]
+    public void Parse_equals_syntax()
+    {
+        var p = Args.Parse(new[] { "init", "r", "--password=a=b" });
+        Assert.Equal("a=b", p.Options["password"]);
+    }
 }

@@ -4,6 +4,11 @@ using Installer.Core.Vault;
 
 namespace Installer.Packager;
 
+internal sealed class UsageException : Exception
+{
+    public UsageException(string message) : base(message) { }
+}
+
 public static class Program
 {
     private const string Usage = """
@@ -27,10 +32,15 @@ public static class Program
     {
         try
         {
-            var p = Args.Parse(argv);
+            ParsedArgs p;
+            try { p = Args.Parse(argv); }
+            catch (ArgumentException ex) { throw new UsageException(ex.Message); }
+            foreach (var name in new[] { "password", "new-password", "user", "role", "version" })
+                if (p.Options.TryGetValue(name, out var v) && v == null)
+                    throw new UsageException($"Tùy chọn --{name} cần một giá trị.");
             return Execute(p);
         }
-        catch (ArgumentException ex)
+        catch (UsageException ex)
         {
             Console.Error.WriteLine(ex.Message);
             Console.Error.WriteLine(Usage);
@@ -53,9 +63,9 @@ public static class Program
         var pos = p.Positionals;
         void Need(int n)
         {
-            if (pos.Count != n) throw new ArgumentException($"Lệnh {p.Command} cần {n} tham số vị trí.");
+            if (pos.Count != n) throw new UsageException($"Lệnh {p.Command} cần {n} tham số vị trí.");
         }
-        string User() => Opt(p, "user") ?? throw new ArgumentException("Thiếu --user.");
+        string User() => Opt(p, "user") ?? throw new UsageException("Thiếu --user.");
 
         switch (p.Command)
         {
@@ -96,12 +106,12 @@ public static class Program
             case "add-user":
             {
                 Need(2);
-                var roleText = Opt(p, "role") ?? throw new ArgumentException("Thiếu --role.");
+                var roleText = Opt(p, "role") ?? throw new UsageException("Thiếu --role.");
                 var role = roleText.ToLowerInvariant() switch
                 {
                     "user" => UserRole.User,
                     "admin" => UserRole.Admin,
-                    _ => throw new ArgumentException("--role chỉ nhận user hoặc admin.")
+                    _ => throw new UsageException("--role chỉ nhận user hoặc admin.")
                 };
                 var admin = OpenAdmin(p, pos[0]);
                 var npw = Opt(p, "new-password") ?? PromptPassword("Mật khẩu cho người dùng mới: ", confirm: false);
@@ -123,7 +133,7 @@ public static class Program
                 Console.Error.WriteLine("export-logs: chưa hỗ trợ");
                 return 2;
             default:
-                throw new ArgumentException($"Lệnh không hợp lệ: {p.Command}");
+                throw new UsageException($"Lệnh không hợp lệ: {p.Command}");
         }
     }
 
@@ -132,7 +142,7 @@ public static class Program
 
     private static VaultAdmin OpenAdmin(ParsedArgs p, string root)
     {
-        var user = Opt(p, "user") ?? throw new ArgumentException("Thiếu --user.");
+        var user = Opt(p, "user") ?? throw new UsageException("Thiếu --user.");
         var pw = Opt(p, "password") ?? PromptPassword("Mật khẩu: ", confirm: false);
         var store = VaultStore.Open(root);
         var session = store.Unlock(user, pw, DateTimeOffset.UtcNow);
@@ -142,10 +152,10 @@ public static class Program
     private static string PromptPassword(string prompt, bool confirm)
     {
         if (Console.IsInputRedirected)
-            return Console.In.ReadLine() ?? throw new ArgumentException("Không đọc được mật khẩu từ stdin.");
+            return Console.In.ReadLine() ?? throw new UsageException("Không đọc được mật khẩu từ stdin.");
         var a = ReadHidden(prompt);
         if (confirm && ReadHidden("Nhập lại mật khẩu: ") != a)
-            throw new ArgumentException("Hai mật khẩu không khớp.");
+            throw new UsageException("Hai mật khẩu không khớp.");
         return a;
     }
 

@@ -26,7 +26,9 @@ public static class Args
             {
                 var name = t[2..];
                 string? value = null;
-                if (i + 1 < argv.Length && !argv[i + 1].StartsWith("--", StringComparison.Ordinal))
+                var eq = name.IndexOf('=');
+                if (eq >= 0) { value = name[(eq + 1)..]; name = name[..eq]; }
+                else if (i + 1 < argv.Length && !argv[i + 1].StartsWith("--", StringComparison.Ordinal))
                     value = argv[++i];
                 options[name] = value;
             }
