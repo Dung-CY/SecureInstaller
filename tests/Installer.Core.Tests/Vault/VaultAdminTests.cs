@@ -189,20 +189,58 @@ public class VaultAdminTests : IDisposable
         Assert.Equal(1, s.Catalog.Version);
     }
 
-    [Fact]
-    public void Open_rolls_forward_interrupted_catalog_write()
+    (byte[] enc, byte[] sig) NewerCatalog(VaultSession s)
     {
-        var (root, s, a) = NewVault();
-        a.AddPackage(SamplePackage.Create(_tmp));
         var newer = s.Catalog with { Version = s.Catalog.Version + 1 };
         var enc = Installer.Core.Crypto.PackageCrypto.EncryptBytes(
             System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(newer, Json.Options), s.VaultKey);
+        return (enc, Installer.Core.Crypto.CatalogSigner.Sign(enc, s.SigningPrivateKey!));
+    }
+
+    [Fact]
+    public void Open_completes_commit_when_crash_between_moves()
+    {
+        var (root, s, a) = NewVault();
+        a.AddPackage(SamplePackage.Create(_tmp));
+        var (enc, sig) = NewerCatalog(s);
         var dir = Path.Combine(root, "vault");
-        File.WriteAllBytes(Path.Combine(dir, "catalog.json.enc.tmp"), enc);
-        File.WriteAllBytes(Path.Combine(dir, "catalog.sig.tmp"), Installer.Core.Crypto.CatalogSigner.Sign(enc, s.SigningPrivateKey!));
+        File.WriteAllBytes(Path.Combine(dir, "catalog.json.enc"), enc);   // live enc = new, live sig = old
+        File.WriteAllBytes(Path.Combine(dir, "catalog.sig.tmp"), sig);
         var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
         Assert.Equal(2, s2.Catalog.Version);
         Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+    }
+
+    [Fact]
+    public void Open_discards_tmp_pair_when_live_pair_valid()
+    {
+        var (root, s, a) = NewVault();
+        a.AddPackage(SamplePackage.Create(_tmp));
+        var (enc, sig) = NewerCatalog(s);
+        var dir = Path.Combine(root, "vault");
+        File.WriteAllBytes(Path.Combine(dir, "catalog.json.enc.tmp"), enc);
+        File.WriteAllBytes(Path.Combine(dir, "catalog.sig.tmp"), sig);
+        var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        Assert.Equal(1, s2.Catalog.Version);
+        Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+    }
+
+    [Fact]
+    public void Commit_pending_keeps_new_blob()
+    {
+        var (root, s, a) = NewVault();
+        var sigPath = Path.Combine(root, "vault", "catalog.sig");
+        File.SetAttributes(sigPath, FileAttributes.ReadOnly);
+        try
+        {
+            var src = SamplePackage.Create(_tmp);
+            Assert.Throws<CatalogCommitPendingException>(() => a.AddPackage(src));
+            Assert.Single(Directory.GetFiles(Path.Combine(root, "vault", "packages")));
+        }
+        finally { File.SetAttributes(sigPath, FileAttributes.Normal); }
+        var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        var e = Assert.Single(s2.Catalog.Packages);
+        Assert.True(HashOk(root, e));
     }
 
     [Fact]

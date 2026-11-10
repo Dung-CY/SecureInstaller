@@ -85,16 +85,27 @@ public sealed class VaultStore
         try
         {
             if (!File.Exists(encTmp) && !File.Exists(sigTmp)) return;
-            if (File.Exists(encTmp) && File.Exists(sigTmp)
-                && CatalogSigner.Verify(File.ReadAllBytes(encTmp), File.ReadAllBytes(sigTmp),
-                    Convert.FromBase64String(Meta.SigningPublicKeyB64)))
+            var pub = Convert.FromBase64String(Meta.SigningPublicKeyB64);
+            byte[]? liveEnc = File.Exists(CatalogPath) ? File.ReadAllBytes(CatalogPath) : null;
+            byte[]? liveSig = File.Exists(SigPath) ? File.ReadAllBytes(SigPath) : null;
+            if (liveEnc != null && liveSig != null && CatalogSigner.Verify(liveEnc, liveSig, pub))
+            {
+                File.Delete(encTmp);
+                File.Delete(sigTmp);
+                return;
+            }
+            var sigTmpBytes = File.Exists(sigTmp) ? File.ReadAllBytes(sigTmp) : null;
+            if (liveEnc != null && sigTmpBytes != null && CatalogSigner.Verify(liveEnc, sigTmpBytes, pub))
+            {
+                File.Move(sigTmp, SigPath, overwrite: true);
+                File.Delete(encTmp);
+                return;
+            }
+            if (sigTmpBytes != null && File.Exists(encTmp) && CatalogSigner.Verify(File.ReadAllBytes(encTmp), sigTmpBytes, pub))
             {
                 File.Move(encTmp, CatalogPath, overwrite: true);
                 File.Move(sigTmp, SigPath, overwrite: true);
-                return;
             }
-            File.Delete(encTmp);
-            File.Delete(sigTmp);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException) { }
     }
@@ -196,10 +207,23 @@ public sealed class VaultStore
         var sig = CatalogSigner.Sign(catalogEnc, signingKey);
         var encPath = Path.Combine(vaultDir, "catalog.json.enc");
         var sigPath = Path.Combine(vaultDir, "catalog.sig");
-        File.WriteAllBytes(encPath + ".tmp", catalogEnc);
-        File.WriteAllBytes(sigPath + ".tmp", sig);
-        File.Move(encPath + ".tmp", encPath, overwrite: true);
-        File.Move(sigPath + ".tmp", sigPath, overwrite: true);
+        try
+        {
+            File.WriteAllBytes(encPath + ".tmp", catalogEnc);
+            File.WriteAllBytes(sigPath + ".tmp", sig);
+            File.Move(encPath + ".tmp", encPath, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(encPath + ".tmp"); } catch { }
+            try { File.Delete(sigPath + ".tmp"); } catch { }
+            throw;
+        }
+        try { File.Move(sigPath + ".tmp", sigPath, overwrite: true); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new CatalogCommitPendingException(e);
+        }
     }
 
     internal void UpdateMeta(VaultMeta meta)

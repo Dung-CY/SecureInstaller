@@ -32,3 +32,9 @@ public class NotAdminException : Exception
 {
     public NotAdminException(string message) : base(message) { }
 }
+
+public class CatalogCommitPendingException : Exception
+{
+    public CatalogCommitPendingException(Exception inner)
+        : base("Catalog đã được ghi nhưng chưa ký xong; sẽ hoàn tất ở lần mở kho tiếp theo", inner) { }
+}

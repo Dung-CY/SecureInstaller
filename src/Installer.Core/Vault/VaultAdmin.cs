@@ -52,7 +52,7 @@ public sealed class VaultAdmin
             throw new InvalidOperationException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
         try { Commit(_s.Catalog.Packages.Append(entry).ToList()); }
-        catch { DeleteFiles(entry); throw; }
+        catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
         return entry;
     }
 
@@ -70,7 +70,7 @@ public sealed class VaultAdmin
         var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (!keepOld || Same(p.Version, m.Version))).ToList();
         var packages = _s.Catalog.Packages.Except(removed).Append(entry).ToList();
         try { Commit(packages); }
-        catch { DeleteFiles(entry); throw; }
+        catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
         foreach (var old in removed) DeleteFiles(old);
         return entry;
     }

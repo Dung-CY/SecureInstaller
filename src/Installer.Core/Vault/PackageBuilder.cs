@@ -95,6 +95,7 @@ public static class PackageBuilder
         var tmpZip = Path.Combine(Path.GetTempPath(), "SI_zip_" + Guid.NewGuid().ToString("N") + ".zip");
         var key = KeyDerivation.NewKey();
         var ok = false;
+        var created = false;
         try
         {
             using (var zipFs = new FileStream(tmpZip, FileMode.CreateNew, FileAccess.ReadWrite))
@@ -112,8 +113,11 @@ public static class PackageBuilder
                 }
             }
             using (var plain = File.OpenRead(tmpZip))
-            using (var output = new FileStream(blobPath, FileMode.Create, FileAccess.Write))
+            using (var output = new FileStream(blobPath, FileMode.CreateNew, FileAccess.Write))
+            {
+                created = true;
                 PackageCrypto.Encrypt(plain, output, key);
+            }
 
             if (entry.Docs.Count > 0)
             {
@@ -121,7 +125,7 @@ public static class PackageBuilder
                 foreach (var d in entry.Docs)
                 {
                     using var plain = File.OpenRead(Path.Combine(sourceFolder, "docs", d));
-                    using var output = new FileStream(Path.Combine(docsOut, d + ".enc"), FileMode.Create, FileAccess.Write);
+                    using var output = new FileStream(Path.Combine(docsOut, d + ".enc"), FileMode.CreateNew, FileAccess.Write);
                     PackageCrypto.Encrypt(plain, output, key);
                 }
             }
@@ -135,7 +139,7 @@ public static class PackageBuilder
         finally
         {
             try { File.Delete(tmpZip); } catch { }
-            if (!ok)
+            if (!ok && created)
             {
                 try { File.Delete(blobPath); } catch { }
                 try { if (Directory.Exists(docsOut)) Directory.Delete(docsOut, true); } catch { }
