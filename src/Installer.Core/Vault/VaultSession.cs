@@ -8,7 +8,7 @@ public sealed class VaultSession
     public bool IsAdmin { get; }
     public byte[] VaultKey { get; }
     public byte[]? SigningPrivateKey { get; }
-    public Catalog Catalog { get; }
+    public Catalog Catalog { get; internal set; }
     public VaultStore Store { get; }
 
     internal VaultSession(string username, bool isAdmin, byte[] vaultKey, byte[]? signingPrivateKey,

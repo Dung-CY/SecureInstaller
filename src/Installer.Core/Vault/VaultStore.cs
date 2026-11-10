@@ -57,10 +57,7 @@ public sealed class VaultStore
             Convert.ToBase64String(KeyWrap.Wrap(vk, kek)), Convert.ToBase64String(KeyWrap.Wrap(priv, kek)), 0, null);
         var meta = new VaultMeta(1, Guid.NewGuid(), Convert.ToBase64String(pub), new List<UserEntry> { admin });
 
-        var catalogEnc = PackageCrypto.EncryptBytes(
-            JsonSerializer.SerializeToUtf8Bytes(Catalog.Empty(), Json.Options), vk);
-        File.WriteAllBytes(Path.Combine(vaultDir, "catalog.json.enc"), catalogEnc);
-        File.WriteAllBytes(Path.Combine(vaultDir, "catalog.sig"), CatalogSigner.Sign(catalogEnc, priv));
+        WriteCatalog(vaultDir, Catalog.Empty(), vk, priv);
 
         var store = new VaultStore(root, meta);
         store.SaveMeta(meta);
@@ -165,6 +162,26 @@ public sealed class VaultStore
         if (IsReadOnly) return;
         try { SaveMeta(meta); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    internal void WriteCatalog(Catalog catalog, byte[] vk, byte[] signingKey) =>
+        WriteCatalog(VaultDir, catalog, vk, signingKey);
+
+    static void WriteCatalog(string vaultDir, Catalog catalog, byte[] vk, byte[] signingKey)
+    {
+        var catalogEnc = PackageCrypto.EncryptBytes(JsonSerializer.SerializeToUtf8Bytes(catalog, Json.Options), vk);
+        var sig = CatalogSigner.Sign(catalogEnc, signingKey);
+        var encPath = Path.Combine(vaultDir, "catalog.json.enc");
+        var sigPath = Path.Combine(vaultDir, "catalog.sig");
+        File.WriteAllBytes(encPath + ".tmp", catalogEnc);
+        File.WriteAllBytes(sigPath + ".tmp", sig);
+        File.Move(encPath + ".tmp", encPath, overwrite: true);
+        File.Move(sigPath + ".tmp", sigPath, overwrite: true);
+    }
+
+    internal void UpdateMeta(VaultMeta meta)
+    {
+        SaveMeta(meta);
     }
 
     internal void SaveMeta(VaultMeta meta)
