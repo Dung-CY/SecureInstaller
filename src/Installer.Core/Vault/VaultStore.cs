@@ -73,7 +73,30 @@ public sealed class VaultStore
         catch (JsonException) { throw new VaultTamperedException(Strings.VaultTampered); }
         if (meta is null || meta.Format != 1 || meta.Users is null)
             throw new VaultTamperedException(Strings.VaultTampered);
-        return new VaultStore(root, meta);
+        var store = new VaultStore(root, meta);
+        if (!store.IsReadOnly) store.RepairCatalogTmp();
+        return store;
+    }
+
+    void RepairCatalogTmp()
+    {
+        var encTmp = CatalogPath + ".tmp";
+        var sigTmp = SigPath + ".tmp";
+        try
+        {
+            if (!File.Exists(encTmp) && !File.Exists(sigTmp)) return;
+            if (File.Exists(encTmp) && File.Exists(sigTmp)
+                && CatalogSigner.Verify(File.ReadAllBytes(encTmp), File.ReadAllBytes(sigTmp),
+                    Convert.FromBase64String(Meta.SigningPublicKeyB64)))
+            {
+                File.Move(encTmp, CatalogPath, overwrite: true);
+                File.Move(sigTmp, SigPath, overwrite: true);
+                return;
+            }
+            File.Delete(encTmp);
+            File.Delete(sigTmp);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException) { }
     }
 
     public VaultSession Unlock(string username, string password, DateTimeOffset now)

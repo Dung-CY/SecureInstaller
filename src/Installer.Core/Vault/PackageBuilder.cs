@@ -73,14 +73,24 @@ public static class PackageBuilder
         return new Manifest(entry, docs);
     }
 
+    const string BlobSuffix = ".pkg.enc";
+
+    public static string DocsDirFor(PackageEntry e, string vaultRoot)
+    {
+        var stem = e.BlobFile.EndsWith(BlobSuffix, StringComparison.Ordinal)
+            ? e.BlobFile[..^BlobSuffix.Length] : e.BlobFile;
+        return Path.Combine(vaultRoot, "vault", "docs", stem);
+    }
+
     public static PackageEntry Build(string sourceFolder, string vaultRoot)
     {
         var entry = ReadManifest(sourceFolder).Entry;
         var vaultDir = Path.Combine(vaultRoot, "vault");
         var pkgDir = Path.Combine(vaultDir, "packages");
-        var docsOut = Path.Combine(vaultDir, "docs", $"{entry.Id}-{entry.Version}");
+        var stem = $"{entry.Id}-{entry.Version}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        var docsOut = Path.Combine(vaultDir, "docs", stem);
         Directory.CreateDirectory(pkgDir);
-        var blobName = $"{entry.Id}-{entry.Version}.pkg.enc";
+        var blobName = stem + ".pkg.enc";
         var blobPath = Path.Combine(pkgDir, blobName);
         var tmpZip = Path.Combine(Path.GetTempPath(), "SI_zip_" + Guid.NewGuid().ToString("N") + ".zip");
         var key = KeyDerivation.NewKey();

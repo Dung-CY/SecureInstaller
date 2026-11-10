@@ -17,7 +17,7 @@ public sealed class VaultAdmin
     }
 
     string VaultDir => Path.Combine(_s.Store.Root, "vault");
-    string DocsDir(PackageEntry e) => Path.Combine(VaultDir, "docs", $"{e.Id}-{e.Version}");
+    string DocsDir(PackageEntry e) => PackageBuilder.DocsDirFor(e, _s.Store.Root);
     string BlobPath(PackageEntry e) => Path.Combine(VaultDir, "packages", e.BlobFile);
 
     static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
@@ -40,8 +40,9 @@ public sealed class VaultAdmin
 
     void DeleteFiles(PackageEntry e)
     {
-        try { File.Delete(BlobPath(e)); } catch (IOException) { }
-        try { if (Directory.Exists(DocsDir(e))) Directory.Delete(DocsDir(e), true); } catch (IOException) { }
+        try { File.Delete(BlobPath(e)); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try { if (Directory.Exists(DocsDir(e))) Directory.Delete(DocsDir(e), true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     public PackageEntry AddPackage(string sourceFolder)
@@ -62,8 +63,7 @@ public sealed class VaultAdmin
         if (!_s.Catalog.Packages.Any(p => Same(p.Id, id)))
             throw new InvalidOperationException("Không tìm thấy gói");
 
-        var sameVersion = _s.Catalog.Packages.FirstOrDefault(p => Same(p.Id, id) && Same(p.Version, m.Version));
-        if (sameVersion != null && keepOld)
+        if (keepOld && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)))
             throw new InvalidOperationException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
 
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
@@ -71,8 +71,7 @@ public sealed class VaultAdmin
         var packages = _s.Catalog.Packages.Except(removed).Append(entry).ToList();
         try { Commit(packages); }
         catch { DeleteFiles(entry); throw; }
-        // A same-version entry shares file names with the new one, which were overwritten in place.
-        foreach (var old in removed.Where(p => !Same(p.Version, m.Version))) DeleteFiles(old);
+        foreach (var old in removed) DeleteFiles(old);
         return entry;
     }
 

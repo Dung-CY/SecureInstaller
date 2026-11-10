@@ -29,10 +29,10 @@ public class VaultAdminTests : IDisposable
         var (root, s, a) = NewVault();
         var e = a.AddPackage(SamplePackage.Create(_tmp));
         Assert.Equal(1, s.Catalog.Version);
-        Assert.Equal("demo-1.0.pkg.enc", e.BlobFile);
+        Assert.Matches(@"^demo-1\.0-[0-9a-f]{8}\.pkg\.enc$", e.BlobFile);
         Assert.True(File.Exists(Blob(root, e)));
         Assert.Equal(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Blob(root, e)))).ToLowerInvariant(), e.Sha256);
-        Assert.True(File.Exists(Path.Combine(root, "vault", "docs", "demo-1.0", "HuongDan.docx.enc")));
+        Assert.True(File.Exists(Path.Combine(PackageBuilder.DocsDirFor(e, root), "HuongDan.docx.enc")));
         Assert.Equal(new[] { "HuongDan.docx" }, e.Docs);
         Assert.Equal(1800, e.TimeoutSec);
         var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
@@ -70,7 +70,7 @@ public class VaultAdminTests : IDisposable
         var v2 = a.UpdatePackage("demo", SamplePackage.Create(_tmp, version: "2.0"), keepOld: false);
         Assert.False(File.Exists(Blob(root, v1)));
         Assert.True(File.Exists(Blob(root, v2)));
-        Assert.False(Directory.Exists(Path.Combine(root, "vault", "docs", "demo-1.0")));
+        Assert.False(Directory.Exists(PackageBuilder.DocsDirFor(v1, root)));
         Assert.Equal(new[] { "2.0" }, s.Catalog.Packages.Select(p => p.Version));
     }
 
@@ -92,7 +92,7 @@ public class VaultAdminTests : IDisposable
         var e = a.AddPackage(SamplePackage.Create(_tmp));
         a.RemovePackage("demo", null);
         Assert.False(File.Exists(Blob(root, e)));
-        Assert.False(Directory.Exists(Path.Combine(root, "vault", "docs", "demo-1.0")));
+        Assert.False(Directory.Exists(PackageBuilder.DocsDirFor(e, root)));
         Assert.Empty(s.Catalog.Packages);
         Assert.Equal(2, s.Catalog.Version);
         Assert.Throws<InvalidOperationException>(() => a.RemovePackage("demo", null));
@@ -129,8 +129,10 @@ public class VaultAdminTests : IDisposable
         var boss = VaultStore.Open(root).Unlock("boss", "pw-b", T0);
         Assert.True(boss.IsAdmin);
         new VaultAdmin(boss).AddPackage(SamplePackage.Create(_tmp));
-        var s = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
-        Assert.Single(s.Catalog.Packages);
+        a.AddUser("bob", "pw-b", UserRole.User);
+        var bob = VaultStore.Open(root).Unlock("bob", "pw-b", T0);
+        Assert.False(bob.IsAdmin);
+        Assert.Single(bob.Catalog.Packages);
     }
 
     [Fact]
@@ -141,5 +143,78 @@ public class VaultAdminTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => a.RemoveUser("admin"));
         a.RemoveUser("bob");
         Assert.Single(VaultStore.Open(root).Meta.Users);
+    }
+
+    bool HashOk(string root, PackageEntry e) =>
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Blob(root, e)))).ToLowerInvariant() == e.Sha256;
+
+    [Fact]
+    public void Same_version_update_keeps_working_package_and_cleans_old_files()
+    {
+        var (root, s, a) = NewVault();
+        var v1 = a.AddPackage(SamplePackage.Create(_tmp));
+        var v1b = a.UpdatePackage("demo", SamplePackage.Create(_tmp), keepOld: false);
+        Assert.NotEqual(v1.BlobFile, v1b.BlobFile);
+        Assert.False(File.Exists(Blob(root, v1)));
+        Assert.False(Directory.Exists(PackageBuilder.DocsDirFor(v1, root)));
+        Assert.True(HashOk(root, v1b));
+        Assert.Single(s.Catalog.Packages);
+        Assert.Single(Directory.GetFiles(Path.Combine(root, "vault", "packages")));
+    }
+
+    [Fact]
+    public void Colliding_ids_do_not_overwrite_each_other()
+    {
+        var (root, s, a) = NewVault();
+        var p1 = a.AddPackage(SamplePackage.Create(_tmp, id: "a-b", version: "c"));
+        var p2 = a.AddPackage(SamplePackage.Create(_tmp, id: "a", version: "b-c"));
+        Assert.NotEqual(p1.BlobFile, p2.BlobFile);
+        Assert.True(HashOk(root, p1));
+        Assert.True(HashOk(root, p2));
+        a.RemovePackage("a", null);
+        Assert.True(HashOk(root, p1));
+        Assert.True(Directory.Exists(PackageBuilder.DocsDirFor(p1, root)));
+    }
+
+    [Fact]
+    public void Failed_build_leaves_existing_package_intact()
+    {
+        var (root, s, a) = NewVault();
+        var v1 = a.AddPackage(SamplePackage.Create(_tmp));
+        Assert.Throws<InvalidDataException>(() =>
+            a.UpdatePackage("demo", SamplePackage.Create(_tmp, withInstaller: false), keepOld: false));
+        Assert.True(HashOk(root, v1));
+        Assert.True(Directory.Exists(PackageBuilder.DocsDirFor(v1, root)));
+        Assert.Single(Directory.GetFiles(Path.Combine(root, "vault", "packages")));
+        Assert.Equal(1, s.Catalog.Version);
+    }
+
+    [Fact]
+    public void Open_rolls_forward_interrupted_catalog_write()
+    {
+        var (root, s, a) = NewVault();
+        a.AddPackage(SamplePackage.Create(_tmp));
+        var newer = s.Catalog with { Version = s.Catalog.Version + 1 };
+        var enc = Installer.Core.Crypto.PackageCrypto.EncryptBytes(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(newer, Json.Options), s.VaultKey);
+        var dir = Path.Combine(root, "vault");
+        File.WriteAllBytes(Path.Combine(dir, "catalog.json.enc.tmp"), enc);
+        File.WriteAllBytes(Path.Combine(dir, "catalog.sig.tmp"), Installer.Core.Crypto.CatalogSigner.Sign(enc, s.SigningPrivateKey!));
+        var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        Assert.Equal(2, s2.Catalog.Version);
+        Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+    }
+
+    [Fact]
+    public void Open_discards_invalid_tmp_pair()
+    {
+        var (root, s, a) = NewVault();
+        a.AddPackage(SamplePackage.Create(_tmp));
+        var dir = Path.Combine(root, "vault");
+        File.WriteAllBytes(Path.Combine(dir, "catalog.json.enc.tmp"), new byte[] { 1, 2, 3 });
+        File.WriteAllBytes(Path.Combine(dir, "catalog.sig.tmp"), new byte[64]);
+        var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        Assert.Equal(1, s2.Catalog.Version);
+        Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
     }
 }
