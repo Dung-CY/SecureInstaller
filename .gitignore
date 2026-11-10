@@ -13,6 +13,8 @@ publish/
 *.pfx
 admin-signing*
 vault/
+!src/**/Vault/
+!tests/**/Vault/
 logs/
 
 ## OS
