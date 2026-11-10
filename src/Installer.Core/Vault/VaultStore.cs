@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Installer.Core.Crypto;
 using Installer.Core.Model;
@@ -137,8 +138,19 @@ public sealed class VaultStore
         byte[]? signingKey = null;
         if (user.WrappedSigningKeyB64 is { } w)
         {
-            try { signingKey = KeyWrap.Unwrap(Convert.FromBase64String(w), kek); }
-            catch (BadCredentialsException) { signingKey = null; }
+            try
+            {
+                var candidate = KeyWrap.Unwrap(Convert.FromBase64String(w), kek);
+                using var ecdsa = ECDsa.Create();
+                ecdsa.ImportPkcs8PrivateKey(candidate, out _);
+                var spki = ecdsa.ExportSubjectPublicKeyInfo();
+                if (CryptographicOperations.FixedTimeEquals(spki, Convert.FromBase64String(Meta.SigningPublicKeyB64)))
+                    signingKey = candidate;
+            }
+            catch (Exception e) when (e is BadCredentialsException or CryptographicException or FormatException)
+            {
+                signingKey = null;
+            }
         }
 
         return new VaultSession(user.Username, signingKey != null, vk, signingKey, catalog, this);
@@ -149,7 +161,10 @@ public sealed class VaultStore
         var users = Meta.Users.Select(u =>
             string.Equals(u.Username, updated.Username, StringComparison.OrdinalIgnoreCase) ? updated : u).ToList();
         var meta = Meta with { Users = users };
-        if (IsReadOnly) Meta = meta; else SaveMeta(meta);
+        Meta = meta;
+        if (IsReadOnly) return;
+        try { SaveMeta(meta); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     internal void SaveMeta(VaultMeta meta)

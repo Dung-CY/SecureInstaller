@@ -136,6 +136,75 @@ public class VaultStoreTests : IDisposable
         Assert.Contains("\"installer_type\": \"msi\"", json);
     }
 
+    [Fact]
+    public void Forged_signing_key_under_own_kek_does_not_grant_admin()
+    {
+        var root = NewRoot();
+        var store = VaultStore.Create(root, "admin", "pw-1");
+        var vk = store.Unlock("admin", "pw-1", T0).VaultKey;
+        var salt = KeyDerivation.NewSalt();
+        var kek = KeyDerivation.DeriveKek("pw-u", salt);
+        string Forge(byte[] secret) => Convert.ToBase64String(KeyWrap.Wrap(secret, kek));
+        UserEntry U(string name, byte[] secret) => new(name, UserRole.User, Convert.ToBase64String(salt),
+            Convert.ToBase64String(KeyWrap.Wrap(vk, kek)), Forge(secret), 0, null);
+        store.SaveMeta(store.Meta with { Users = store.Meta.Users
+            .Append(U("junk", KeyDerivation.NewKey()))
+            .Append(U("otherkey", CatalogSigner.NewKeyPair().PrivatePkcs8)).ToList() });
+        var reopened = VaultStore.Open(root);
+        foreach (var name in new[] { "junk", "otherkey" })
+        {
+            var s = reopened.Unlock(name, "pw-u", T0);
+            Assert.False(s.IsAdmin);
+            Assert.Null(s.SigningPrivateKey);
+        }
+    }
+
+    [Fact]
+    public void Reencrypted_catalog_with_old_signature_throws_VaultTampered()
+    {
+        var root = NewRoot();
+        var store = VaultStore.Create(root, "admin", "pw-1");
+        var session = store.Unlock("admin", "pw-1", T0);
+        var salt = KeyDerivation.NewSalt();
+        var kek = KeyDerivation.DeriveKek("pw-u", salt);
+        store.SaveMeta(store.Meta with { Users = store.Meta.Users.Append(new UserEntry("user1", UserRole.User,
+            Convert.ToBase64String(salt), Convert.ToBase64String(KeyWrap.Wrap(session.VaultKey, kek)), null, 0, null)).ToList() });
+        var user = VaultStore.Open(root).Unlock("user1", "pw-u", T0);
+        var modified = user.Catalog with { Version = 99 };
+        File.WriteAllBytes(Path.Combine(root, "vault", "catalog.json.enc"),
+            PackageCrypto.EncryptBytes(JsonSerializer.SerializeToUtf8Bytes(modified, Json.Options), user.VaultKey));
+        Assert.Throws<VaultTamperedException>(() => VaultStore.Open(root).Unlock("user1", "pw-u", T0));
+    }
+
+    [Fact]
+    public void Meta_write_failure_still_returns_bad_credentials()
+    {
+        var root = NewRoot();
+        VaultStore.Create(root, "admin", "pw-1");
+        var store = VaultStore.Open(root);
+        var metaPath = Path.Combine(root, "vault", "vault.meta");
+        File.SetAttributes(metaPath, FileAttributes.ReadOnly);
+        try
+        {
+            Assert.Throws<BadCredentialsException>(() => store.Unlock("admin", "bad", T0));
+            Assert.Equal(1, store.Meta.Users[0].FailedAttempts);
+        }
+        finally { File.SetAttributes(metaPath, FileAttributes.Normal); }
+    }
+
+    [Fact]
+    public void Wrong_password_after_lock_expiry_counts_from_one()
+    {
+        var root = NewRoot();
+        VaultStore.Create(root, "admin", "pw-1");
+        var store = VaultStore.Open(root);
+        for (int i = 0; i < 5; i++)
+            Assert.Throws<BadCredentialsException>(() => store.Unlock("admin", "bad", T0));
+        Assert.Throws<BadCredentialsException>(() => store.Unlock("admin", "bad", T0.AddMinutes(16)));
+        Assert.Equal(1, store.Meta.Users[0].FailedAttempts);
+        Assert.Null(store.Meta.Users[0].LockedUntil);
+    }
+
     static void CopyDir(string src, string dst)
     {
         Directory.CreateDirectory(dst);
