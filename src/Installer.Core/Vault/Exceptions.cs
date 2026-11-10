@@ -25,7 +25,7 @@ public class BadCredentialsException : Exception
 public class AccountLockedException : Exception
 {
     public DateTimeOffset Until { get; }
-    public AccountLockedException(DateTimeOffset until) : base($"Account locked until {until:O}") => Until = until;
+    public AccountLockedException(DateTimeOffset until) : base(string.Format(Strings.AccountLocked, until.ToLocalTime())) => Until = until;
 }
 
 public class NotAdminException : Exception
