@@ -17,5 +17,6 @@ public record Catalog(int Version, DateTimeOffset UpdatedAt, List<PackageEntry> 
     KeywordScanConfig KeywordScan, List<CrackSignature> CrackSignatures)
 {
     public static Catalog Empty() => new(0, DateTimeOffset.UtcNow, new(),
-        new KeywordScanConfig(new(), new(), 60), new());
+        new KeywordScanConfig(new(), new(), 60),
+        Installer.Core.Licensing.CrackSignatureDefaults.All.ToList());
 }
