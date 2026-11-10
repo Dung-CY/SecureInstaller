@@ -15,7 +15,7 @@ The user communicates in Vietnamese; reply in Vietnamese. All UI strings are Vie
 ## Environment
 
 - Windows 11 LTSC (no winget). .NET SDK 8.0.428 is installed per-user at `%LOCALAPPDATA%\Microsoft\dotnet` and added to the user PATH; a shell started before the install may not see `dotnet` — call it by full path if needed.
-- The repo path contains Vietnamese characters and spaces (`D:\Claude Code\Dự án 1`). Quote paths everywhere; several tests deliberately use such paths.
+- The repo lives at `D:\Claude Code\SecureInstaller` (parent folder has a space). Quote paths everywhere; several tests deliberately use Vietnamese/space paths such as `Dự án 1` because end users' paths may contain them.
 
 ## Commands (as defined by Plan 1)
 
