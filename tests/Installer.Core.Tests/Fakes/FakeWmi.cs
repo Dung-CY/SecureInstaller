@@ -21,7 +21,7 @@ public sealed class FakeWmi : IWmi
         var cls = m.Success ? m.Groups[1].Value : "";
         if (Throws.Contains(cls)) throw new InvalidOperationException($"Simulated WMI failure for {cls}");
         return Rows.TryGetValue(cls, out var list)
-            ? list.Select(d => (IReadOnlyDictionary<string, object?>)d).ToList()
+            ? list.Select(d => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>(d, StringComparer.OrdinalIgnoreCase)).ToList()
             : new List<IReadOnlyDictionary<string, object?>>();
     }
 }

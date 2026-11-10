@@ -13,7 +13,7 @@ public sealed class RegistryReader : IRegistryReader
             using var key = baseKey.OpenSubKey(path);
             return key?.GetSubKeyNames() ?? Array.Empty<string>();
         }
-        catch (Exception e) when (e is SecurityException or UnauthorizedAccessException)
+        catch (Exception e) when (e is SecurityException or UnauthorizedAccessException or IOException or ArgumentException)
         {
             return Array.Empty<string>();
         }
@@ -27,7 +27,7 @@ public sealed class RegistryReader : IRegistryReader
             using var key = baseKey.OpenSubKey(path);
             return key?.GetValue(name);
         }
-        catch (Exception e) when (e is SecurityException or UnauthorizedAccessException)
+        catch (Exception e) when (e is SecurityException or UnauthorizedAccessException or IOException or ArgumentException)
         {
             return null;
         }
