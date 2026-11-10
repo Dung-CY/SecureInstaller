@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+publish/
+*.nupkg
+
+## Secrets - never commit
+*.key
+*.pfx
+admin-signing*
+vault/
+logs/
+
+## OS
+Thumbs.db
+Desktop.ini
