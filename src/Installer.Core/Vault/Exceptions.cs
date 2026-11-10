@@ -19,6 +19,7 @@ public class VaultTamperedException : Exception
 public class BadCredentialsException : Exception
 {
     public BadCredentialsException(string message) : base(message) { }
+    public BadCredentialsException(string message, Exception inner) : base(message, inner) { }
 }
 
 public class AccountLockedException : Exception
