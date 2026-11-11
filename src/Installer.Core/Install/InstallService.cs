@@ -37,8 +37,11 @@ public sealed class InstallService
         catch (Exception ex) { outcome = new InstallOutcome(InstallStatus.Failed, null, ex.Message); }
         finally { try { ws?.Dispose(); } catch { } }
 
-        if (ws != null && !ws.Deleted)
-            detail = (detail == null ? "" : detail + "; ") + "Không xóa được thư mục tạm";
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(outcome.Message)) parts.Add(outcome.Message);
+        if (detail != null) parts.Add(detail);
+        if (ws != null && !ws.Deleted) parts.Add("Không xóa được thư mục tạm");
+        detail = parts.Count > 0 ? string.Join("; ", parts) : null;
         try
         {
             _repo.WriteLog(new LogEntry(DateTimeOffset.Now, username, hw.Hostname, hw.BiosSerial, "install",
@@ -73,18 +76,28 @@ public sealed class InstallService
         }
         if (!string.Equals(actual, pkg.Sha256, StringComparison.OrdinalIgnoreCase)) return corrupt;
 
+        ct.ThrowIfCancellationRequested();
         progress.Report(new InstallProgress(null, "Đang giải mã"));
-        var key = Convert.FromBase64String(pkg.KeyB64);
+        ct.ThrowIfCancellationRequested();
+        byte[] key;
+        try { key = Convert.FromBase64String(pkg.KeyB64); }
+        catch (FormatException) { return corrupt; }
         try
         {
-            using var cipher = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var plain = new FileStream(zipPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            PackageCrypto.Decrypt(cipher, plain, key);
+            await Task.Run(() =>
+            {
+                using var cipher = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var plain = new FileStream(zipPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                PackageCrypto.Decrypt(cipher, plain, key);
+            }, ct).ConfigureAwait(false);
         }
         catch (PackageCorruptException) { return corrupt; }
 
-        try { ZipFile.ExtractToDirectory(zipPath, pkgDir, true); }
+        ct.ThrowIfCancellationRequested();
+        try { await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, pkgDir, true), ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
         catch (Exception) { return corrupt; }
+        ct.ThrowIfCancellationRequested();
 
         var installerDir = Path.GetFullPath(Path.Combine(pkgDir, "installer")) + Path.DirectorySeparatorChar;
         var installerPath = Path.GetFullPath(Path.Combine(pkgDir, "installer", pkg.InstallerFile));
@@ -117,15 +130,20 @@ public sealed class InstallService
         }
         catch { }
 
-        var key = Convert.FromBase64String(pkg.KeyB64);
+        byte[] key;
+        try { key = Convert.FromBase64String(pkg.KeyB64); }
+        catch (FormatException) { throw new PackageCorruptException(Strings.PackageCorrupt); }
         await using var src = await _repo.OpenDocBlobAsync(pkg, docName, ct).ConfigureAwait(false);
         var dir = Path.Combine(DocsBase, Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, docName);
         try
         {
-            await using var dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            PackageCrypto.Decrypt(src, dst, key);
+            await Task.Run(() =>
+            {
+                using var dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                PackageCrypto.Decrypt(src, dst, key);
+            }, ct).ConfigureAwait(false);
         }
         catch
         {

@@ -101,6 +101,7 @@ public class InstallServiceTests : IDisposable
         Assert.Equal(Strings.PackageCorrupt, res.Message);
         Assert.Empty(runner.Requests);
         Assert.True(t.Ws!.Deleted);
+        Assert.Contains(Strings.PackageCorrupt, Assert.Single(ReadLogs(e)).Detail);
     }
 
     [Fact]
@@ -175,6 +176,30 @@ public class InstallServiceTests : IDisposable
         var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, t)
             .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal("Người dùng hủy cài đặt", res.Message);
+        Assert.True(t.Ws!.Deleted);
+        Assert.Contains("Người dùng hủy cài đặt", Assert.Single(ReadLogs(e)).Detail);
+    }
+
+    sealed class SyncProgress : IProgress<InstallProgress>
+    {
+        readonly Action<InstallProgress> _a;
+        public SyncProgress(Action<InstallProgress> a) => _a = a;
+        public void Report(InstallProgress v) => _a(v);
+    }
+
+    [Fact]
+    public async Task Cancel_before_decrypt_returns_cancelled_and_runner_not_called()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp));
+        var runner = new FakeRunner();
+        var t = new Tracker();
+        using var cts = new CancellationTokenSource();
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, t)
+            .InstallAsync(pkg, "admin", Hw, new SyncProgress(p => { if (p.Step == "Đang giải mã") cts.Cancel(); }), cts.Token);
+        Assert.Equal(InstallStatus.Failed, res.Status);
+        Assert.Equal("Người dùng hủy cài đặt", res.Message);
+        Assert.Empty(runner.Requests);
         Assert.True(t.Ws!.Deleted);
     }
 
