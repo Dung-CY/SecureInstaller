@@ -18,6 +18,8 @@ public static class Program
           SecureInstaller.Packager add-package <root> <folder> --user <u> [--password <pw>]
           SecureInstaller.Packager update-package <root> <id> <folder> [--keep-old] --user <u> [--password <pw>]
           SecureInstaller.Packager remove-package <root> <id> [--version <v>] --user <u> [--password <pw>]
+          SecureInstaller.Packager add-bundle <root> <bundle.json> --user <u> [--password <pw>]
+          SecureInstaller.Packager remove-bundle <root> <id> --user <u> [--password <pw>]
           SecureInstaller.Packager add-user <root> <name> --role user|admin --new-password <pw> --user <u> [--password <pw>]
           SecureInstaller.Packager remove-user <root> <name> --user <u> [--password <pw>]
           SecureInstaller.Packager export-logs <root> <out.csv> --user <u> [--password <pw>]
@@ -103,6 +105,30 @@ public static class Program
                 var admin = OpenAdmin(p, pos[0]);
                 admin.RemovePackage(pos[1], Opt(p, "version"));
                 Console.WriteLine($"Đã xóa gói {pos[1]}");
+                return 0;
+            }
+            case "add-bundle":
+            {
+                Need(2);
+                Bundle b;
+                try
+                {
+                    b = System.Text.Json.JsonSerializer.Deserialize<Bundle>(File.ReadAllText(pos[1], Encoding.UTF8), Json.Options)
+                        ?? throw new InvalidDataException("bundle.json trống");
+                }
+                catch (System.Text.Json.JsonException ex) { throw new InvalidDataException("bundle.json không hợp lệ: " + ex.Message); }
+                var admin = OpenAdmin(p, pos[0]);
+                var exists = admin.HasBundle(b.Id);
+                if (exists) admin.UpdateBundle(b); else admin.AddBundle(b);
+                Console.WriteLine($"Đã lưu bộ gói {b.Name}");
+                return 0;
+            }
+            case "remove-bundle":
+            {
+                Need(2);
+                var admin = OpenAdmin(p, pos[0]);
+                admin.RemoveBundle(pos[1]);
+                Console.WriteLine($"Đã xóa bộ gói {pos[1]}");
                 return 0;
             }
             case "add-user":

@@ -25,7 +25,7 @@ public sealed class VaultAdmin
     static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     // Writes a new catalog (Version++, UpdatedAt) and updates the session on success.
-    void Commit(List<PackageEntry> packages, KeywordScanConfig? kw = null, List<CrackSignature>? sigs = null)
+    void Commit(List<PackageEntry> packages, KeywordScanConfig? kw = null, List<CrackSignature>? sigs = null, List<Bundle>? bundles = null)
     {
         var c = _s.Catalog;
         var next = c with
@@ -35,7 +35,8 @@ public sealed class VaultAdmin
             UpdatedAt = DateTimeOffset.UtcNow,
             Packages = packages,
             KeywordScan = kw ?? c.KeywordScan,
-            CrackSignatures = sigs ?? c.CrackSignatures
+            CrackSignatures = sigs ?? c.CrackSignatures,
+            Bundles = bundles ?? c.Bundles
         };
         _s.Store.WriteCatalog(next, _s.VaultKey, _s.SigningPrivateKey!);
         _s.Catalog = next;
@@ -132,4 +133,43 @@ public sealed class VaultAdmin
 
     public void UpdateSettings(KeywordScanConfig keywordScan, List<CrackSignature> signatures) =>
         Commit(_s.Catalog.Packages, keywordScan, signatures);
+
+    static readonly System.Text.RegularExpressions.Regex BundleId = new(@"^[A-Za-z0-9._-]+$");
+
+    void ValidateBundle(Bundle b)
+    {
+        if (string.IsNullOrEmpty(b.Id) || !BundleId.IsMatch(b.Id))
+            throw new InvalidDataException("Mã bộ gói không hợp lệ");
+        if (string.IsNullOrWhiteSpace(b.Name)) throw new InvalidDataException("Tên bộ gói trống");
+        if (b.Items is null || b.Items.Count == 0) throw new InvalidDataException("Bộ gói không có gói nào");
+        foreach (var (item, pkg) in BundleResolver.Resolve(_s.Catalog, b))
+            if (pkg is null)
+                throw new InvalidDataException($"Bộ gói tham chiếu gói không có trong kho: {item.PackageId}");
+    }
+
+    List<Bundle> Bundles => _s.Catalog.Bundles ?? new();
+
+    public bool HasBundle(string id) => Bundles.Any(x => Same(x.Id, id));
+
+    public Bundle AddBundle(Bundle b)
+    {
+        ValidateBundle(b);
+        if (Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Bộ gói đã tồn tại");
+        Commit(_s.Catalog.Packages, bundles: Bundles.Append(b).ToList());
+        return b;
+    }
+
+    public Bundle UpdateBundle(Bundle b)
+    {
+        ValidateBundle(b);
+        if (!Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Không tìm thấy bộ gói");
+        Commit(_s.Catalog.Packages, bundles: Bundles.Select(x => Same(x.Id, b.Id) ? b : x).ToList());
+        return b;
+    }
+
+    public void RemoveBundle(string id)
+    {
+        if (!Bundles.Any(x => Same(x.Id, id))) throw new Errors.UserMessageException("Không tìm thấy bộ gói");
+        Commit(_s.Catalog.Packages, bundles: Bundles.Where(x => !Same(x.Id, id)).ToList());
+    }
 }
