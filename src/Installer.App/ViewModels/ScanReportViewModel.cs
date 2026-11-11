@@ -28,17 +28,21 @@ public partial class PeripheralGroup : ObservableObject
     public string Label { get; }
     internal IReadOnlyList<DeviceInfo> All { get; }
     public ObservableCollection<DeviceInfo> Items { get; }
-    [ObservableProperty] private int _count;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HeaderText))] private int _count;
+    public string HeaderText => $"{Label}, {Count} thiết bị";
     [ObservableProperty] private bool _isExpanded;
 
     internal void Filter(string text)
     {
-        Items.Clear();
-        foreach (var d in All)
-            if (text.Length == 0
-                || (d.Name ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
-                || (d.DeviceId ?? "").Contains(text, StringComparison.OrdinalIgnoreCase))
-                Items.Add(d);
+        var matches = text.Length == 0
+            ? All
+            : All.Where(d => (d.Name ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                          || (d.DeviceId ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!matches.SequenceEqual(Items))   // keep the realized containers when nothing changed
+        {
+            Items.Clear();
+            foreach (var d in matches) Items.Add(d);
+        }
         Count = Items.Count;
     }
 }
@@ -142,63 +146,77 @@ public partial class ScanReportViewModel : ObservableObject
         if (Report is { } r) _onContinue(r);
     }
 
+    // Reports re-opened from history are deserialized JSON, so any part may be missing.
     private void Apply(ScanReport r)
     {
         HardwareRows.Clear();
         var h = r.Hardware;
-        HardwareRows.Add(new("Tên máy", h.Hostname));
-        HardwareRows.Add(new("Hãng", h.Manufacturer ?? "—"));
-        HardwareRows.Add(new("Model", h.Model ?? "—"));
-        HardwareRows.Add(new("Serial BIOS", h.BiosSerial ?? "—"));
-        for (int i = 0; i < h.Disks.Count; i++)
+        var disks = h?.Disks ?? new();
+        var nics = h?.Nics ?? new();
+        var errors = h?.Errors ?? new();
+        var peripherals = (h?.Peripherals ?? new())
+            .Where(d => d is not null)
+            .Select(d => d.DeviceId is null ? d with { DeviceId = "" } : d)
+            .ToList();
+        HardwareRows.Add(new("Tên máy", h?.Hostname ?? "—"));
+        HardwareRows.Add(new("Hãng", h?.Manufacturer ?? "—"));
+        HardwareRows.Add(new("Model", h?.Model ?? "—"));
+        HardwareRows.Add(new("Serial BIOS", h?.BiosSerial ?? "—"));
+        for (int i = 0; i < disks.Count; i++)
         {
-            var d = h.Disks[i];
+            var d = disks[i];
+            if (d is null) continue;
             HardwareRows.Add(new($"Ổ cứng {i + 1}",
                 string.Join(" · ", new[] { d.Model, d.Serial, d.InterfaceType }.Where(x => !string.IsNullOrWhiteSpace(x)))));
         }
-        foreach (var n in h.Nics) HardwareRows.Add(new($"MAC {n.Name}", n.Mac));
-        HardwareRows.Add(new("Thiết bị ngoại vi", $"{h.Peripherals?.Count ?? 0} (xem tab Thiết bị ngoại vi)"));
-        foreach (var e in h.Errors) {
+        foreach (var n in nics.Where(n => n is not null)) HardwareRows.Add(new($"MAC {n.Name}", n.Mac ?? "—"));
+        HardwareRows.Add(new("Thiết bị ngoại vi", $"{peripherals.Count} (xem tab Thiết bị ngoại vi)"));
+        foreach (var e in errors.Where(e => e is not null)) {
             var i = e.IndexOf(':');
             HardwareRows.Add(new("Lỗi quét", $"{(i > 0 ? e[..i] : e)}: Không đọc được dữ liệu"));
         }
 
         NetworkRows.Clear();
-        foreach (var p in r.Network.Profiles)
-            NetworkRows.Add(new(p.Name, DisplayText.Of(p.Kind), DisplayText.Of(p.FirstConnected), DisplayText.Of(p.LastConnected)));
-        InternetText = "Đang có internet: " + (r.Network.InternetNow ? "Có" : "Không");
+        foreach (var p in (r.Network?.Profiles ?? new()).Where(p => p is not null))
+            NetworkRows.Add(new(p.Name ?? "—", DisplayText.Of(p.Kind), DisplayText.Of(p.FirstConnected), DisplayText.Of(p.LastConnected)));
+        var internet = r.Network?.InternetNow ?? false;
+        InternetText = "Đang có internet: " + (internet ? "Có" : "Không");
 
+        var winVerdict = r.Windows?.Verdict ?? LicenseVerdict.Unknown;
+        var officeVerdict = r.Office?.Verdict ?? LicenseVerdict.Unknown;
         WindowsLicenseText = Format(r.Windows);
         OfficeLicenseText = Format(r.Office);
-        WindowsIsCracked = r.Windows.Verdict == LicenseVerdict.CrackSuspected;
-        OfficeIsCracked = r.Office.Verdict == LicenseVerdict.CrackSuspected;
+        WindowsIsCracked = winVerdict == LicenseVerdict.CrackSuspected;
+        OfficeIsCracked = officeVerdict == LicenseVerdict.CrackSuspected;
 
+        var files = r.Keywords?.MatchedFiles ?? new();
         KeywordFiles.Clear();
-        foreach (var f in r.Keywords.MatchedFiles) KeywordFiles.Add(f);
+        foreach (var f in files.Where(f => f is not null)) KeywordFiles.Add(f);
         var warn = new List<string>();
-        if (r.Keywords.TimedOut) warn.Add("Đã hết thời gian quét, kết quả có thể chưa đầy đủ");
-        if (r.Keywords.Truncated) warn.Add("Chỉ hiển thị 1000 file đầu tiên");
+        if (r.Keywords?.TimedOut == true) warn.Add("Đã hết thời gian quét, kết quả có thể chưa đầy đủ");
+        if (r.Keywords?.Truncated == true) warn.Add("Chỉ hiển thị 1000 file đầu tiên");
         KeywordWarning = warn.Count == 0 ? null : string.Join(Environment.NewLine, warn);
 
         PeripheralGroups.Clear();
-        foreach (var g in (h.Peripherals ?? new()).GroupBy(PeripheralCategorizer.Categorize).OrderBy(g => g.Key))
+        foreach (var g in peripherals.GroupBy(PeripheralCategorizer.Categorize).OrderBy(g => g.Key))
             PeripheralGroups.Add(new PeripheralGroup(g.Key, g.ToList()));
         ApplyDeviceSearch();
 
         Overview.Clear();
-        Overview.Add(new("Windows", DisplayText.Of(r.Windows.Verdict), IsLicenseWarning(r.Windows.Verdict)));
-        Overview.Add(new("Office", DisplayText.Of(r.Office.Verdict), IsLicenseWarning(r.Office.Verdict)));
-        Overview.Add(new("Internet", r.Network.InternetNow ? "Có" : "Không", false));
-        Overview.Add(new("File từ khóa", r.Keywords.MatchedFiles.Count.ToString(), r.Keywords.MatchedFiles.Count > 0));
-        Overview.Add(new("Thiết bị", (h.Peripherals?.Count ?? 0).ToString(), false));
+        Overview.Add(new("Windows", DisplayText.Of(winVerdict), IsLicenseWarning(winVerdict)));
+        Overview.Add(new("Office", DisplayText.Of(officeVerdict), IsLicenseWarning(officeVerdict)));
+        Overview.Add(new("Internet", internet ? "Có" : "Không", false));
+        Overview.Add(new("File từ khóa", KeywordFiles.Count.ToString(), KeywordFiles.Count > 0));
+        Overview.Add(new("Thiết bị", peripherals.Count.ToString(), false));
         Report = r;
     }
 
     private static bool IsLicenseWarning(LicenseVerdict v) =>
         v is LicenseVerdict.CrackSuspected or LicenseVerdict.Suspicious;
 
-    private static string Format(LicenseInfo l)
+    private static string Format(LicenseInfo? l)
     {
+        if (l is null) return $"Kết luận: {DisplayText.Of(LicenseVerdict.Unknown)}";
         var lines = new List<string>
         {
             $"Sản phẩm: {l.Product}" + (string.IsNullOrWhiteSpace(l.Edition) ? "" : $" ({l.Edition})"),
@@ -206,7 +224,7 @@ public partial class ScanReportViewModel : ObservableObject
             $"Kích hoạt: {(l.Activated is null ? "—" : l.Activated.Value ? "Có" : "Không")}",
             $"Kết luận: {DisplayText.Of(l.Verdict)}",
         };
-        lines.AddRange(l.Evidence.Select(e => "• " + e));
+        lines.AddRange((l.Evidence ?? new()).Select(e => "• " + e));
         return string.Join(Environment.NewLine, lines);
     }
 }

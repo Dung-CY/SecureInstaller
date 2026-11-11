@@ -178,4 +178,85 @@ public class ScanReportViewModelTests
         Assert.Equal("Tiếp tục", vm.ContinueText);
         Assert.False(vm.IsReadOnly);
     }
+
+    [Fact]
+    public void ForReport_tolerates_null_parts_and_null_device_id()
+    {
+        var hw = new HardwareInfo(null!, null, null, null, null!, null!,
+            new() { new("No id", null, null!), new(null!, "Mouse", @"HID\X") }, null!);
+        var r = new ScanReport(DateTimeOffset.Now, hw, new NetworkHistory(null!, false), null!, null!,
+            new KeywordScanResult(null!, false, false));
+        var vm = ScanReportViewModel.ForReport(r, "t", () => { });
+        Assert.Equal("Không xác định", vm.Overview[0].Value);
+        Assert.False(vm.Overview[0].IsWarning);
+        Assert.Equal("Không xác định", vm.Overview[1].Value);
+        Assert.Equal("0", vm.Overview[3].Value);
+        Assert.Equal("2", vm.Overview[4].Value);
+        Assert.Contains("Không xác định", vm.WindowsLicenseText);
+        Assert.Empty(vm.NetworkRows);
+        Assert.Empty(vm.KeywordFiles);
+        Assert.Equal(2, vm.PeripheralGroups.Sum(g => g.Count));
+        vm.DeviceSearch = "no";
+        Assert.Equal(1, vm.PeripheralGroups.Sum(g => g.Count));
+
+        // Whole sections missing.
+        var r2 = new ScanReport(DateTimeOffset.Now, null!, null!, null!, null!, null!);
+        var vm2 = ScanReportViewModel.ForReport(r2, "t", () => { });
+        Assert.Equal(5, vm2.Overview.Count);
+        Assert.Empty(vm2.PeripheralGroups);
+        Assert.Equal("Không", vm2.Overview[2].Value);
+    }
+
+    [Fact]
+    public async Task ForReport_never_calls_scan()
+    {
+        var r = ReportWithDevices();
+        var vm = ScanReportViewModel.ForReport(r, "t", () => { });
+        var step = vm.CurrentStep;
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.False(vm.IsScanning);
+        Assert.Same(r, vm.Report);
+        Assert.Equal(step, vm.CurrentStep);
+        Assert.Null(vm.Error);
+    }
+
+    [Fact]
+    public async Task Search_does_not_mutate_source_peripherals()
+    {
+        var r = ReportWithDevices();
+        var before = r.Hardware.Peripherals.ToList();
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(r), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        vm.DeviceSearch = "kingston";
+        vm.DeviceSearch = "zzz";
+        vm.DeviceSearch = "";
+        Assert.Equal(before, r.Hardware.Peripherals);
+    }
+
+    [Fact]
+    public async Task Group_header_text_includes_count_and_follows_search()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(ReportWithDevices()), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        var km = vm.PeripheralGroups[0];
+        Assert.Equal("Bàn phím & chuột, 2 thiết bị", km.HeaderText);
+        var changed = new List<string?>();
+        km.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        vm.DeviceSearch = "logitech";
+        Assert.Equal("Bàn phím & chuột, 1 thiết bị", km.HeaderText);
+        Assert.Contains(nameof(PeripheralGroup.HeaderText), changed);
+    }
+
+    [Fact]
+    public async Task Unchanged_match_set_does_not_rebuild_items()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(ReportWithDevices()), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        var km = vm.PeripheralGroups[0];
+        var resets = 0;
+        km.Items.CollectionChanged += (_, _) => resets++;
+        vm.DeviceSearch = "h";      // both keyboard/mouse devices still match (HID\ ids)
+        Assert.Equal(0, resets);
+        Assert.Equal(2, km.Count);
+    }
 }

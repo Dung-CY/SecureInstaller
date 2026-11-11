@@ -90,7 +90,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBox Grid.Row="0" Style="{StaticResource SearchBox}" Tag="Tìm theo tên hoặc mã thiết bị"
-                             Text="{Binding DeviceSearch, UpdateSourceTrigger=PropertyChanged}"
+                             Text="{Binding DeviceSearch, UpdateSourceTrigger=PropertyChanged, Delay=150}"
                              Width="380" Height="36" HorizontalAlignment="Left" Margin="0,0,0,10"
                              AutomationProperties.Name="Tìm thiết bị"/>
                     <TextBlock Grid.Row="1" Text="Không có thiết bị nào khớp với từ tìm kiếm." Style="{StaticResource Muted}"

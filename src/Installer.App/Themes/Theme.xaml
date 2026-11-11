@@ -298,8 +298,14 @@
         </Setter>
     </Style>
 
+    <!-- Hierarchical virtualization: the TreeView's own ScrollViewer drives it; each group's
+         panel must virtualize too (TreeViewItem defaults IsVirtualizing to false), and the
+         header must be named PART_Header so TreeViewItem can report its size to the panel. -->
     <Style x:Key="GroupTreeItem" TargetType="TreeViewItem">
         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+        <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="ItemsPanel">
@@ -315,8 +321,9 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+                        <Border x:Name="PART_Header" Grid.Row="0" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1">
                             <ToggleButton Style="{StaticResource GroupHeaderToggle}"
+                                          AutomationProperties.Name="{Binding HeaderText}"
                                           IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                                 <ContentPresenter ContentSource="Header"/>
                             </ToggleButton>
