@@ -11,12 +11,19 @@ public record CrackSignature(string Kind, string Pattern);
 
 public record PackageEntry(string Id, string Name, string Version, InstallerType InstallerType, string InstallerFile,
     string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> Docs,
-    List<PostAction> PostActions, List<RuleSpec> Rules, string BlobFile, string Sha256, string KeyB64);
+    List<PostAction> PostActions, List<RuleSpec> Rules, string BlobFile, string Sha256, string KeyB64,
+    long BlobSize = 0, string? DocsKeyB64 = null, string? IconPngB64 = null, UninstallSpec? Uninstall = null);
+
+/// <summary>Type: "msi" | "command" | "zip".</summary>
+public record UninstallSpec(string Type, string? Command = null, string? Args = null);
+public record BundleItem(string PackageId, string? Version = null);
+public record Bundle(string Id, string Name, string Description, List<BundleItem> Items);
 
 public record Catalog(int Version, DateTimeOffset UpdatedAt, List<PackageEntry> Packages,
-    KeywordScanConfig KeywordScan, List<CrackSignature> CrackSignatures)
+    KeywordScanConfig KeywordScan, List<CrackSignature> CrackSignatures,
+    List<Bundle>? Bundles = null, int Format = 1)
 {
     public static Catalog Empty() => new(0, DateTimeOffset.UtcNow, new(),
         new KeywordScanConfig(new(), new(), 60),
-        Installer.Core.Licensing.CrackSignatureDefaults.All.ToList());
+        Installer.Core.Licensing.CrackSignatureDefaults.All.ToList(), null, 2);
 }

@@ -56,6 +56,9 @@ public class InstallServiceTests : IDisposable
         public byte[] Blob = Array.Empty<byte>();
         public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult<Stream>(new MemoryStream(Blob));
         public Task<Stream> OpenDocBlobAsync(PackageEntry pkg, string docName, CancellationToken ct) => throw new NotSupportedException();
+        public byte[] Key = Array.Empty<byte>();
+        public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Key);
+        public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Key);
         public void WriteLog(LogEntry entry) { }
     }
 
@@ -114,7 +117,7 @@ public class InstallServiceTests : IDisposable
         var fixedPkg = pkg with { Sha256 = Convert.ToHexString(SHA256.HashData(cut)).ToLowerInvariant() };
         var runner = new FakeRunner();
         var t = new Tracker();
-        var res = await Svc(new Wrap { Catalog = e.Session.Catalog, Blob = cut }, runner, t)
+        var res = await Svc(new Wrap { Catalog = e.Session.Catalog, Blob = cut, Key = Convert.FromBase64String(pkg.KeyB64) }, runner, t)
             .InstallAsync(fixedPkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal(InstallStatus.Failed, res.Status);
         Assert.Equal(Strings.PackageCorrupt, res.Message);
@@ -216,6 +219,48 @@ public class InstallServiceTests : IDisposable
             Assert.Equal("HuongDan.docx", Path.GetFileName(path));
             await Assert.ThrowsAsync<ArgumentException>(() => svc.ExtractDocAsync(pkg, "..\\x", CancellationToken.None));
         }
+        finally { InstallService.CleanupDocs(); }
+    }
+
+    [Fact]
+    public async Task InstallService_uses_repository_key_not_catalog()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target")));
+        var real = new PortableRepositorySource(e.Session, e.Log);
+        var wrap = new Wrap
+        {
+            Catalog = e.Session.Catalog,
+            Key = Convert.FromBase64String(pkg.KeyB64),
+            Blob = await ReadAll(await real.OpenPackageBlobAsync(pkg, CancellationToken.None))
+        };
+        var runner = new FakeRunner();
+        var res = await Svc(wrap, runner, new Tracker())
+            .InstallAsync(pkg with { KeyB64 = "garbage" }, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+    }
+
+    static async Task<byte[]> ReadAll(Stream s)
+    {
+        await using (s) { var ms = new MemoryStream(); await s.CopyToAsync(ms); return ms.ToArray(); }
+    }
+
+    [Fact]
+    public async Task Legacy_docs_without_docs_key_still_open()
+    {
+        var e = NewVault();
+        var admin = new VaultAdmin(e.Session);
+        var built = admin.AddPackage(SamplePackage.Create(_tmp));
+        // Re-encrypt the doc with the package key and drop DocsKeyB64, as a Plan-1 package would be.
+        var docPath = Path.Combine(PackageBuilder.DocsDirFor(built, e.Root), "HuongDan.docx.enc");
+        File.Delete(docPath);
+        using (var plain = new MemoryStream(Encoding.UTF8.GetBytes("huong dan")))
+        using (var o = File.Create(docPath))
+            Installer.Core.Crypto.PackageCrypto.Encrypt(plain, o, Convert.FromBase64String(built.KeyB64));
+        var legacy = built with { DocsKeyB64 = null };
+        var svc = Svc(new PortableRepositorySource(e.Session, e.Log), new FakeRunner(), new Tracker());
+        var path = await svc.ExtractDocAsync(legacy, "HuongDan.docx", CancellationToken.None);
+        try { Assert.Equal("huong dan", File.ReadAllText(path, Encoding.UTF8)); }
         finally { InstallService.CleanupDocs(); }
     }
 }

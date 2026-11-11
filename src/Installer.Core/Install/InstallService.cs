@@ -80,8 +80,8 @@ public sealed class InstallService
         progress.Report(new InstallProgress(null, "Đang giải mã"));
         ct.ThrowIfCancellationRequested();
         byte[] key;
-        try { key = Convert.FromBase64String(pkg.KeyB64); }
-        catch (FormatException) { return corrupt; }
+        try { key = await _repo.GetPackageKeyAsync(pkg, ct).ConfigureAwait(false); }
+        catch (PackageCorruptException) { return corrupt; }
         try
         {
             await Task.Run(() =>
@@ -133,8 +133,7 @@ public sealed class InstallService
         catch { }
 
         byte[] key;
-        try { key = Convert.FromBase64String(pkg.KeyB64); }
-        catch (FormatException) { throw new PackageCorruptException(Strings.PackageCorrupt); }
+        key = await _repo.GetDocsKeyAsync(pkg, ct).ConfigureAwait(false);
         await using var src = await _repo.OpenDocBlobAsync(pkg, docName, ct).ConfigureAwait(false);
         var dir = Path.Combine(DocsBase, Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);

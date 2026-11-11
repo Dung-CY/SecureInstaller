@@ -31,5 +31,16 @@ public sealed class PortableRepositorySource : IRepositorySource
         return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true));
     }
 
+    public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Decode(pkg.KeyB64));
+
+    public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) =>
+        Task.FromResult(Decode(pkg.DocsKeyB64 ?? pkg.KeyB64));
+
+    static byte[] Decode(string b64)
+    {
+        try { return Convert.FromBase64String(b64); }
+        catch (FormatException) { throw new PackageCorruptException(Strings.PackageCorrupt); }
+    }
+
     public void WriteLog(LogEntry entry) => _log.Append(entry);
 }

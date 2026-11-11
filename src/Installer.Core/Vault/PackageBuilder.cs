@@ -25,6 +25,7 @@ public static class PackageBuilder
         public List<string>? Docs { get; set; }
         public List<PostAction>? PostActions { get; set; }
         public List<RuleSpec>? Rules { get; set; }
+        public UninstallSpec? Uninstall { get; set; }
     }
 
     internal sealed record Manifest(PackageEntry Entry, List<string> DocNames);
@@ -50,6 +51,14 @@ public static class PackageBuilder
             m.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
             throw new InvalidDataException("silent_args của gói MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
 
+        if (m.Uninstall is { } u)
+        {
+            if (u.Type is not ("msi" or "command" or "zip"))
+                throw new InvalidDataException("uninstall.type phải là msi, command hoặc zip");
+            if (u.Type == "command" && string.IsNullOrWhiteSpace(u.Command))
+                throw new InvalidDataException("uninstall.command là bắt buộc khi type là command");
+        }
+
         var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, "installer", m.InstallerFile));
         var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, "installer")) + Path.DirectorySeparatorChar;
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))
@@ -73,7 +82,7 @@ public static class PackageBuilder
 
         var entry = new PackageEntry(m.Id, m.Name, m.Version, m.InstallerType.Value, m.InstallerFile,
             m.SilentArgs ?? "", m.TargetDir, m.TimeoutSec ?? 1800, m.Detect ?? new DetectRule(null, null),
-            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "");
+            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall);
         return new Manifest(entry, docs);
     }
 
@@ -98,6 +107,7 @@ public static class PackageBuilder
         var blobPath = Path.Combine(pkgDir, blobName);
         var tmpZip = Path.Combine(Path.GetTempPath(), "SI_zip_" + Guid.NewGuid().ToString("N") + ".zip");
         var key = KeyDerivation.NewKey();
+        var docsKey = KeyDerivation.NewKey();
         var ok = false;
         var created = false;
         try
@@ -130,15 +140,20 @@ public static class PackageBuilder
                 {
                     using var plain = File.OpenRead(Path.Combine(sourceFolder, "docs", d));
                     using var output = new FileStream(Path.Combine(docsOut, d + ".enc"), FileMode.CreateNew, FileAccess.Write);
-                    PackageCrypto.Encrypt(plain, output, key);
+                    PackageCrypto.Encrypt(plain, output, docsKey);
                 }
             }
 
             string sha;
+            long blobSize;
             using (var fs = File.OpenRead(blobPath))
+            {
+                blobSize = fs.Length;
                 sha = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+            }
             ok = true;
-            return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key) };
+            return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key),
+                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey) };
         }
         finally
         {

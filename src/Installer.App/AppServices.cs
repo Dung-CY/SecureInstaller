@@ -22,6 +22,7 @@ public sealed class AppServices
 
     private readonly string _root = AppContext.BaseDirectory;
     private EncryptedLog? _log;
+    private IRepositorySource? _repo;
 
     public AppServices()
     {
@@ -32,6 +33,7 @@ public sealed class AppServices
     {
         _log = new EncryptedLog(_root, session.Store.Meta.VaultId, session.VaultKey, session.Store.IsReadOnly);
         _log.SyncFallbackIntoVault();
+        _repo = new PortableRepositorySource(session, _log);
 
         var wmi = new Wmi();
         var reg = new RegistryReader();
@@ -54,7 +56,7 @@ public sealed class AppServices
 
     private void ShowPackages(VaultSession session, ScanReport report)
     {
-        var installService = new InstallService(new PortableRepositorySource(session, _log!), new InstallerRunnerFactory());
+        var installService = new InstallService(_repo!, new InstallerRunnerFactory());
         var apps = new InstalledAppsScanner(new RegistryReader());
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
             rule => apps.Find(rule),
@@ -90,7 +92,7 @@ public sealed class AppServices
 
     private void LogScan(VaultSession session, ScanReport r)
     {
-        _log?.Append(new LogEntry(DateTimeOffset.Now, session.Username, r.Hardware.Hostname, r.Hardware.BiosSerial,
+        _repo?.WriteLog(new LogEntry(DateTimeOffset.Now, session.Username, r.Hardware.Hostname, r.Hardware.BiosSerial,
             "scan", null, null, "ok", null,
             $"Windows: {DisplayText.Of(r.Windows.Verdict)}; Office: {DisplayText.Of(r.Office.Verdict)}; File từ khóa: {r.Keywords.MatchedFiles.Count}"));
     }

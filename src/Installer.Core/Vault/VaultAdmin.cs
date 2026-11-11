@@ -28,6 +28,7 @@ public sealed class VaultAdmin
         var c = _s.Catalog;
         var next = c with
         {
+            Format = 2,
             Version = c.Version + 1,
             UpdatedAt = DateTimeOffset.UtcNow,
             Packages = packages,
