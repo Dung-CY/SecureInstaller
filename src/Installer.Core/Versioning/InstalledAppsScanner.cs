@@ -24,9 +24,14 @@ public sealed class InstalledAppsScanner
     private readonly InstallMarker? _marker;
     public InstalledAppsScanner(IRegistryReader reg, InstallMarker? marker = null) { _reg = reg; _marker = marker; }
 
+    /// <summary>
+    /// Returns Find(pkg.Detect). The install marker is only a fallback: it is used solely when the
+    /// detect rule matches nothing (e.g. zip packages), so a stale marker never overrides or duplicates real entries.
+    /// </summary>
     public IReadOnlyList<InstalledApp> FindForPackage(PackageEntry pkg)
     {
         var result = Find(pkg.Detect).ToList();
+        if (result.Count > 0) return result;
         try
         {
             if (_marker != null && _marker.ReadAll().TryGetValue(pkg.Id, out var v))

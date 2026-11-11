@@ -88,4 +88,18 @@ public class InstalledAppsScannerTests
         Assert.Equal("i.ico", a.DisplayIcon);
         Assert.False(a.IsMarker);
     }
+
+    [Fact]
+    public void Marker_ignored_when_detect_rule_matches()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\App", V("App", "5.0"));
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("p1", "1.0", DateTimeOffset.UtcNow);
+        var pkg = new PackageEntry("p1", "App", "5.0", InstallerType.Zip, "a.zip", "", null, 60,
+            new DetectRule(null, "^App$"), new(), new(), new(), "b", "s", "k");
+        var a = Assert.Single(new InstalledAppsScanner(reg, marker).FindForPackage(pkg));
+        Assert.False(a.IsMarker);
+        Assert.Equal("5.0", a.DisplayVersion);
+    }
 }

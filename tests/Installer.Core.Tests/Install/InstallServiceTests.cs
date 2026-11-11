@@ -325,4 +325,19 @@ public class InstallServiceTests : IDisposable
         Assert.Equal(InstallStatus.Success, soft.Status);
         Assert.Contains("Không ghi được dấu cài đặt", ReadLogs(e).Last().Detail);
     }
+
+    [Fact]
+    public async Task Marker_written_on_reboot_required()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target"), "[]"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        var runner = new FakeRunner { Outcome = new InstallOutcome(InstallStatus.RebootRequired, 3010, "reboot") };
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.RebootRequired, res.Status);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+    }
 }
