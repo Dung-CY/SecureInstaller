@@ -56,7 +56,7 @@ public static class PostActionRunner
         if (dst == null) return ErrDst;
         var norm = Normalize(dst);
         if (IsProtectedPath(norm)) return ErrSys;
-        SafePath.EnsureNoReparseAncestors(norm);
+        SafePath.EnsureNoReparseAncestors(Path.GetDirectoryName(norm)!);
         if (Directory.Exists(norm)) Directory.Delete(norm, true);
         else if (File.Exists(norm)) File.Delete(norm);
         return null;

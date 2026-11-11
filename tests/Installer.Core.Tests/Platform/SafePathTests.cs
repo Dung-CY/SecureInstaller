@@ -38,8 +38,11 @@ public class SafePathTests : IDisposable
     public void Plain_path_passes() => SafePath.EnsureNoReparseAncestors(_tmp);
 
     [Theory]
-    [InlineData(@"\server\share\a")]
-    [InlineData(@"\?\C:\a")]
+    [InlineData(@"\\server\share\a")]
+    [InlineData(@"\\?\C:\a")]
+    [InlineData(@"\\.\C:\a")]
+    [InlineData("C:foo")]
+    [InlineData(@"rel\path")]
     public void Unc_and_extended_throw(string p)
         => Assert.Throws<UnsafePathException>(() => SafePath.EnsureNoReparseAncestors(p));
 }

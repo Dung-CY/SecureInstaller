@@ -7,7 +7,7 @@ public static class SafePath
     /// <summary>
     /// Walks from the drive root down to <paramref name="fullPath"/>; throws <see cref="UnsafePathException"/>
     /// when any existing component is a reparse point (junction/symlink). Missing components are skipped.
-    /// Input must be a fully qualified local drive path (no UNC, no \?\ prefix).
+    /// Input must be a fully qualified local drive path (no UNC, no \\?\ prefix).
     /// </summary>
     public static void EnsureNoReparseAncestors(string fullPath)
     {

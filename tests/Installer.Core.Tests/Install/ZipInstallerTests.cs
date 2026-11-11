@@ -103,7 +103,7 @@ public class ZipInstallerTests : IDisposable
             var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", Path.Combine(link, "t"), TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
             Assert.Equal(InstallStatus.Failed, o.Status);
             Assert.Equal(Installer.Core.Strings.UnsafePath, o.Message);
-            Assert.False(File.Exists(Path.Combine(real, "t", "a.txt")));
+            Assert.False(Directory.Exists(Path.Combine(real, "t")));
         }
         finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
     }
