@@ -4,7 +4,7 @@
   "version": "24.08",
   "installer_type": "msi",
   "installer_file": "7z2408-x64.msi",
-  "silent_args": "/qn /norestart",
+  "silent_args": "",
   "timeout_sec": 600,
   "detect": { "display_name_regex": "^7-Zip" },
   "docs": [],

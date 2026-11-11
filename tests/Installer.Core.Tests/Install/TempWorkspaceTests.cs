@@ -87,6 +87,20 @@ public class TempWorkspaceTests
     }
 
     [Fact]
+    public void SweepStale_ignores_non_workspace_names()
+    {
+        var other = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SI_other");
+        Directory.CreateDirectory(other);
+        try
+        {
+            Directory.SetLastWriteTimeUtc(other, DateTime.UtcNow.AddDays(-2));
+            TempWorkspace.SweepStale(TimeSpan.FromDays(1));
+            Assert.True(Directory.Exists(other));
+        }
+        finally { try { Directory.Delete(other, true); } catch { } }
+    }
+
+    [Fact]
     public void SweepStale_does_not_follow_junction_root()
     {
         var tmp = System.IO.Path.GetTempPath();

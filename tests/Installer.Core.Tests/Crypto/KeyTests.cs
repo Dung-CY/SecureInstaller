@@ -17,6 +17,15 @@ public class KeyTests
         Assert.Equal(a, b);
     }
 
+    // WARNING: changing the Argon2 parameters or library orphans every existing vault.
+    [Fact]
+    public void DeriveKek_known_answer_vector()
+    {
+        var salt = Enumerable.Range(0, 16).Select(i => (byte)i).ToArray();
+        var kek = KeyDerivation.DeriveKek("SecureInstaller-KAT", salt);
+        Assert.Equal("D0812FC8B2719DA61E62BB13DB428B0F9A0B8C84A6289E73959C34358421D085", Convert.ToHexString(kek));
+    }
+
     [Fact]
     public void DeriveKek_differs_by_salt_and_password()
     {

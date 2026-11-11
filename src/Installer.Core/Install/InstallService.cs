@@ -92,11 +92,13 @@ public sealed class InstallService
             }, ct).ConfigureAwait(false);
         }
         catch (PackageCorruptException) { return corrupt; }
+        try { File.Delete(encPath); } catch { }
 
         ct.ThrowIfCancellationRequested();
         try { await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, pkgDir, true), ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
         catch (Exception) { return corrupt; }
+        try { File.Delete(zipPath); } catch { }
         ct.ThrowIfCancellationRequested();
 
         var installerDir = Path.GetFullPath(Path.Combine(pkgDir, "installer")) + Path.DirectorySeparatorChar;

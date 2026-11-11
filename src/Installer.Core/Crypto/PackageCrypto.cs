@@ -27,9 +27,13 @@ public static class PackageCrypto
         output.Write(baseNonce);
 
         using var aes = new AesGcm(key32, TagSize);
-        var cur = new byte[ChunkSize];
-        var next = new byte[ChunkSize];
-        var ct = new byte[ChunkSize];
+        // Size buffers to the input when known (log lines are tiny); the format is unaffected.
+        int bufSize = ChunkSize;
+        if (plain.CanSeek)
+            bufSize = (int)Math.Clamp(plain.Length - plain.Position, 1, ChunkSize);
+        var cur = new byte[bufSize];
+        byte[]? next = null;
+        var ct = new byte[bufSize];
         var tag = new byte[TagSize];
         var nonce = new byte[NonceSize];
         baseNonce.CopyTo(nonce, 0);
@@ -41,7 +45,7 @@ public static class PackageCrypto
         while (true)
         {
             // Read ahead to know whether cur is the last chunk.
-            int nextLen = curLen == ChunkSize ? ReadFull(plain, next) : 0;
+            int nextLen = curLen == ChunkSize ? ReadFull(plain, next ??= new byte[ChunkSize]) : 0;
             bool last = nextLen == 0;
             aad[0] = last ? (byte)1 : (byte)0;
             BinaryPrimitives.WriteUInt32BigEndian(nonce.AsSpan(BaseNonceSize), index);
@@ -51,7 +55,9 @@ public static class PackageCrypto
             output.Write(ct, 0, curLen);
             output.Write(tag);
             if (last) break;
-            (cur, next) = (next, cur);
+            // Only reached when curLen == ChunkSize, so both buffers are full size.
+            if (cur.Length != ChunkSize) { cur = new byte[ChunkSize]; ct = new byte[ChunkSize]; }
+            (cur, next) = (next!, cur);
             curLen = nextLen;
             index++;
         }
@@ -76,8 +82,8 @@ public static class PackageCrypto
                 throw new PackageCorruptException("Invalid package magic or version.");
 
             using var aes = new AesGcm(key32, TagSize);
-            var ct = new byte[ChunkSize];
-            var pt = new byte[ChunkSize];
+            var ct = Array.Empty<byte>();
+            var pt = Array.Empty<byte>();
             var tag = new byte[TagSize];
             var nonce = new byte[NonceSize];
             header.AsSpan(Magic.Length + 1, BaseNonceSize).CopyTo(nonce);
@@ -93,6 +99,7 @@ public static class PackageCrypto
                 int len = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
                 if (len < 0 || len > ChunkSize)
                     throw new PackageCorruptException("Invalid chunk length.");
+                if (ct.Length < len) { ct = new byte[len]; pt = new byte[len]; }
                 if (ReadFull(cipher, ct.AsSpan(0, len)) != len || ReadFull(cipher, tag) != TagSize)
                     throw new PackageCorruptException("Package truncated inside a chunk.");
 

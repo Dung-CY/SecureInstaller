@@ -111,6 +111,11 @@ public sealed class TempWorkspace : IDisposable
         catch { }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex WorkspaceName =
+        new("^SI_[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static bool IsWorkspaceName(string name) => name == "SI_docs" || WorkspaceName.IsMatch(name);
+
     /// <summary>Removes stale %TEMP%\SI_* workspaces older than the given age. Never throws.</summary>
     public static int SweepStale(TimeSpan olderThan)
     {
@@ -122,6 +127,7 @@ public sealed class TempWorkspace : IDisposable
             {
                 try
                 {
+                    if (!IsWorkspaceName(System.IO.Path.GetFileName(d))) continue;
                     if (Directory.GetLastWriteTimeUtc(d) < cutoff && TryDelete(d, false)) count++;
                 }
                 catch { }

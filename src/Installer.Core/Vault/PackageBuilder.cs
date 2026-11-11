@@ -46,6 +46,10 @@ public static class PackageBuilder
         if (!SafeName.IsMatch(m.Id)) throw new InvalidDataException("Trường id chứa ký tự không hợp lệ");
         if (!SafeName.IsMatch(m.Version)) throw new InvalidDataException("Trường version chứa ký tự không hợp lệ");
 
+        if (m.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(m.SilentArgs) &&
+            m.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
+            throw new InvalidDataException("silent_args của gói MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
+
         var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, "installer", m.InstallerFile));
         var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, "installer")) + Path.DirectorySeparatorChar;
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))

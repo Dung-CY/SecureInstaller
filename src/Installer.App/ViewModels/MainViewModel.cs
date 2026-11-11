@@ -6,9 +6,6 @@ public partial class MainViewModel : ObservableObject
 {
     [ObservableProperty] private object? _current;
 
-    /// <summary>True while an install screen is showing and the install has not finished.</summary>
-    public bool IsBusyInstalling => Current is InstallViewModel { IsDone: false };
-
     /// <summary>Message to show when the user tries to close the window mid-operation; null when closing is safe.</summary>
     public string? CloseBlockedMessage => Current switch
     {

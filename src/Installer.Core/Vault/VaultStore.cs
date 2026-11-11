@@ -216,8 +216,8 @@ public sealed class VaultStore
         var sigPath = Path.Combine(vaultDir, "catalog.sig");
         try
         {
-            File.WriteAllBytes(encPath + ".tmp", catalogEnc);
-            File.WriteAllBytes(sigPath + ".tmp", sig);
+            WriteDurable(encPath + ".tmp", catalogEnc);
+            WriteDurable(sigPath + ".tmp", sig);
             File.Move(encPath + ".tmp", encPath, overwrite: true);
         }
         catch
@@ -233,6 +233,13 @@ public sealed class VaultStore
         }
     }
 
+    static void WriteDurable(string path, byte[] bytes)
+    {
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        fs.Write(bytes);
+        fs.Flush(true);
+    }
+
     internal void UpdateMeta(VaultMeta meta)
     {
         SaveMeta(meta);
@@ -241,7 +248,7 @@ public sealed class VaultStore
     internal void SaveMeta(VaultMeta meta)
     {
         var tmp = MetaPath + ".tmp";
-        File.WriteAllBytes(tmp, JsonSerializer.SerializeToUtf8Bytes(meta, Json.Options));
+        WriteDurable(tmp, JsonSerializer.SerializeToUtf8Bytes(meta, Json.Options));
         File.Move(tmp, MetaPath, overwrite: true);
         Meta = meta;
     }

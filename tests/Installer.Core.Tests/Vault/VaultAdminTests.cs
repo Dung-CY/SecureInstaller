@@ -24,6 +24,17 @@ public class VaultAdminTests : IDisposable
     string Blob(string root, PackageEntry e) => Path.Combine(root, "vault", "packages", e.BlobFile);
 
     [Fact]
+    public void Msi_silent_args_with_switches_rejected()
+    {
+        var (_, _, a) = NewVault();
+        var src = SamplePackage.Create(_tmp, manifestOverride: """
+            { "id": "m", "name": "M", "version": "1.0", "installer_type": "msi", "installer_file": "setup.exe", "silent_args": "/qn /norestart" }
+            """);
+        var ex = Assert.Throws<InvalidDataException>(() => a.AddPackage(src));
+        Assert.Contains("silent_args", ex.Message);
+    }
+
+    [Fact]
     public void AddPackage_writes_blob_docs_and_bumps_version()
     {
         var (root, s, a) = NewVault();
