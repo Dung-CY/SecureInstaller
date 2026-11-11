@@ -155,4 +155,21 @@ public class PostActionRunnerTests : IDisposable
         }, Extras);
         Assert.All(r, x => { Assert.False(x.Ok); Assert.Equal("Đường dẫn đích không hợp lệ", x.Error); });
     }
+
+    [Fact]
+    public void Delete_under_junction_parent_is_refused_and_target_survives()
+    {
+        var real = Path.Combine(_root, "real"); Directory.CreateDirectory(real);
+        var victim = Path.Combine(real, "v.txt"); File.WriteAllText(victim, "x");
+        var link = Path.Combine(_root, "link");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var r = PostActionRunner.Run(new[] { new PostAction("delete", null, Path.Combine(link, "v.txt")) }, Extras);
+            Assert.False(r[0].Ok);
+            Assert.Equal(Installer.Core.Strings.UnsafePath, r[0].Error);
+            Assert.True(File.Exists(victim));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
 }

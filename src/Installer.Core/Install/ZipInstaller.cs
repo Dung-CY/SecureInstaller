@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using Installer.Core.Errors;
+using Installer.Core.Platform;
 
 namespace Installer.Core.Install;
 
@@ -15,6 +17,7 @@ public sealed class ZipInstaller : IInstallerRunner
         {
             ct.ThrowIfCancellationRequested();
             var target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(req.TargetDir));
+            SafePath.EnsureNoReparseAncestors(target);
             Directory.CreateDirectory(target);
             var prefix = Path.TrimEndingDirectorySeparator(target) + Path.DirectorySeparatorChar;
 
@@ -44,6 +47,10 @@ public sealed class ZipInstaller : IInstallerRunner
             }
             progress.Report(new InstallProgress(100, "Hoàn tất"));
             return new InstallOutcome(InstallStatus.Success, 0, "Cài đặt thành công");
+        }
+        catch (UnsafePathException)
+        {
+            return new InstallOutcome(InstallStatus.Failed, null, Strings.UnsafePath);
         }
         catch (OperationCanceledException)
         {

@@ -90,4 +90,21 @@ public class ZipInstallerTests : IDisposable
         var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", null, TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
         Assert.Equal("Thiếu thư mục đích", o.Message);
     }
+
+    [Fact]
+    public async Task Zip_target_under_junction_fails_with_UnsafePath()
+    {
+        var z = MakeZip("a.txt");
+        var real = Path.Combine(_root, "real"); Directory.CreateDirectory(real);
+        var link = Path.Combine(_root, "link");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", Path.Combine(link, "t"), TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
+            Assert.Equal(InstallStatus.Failed, o.Status);
+            Assert.Equal(Installer.Core.Strings.UnsafePath, o.Message);
+            Assert.False(File.Exists(Path.Combine(real, "t", "a.txt")));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
 }
