@@ -64,4 +64,118 @@ public class ScanReportViewModelTests
         Assert.Equal("Mới hơn", DisplayText.Of(VersionStatus.Newer));
         Assert.Equal("Không so sánh được", DisplayText.Of(VersionStatus.Incomparable));
     }
+
+    static ScanReport ReportWithDevices() => Report(LicenseVerdict.Suspicious) is var r
+        ? r with
+        {
+            Hardware = r.Hardware with
+            {
+                Peripherals = new()
+                {
+                    new("Logitech Mouse", "Mouse", @"HID\VID_046D&PID_C077"),
+                    new("HID Keyboard", "Keyboard", @"HID\VID_1234"),
+                    new("Kingston DataTraveler", "DiskDrive", @"USBSTOR\DISK&VEN_KINGSTON"),
+                    new("Canon LBP2900", "Printer", @"SWD\PRINTENUM\{ABC}"),
+                    new("Unknown gadget", null, @"USB\VID_9999"),
+                }
+            },
+            Keywords = new KeywordScanResult(new() { "a", "b" }, false, false),
+        }
+        : r;
+
+    [Fact]
+    public async Task Overview_has_five_items_with_warnings()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(ReportWithDevices()), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "Windows", "Office", "Internet", "File từ khóa", "Thiết bị" },
+            vm.Overview.Select(o => o.Label));
+        Assert.Equal(new OverviewItem("Windows", "Nghi vấn", true), vm.Overview[0]);
+        Assert.Equal(new OverviewItem("Office", "Chính hãng", false), vm.Overview[1]);
+        Assert.Equal(new OverviewItem("Internet", "Có", false), vm.Overview[2]);
+        Assert.Equal(new OverviewItem("File từ khóa", "2", true), vm.Overview[3]);
+        Assert.Equal(new OverviewItem("Thiết bị", "5", false), vm.Overview[4]);
+
+        var clean = Report(LicenseVerdict.CrackSuspected) with
+        {
+            Network = new NetworkHistory(new(), false),
+            Keywords = new KeywordScanResult(new(), false, false),
+        };
+        var vm2 = new ScanReportViewModel((_, _) => Task.FromResult(clean), _ => { });
+        await vm2.ScanCommand.ExecuteAsync(null);
+        Assert.True(vm2.Overview[0].IsWarning);
+        Assert.Equal("Có dấu hiệu crack", vm2.Overview[0].Value);
+        Assert.Equal("Không", vm2.Overview[2].Value);
+        Assert.Equal(new OverviewItem("File từ khóa", "0", false), vm2.Overview[3]);
+    }
+
+    [Fact]
+    public async Task Peripherals_grouped_collapsed_by_default_with_counts()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(ReportWithDevices()), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "Bàn phím & chuột", "Lưu trữ USB", "Máy in", "Khác" },
+            vm.PeripheralGroups.Select(g => g.Label));
+        Assert.Equal(new[] { 2, 1, 1, 1 }, vm.PeripheralGroups.Select(g => g.Count));
+        Assert.All(vm.PeripheralGroups, g => Assert.False(g.IsExpanded));
+        Assert.Equal(new[] { "Logitech Mouse", "HID Keyboard" }, vm.PeripheralGroups[0].Items.Select(d => d.Name));
+        // The computer tab no longer lists every device.
+        Assert.DoesNotContain(vm.HardwareRows, r => r.Value == "Logitech Mouse");
+    }
+
+    [Fact]
+    public async Task Device_search_filters_and_expands_matching_groups()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(ReportWithDevices()), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        vm.DeviceSearch = "kingston";       // matches Name, case-insensitive
+        var usb = vm.PeripheralGroups.Single(g => g.Label == "Lưu trữ USB");
+        Assert.Equal(1, usb.Count);
+        Assert.True(usb.IsExpanded);
+        Assert.All(vm.PeripheralGroups.Where(g => g != usb), g => { Assert.Equal(0, g.Count); Assert.False(g.IsExpanded); });
+        Assert.False(vm.NoDeviceMatches);
+
+        vm.DeviceSearch = "vid_046d";       // matches DeviceId only
+        var km = vm.PeripheralGroups[0];
+        Assert.Equal(1, km.Count);
+        Assert.Equal("Logitech Mouse", Assert.Single(km.Items).Name);
+        Assert.True(km.IsExpanded);
+        Assert.False(usb.IsExpanded);
+
+        vm.DeviceSearch = "zzz";
+        Assert.True(vm.NoDeviceMatches);
+        Assert.All(vm.PeripheralGroups, g => Assert.Equal(0, g.Count));
+
+        vm.DeviceSearch = "";
+        Assert.False(vm.NoDeviceMatches);
+        Assert.Equal(new[] { 2, 1, 1, 1 }, vm.PeripheralGroups.Select(g => g.Count));
+        Assert.All(vm.PeripheralGroups, g => Assert.False(g.IsExpanded));
+    }
+
+    [Fact]
+    public void ForReport_is_read_only_and_back_calls_onBack()
+    {
+        var backs = 0;
+        var vm = ScanReportViewModel.ForReport(ReportWithDevices(), "Lịch sử quét — PC-01 — 10/11/2026 14:30", () => backs++);
+        Assert.True(vm.IsReadOnly);
+        Assert.False(vm.IsScanning);
+        Assert.Equal("Lịch sử quét — PC-01 — 10/11/2026 14:30", vm.Title);
+        Assert.Equal("Quay lại", vm.ContinueText);
+        Assert.Equal(5, vm.Overview.Count);
+        Assert.Equal(4, vm.PeripheralGroups.Count);
+        Assert.Contains(vm.HardwareRows, r => r.Label == "Serial BIOS" && r.Value == "SN1");
+        Assert.True(vm.ContinueCommand.CanExecute(null));
+        vm.ContinueCommand.Execute(null);
+        Assert.Equal(1, backs);
+    }
+
+    [Fact]
+    public void Normal_instance_has_default_title_and_continue_text()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(Report(LicenseVerdict.Genuine)), _ => { });
+        Assert.Equal("Báo cáo quét", vm.Title);
+        Assert.Equal("Tiếp tục", vm.ContinueText);
+        Assert.False(vm.IsReadOnly);
+    }
 }

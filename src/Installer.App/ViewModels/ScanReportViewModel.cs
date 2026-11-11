@@ -10,16 +10,68 @@ namespace Installer.App.ViewModels;
 
 public record HardwareRow(string Label, string Value);
 public record NetworkRow(string Name, string Kind, string First, string Last);
+public record OverviewItem(string Label, string Value, bool IsWarning);
+
+/// <summary>One peripheral category. Items holds the devices matching the current search.</summary>
+public partial class PeripheralGroup : ObservableObject
+{
+    internal PeripheralGroup(DeviceCategory category, IReadOnlyList<DeviceInfo> all)
+    {
+        Category = category;
+        Label = PeripheralCategorizer.Label(category);
+        All = all;
+        Items = new ObservableCollection<DeviceInfo>(all);
+        _count = all.Count;
+    }
+
+    public DeviceCategory Category { get; }
+    public string Label { get; }
+    internal IReadOnlyList<DeviceInfo> All { get; }
+    public ObservableCollection<DeviceInfo> Items { get; }
+    [ObservableProperty] private int _count;
+    [ObservableProperty] private bool _isExpanded;
+
+    internal void Filter(string text)
+    {
+        Items.Clear();
+        foreach (var d in All)
+            if (text.Length == 0
+                || (d.Name ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (d.DeviceId ?? "").Contains(text, StringComparison.OrdinalIgnoreCase))
+                Items.Add(d);
+        Count = Items.Count;
+    }
+}
 
 public partial class ScanReportViewModel : ObservableObject
 {
-    private readonly Func<IProgress<string>, CancellationToken, Task<ScanReport>> _scan;
+    public const string DefaultTitle = "Báo cáo quét";
+
+    private readonly Func<IProgress<string>, CancellationToken, Task<ScanReport>>? _scan;
     private readonly Action<ScanReport> _onContinue;
 
     public ScanReportViewModel(Func<IProgress<string>, CancellationToken, Task<ScanReport>> scan, Action<ScanReport> onContinue)
     {
         _scan = scan; _onContinue = onContinue;
     }
+
+    private ScanReportViewModel(ScanReport report, string title, Action onBack)
+    {
+        _onContinue = _ => onBack();
+        IsReadOnly = true;
+        Title = title;
+        ContinueText = "Quay lại";
+        CurrentStep = "Quét lúc " + report.ScannedAt.ToLocalTime().ToString(DisplayText.DateFormat);
+        Apply(report);
+    }
+
+    /// <summary>Read-only view of an existing report: no scan runs and nothing is logged.</summary>
+    public static ScanReportViewModel ForReport(ScanReport report, string title, Action onBack) =>
+        new(report, title, onBack);
+
+    public bool IsReadOnly { get; }
+    public string Title { get; } = DefaultTitle;
+    public string ContinueText { get; } = "Tiếp tục";
 
     [ObservableProperty] private string _currentStep = "";
     [ObservableProperty] private string? _error;
@@ -35,12 +87,31 @@ public partial class ScanReportViewModel : ObservableObject
     public ObservableCollection<HardwareRow> HardwareRows { get; } = new();
     public ObservableCollection<NetworkRow> NetworkRows { get; } = new();
     public ObservableCollection<string> KeywordFiles { get; } = new();
+    public ObservableCollection<OverviewItem> Overview { get; } = new();
+    public ObservableCollection<PeripheralGroup> PeripheralGroups { get; } = new();
+
+    [ObservableProperty] private string _deviceSearch = "";
+    [ObservableProperty] private bool _noDeviceMatches;
+
+    partial void OnDeviceSearchChanged(string value) => ApplyDeviceSearch();
+
+    private void ApplyDeviceSearch()
+    {
+        var text = (DeviceSearch ?? "").Trim();
+        foreach (var g in PeripheralGroups)
+        {
+            g.Filter(text);
+            g.IsExpanded = text.Length > 0 && g.Count > 0;
+        }
+        NoDeviceMatches = text.Length > 0 && PeripheralGroups.All(g => g.Count == 0);
+    }
 
     private bool _done;
 
     [RelayCommand]
     private async Task ScanAsync()
     {
+        if (_scan is null) return;   // read-only re-view never scans
         IsScanning = true;
         _done = false;
         Error = null;
@@ -86,8 +157,7 @@ public partial class ScanReportViewModel : ObservableObject
                 string.Join(" · ", new[] { d.Model, d.Serial, d.InterfaceType }.Where(x => !string.IsNullOrWhiteSpace(x)))));
         }
         foreach (var n in h.Nics) HardwareRows.Add(new($"MAC {n.Name}", n.Mac));
-        HardwareRows.Add(new("Thiết bị ngoại vi", h.Peripherals.Count.ToString()));
-        foreach (var p in h.Peripherals) HardwareRows.Add(new("", p.Name));
+        HardwareRows.Add(new("Thiết bị ngoại vi", $"{h.Peripherals?.Count ?? 0} (xem tab Thiết bị ngoại vi)"));
         foreach (var e in h.Errors) {
             var i = e.IndexOf(':');
             HardwareRows.Add(new("Lỗi quét", $"{(i > 0 ? e[..i] : e)}: Không đọc được dữ liệu"));
@@ -109,8 +179,23 @@ public partial class ScanReportViewModel : ObservableObject
         if (r.Keywords.TimedOut) warn.Add("Đã hết thời gian quét, kết quả có thể chưa đầy đủ");
         if (r.Keywords.Truncated) warn.Add("Chỉ hiển thị 1000 file đầu tiên");
         KeywordWarning = warn.Count == 0 ? null : string.Join(Environment.NewLine, warn);
+
+        PeripheralGroups.Clear();
+        foreach (var g in (h.Peripherals ?? new()).GroupBy(PeripheralCategorizer.Categorize).OrderBy(g => g.Key))
+            PeripheralGroups.Add(new PeripheralGroup(g.Key, g.ToList()));
+        ApplyDeviceSearch();
+
+        Overview.Clear();
+        Overview.Add(new("Windows", DisplayText.Of(r.Windows.Verdict), IsLicenseWarning(r.Windows.Verdict)));
+        Overview.Add(new("Office", DisplayText.Of(r.Office.Verdict), IsLicenseWarning(r.Office.Verdict)));
+        Overview.Add(new("Internet", r.Network.InternetNow ? "Có" : "Không", false));
+        Overview.Add(new("File từ khóa", r.Keywords.MatchedFiles.Count.ToString(), r.Keywords.MatchedFiles.Count > 0));
+        Overview.Add(new("Thiết bị", (h.Peripherals?.Count ?? 0).ToString(), false));
         Report = r;
     }
+
+    private static bool IsLicenseWarning(LicenseVerdict v) =>
+        v is LicenseVerdict.CrackSuspected or LicenseVerdict.Suspicious;
 
     private static string Format(LicenseInfo l)
     {

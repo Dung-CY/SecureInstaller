@@ -12,6 +12,7 @@
     <SolidColorBrush x:Key="MutedBrush" Color="#667085"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#C42B1C"/>
     <SolidColorBrush x:Key="DangerBgBrush" Color="#FDECEA"/>
+    <SolidColorBrush x:Key="SubtleBrush" Color="#EEF1F5"/>
 
     <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
 
@@ -125,5 +126,278 @@
         <Setter Property="CornerRadius" Value="6"/>
         <Setter Property="Padding" Value="16"/>
         <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+
+    <!-- ===== Scan report ===== -->
+
+    <!-- Overview strip: neutral cards; a card turns red only when it needs attention -->
+    <Style x:Key="OverviewCard" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="14,10"/>
+        <Setter Property="Margin" Value="0,0,10,0"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                <Setter Property="Background" Value="{StaticResource DangerBgBrush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="OverviewLabel" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+    <Style x:Key="OverviewValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="17"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,2,0,0"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Report tabs: plain text headers, accent underline on the selected one -->
+    <Style x:Key="ReportTabs" TargetType="TabControl">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1"
+                                Panel.ZIndex="1">
+                            <TabPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1"/>
+                        </Border>
+                        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                                BorderThickness="1,0,1,1" CornerRadius="0,0,8,8">
+                            <ContentPresenter ContentSource="SelectedContent" Margin="20,14"/>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="ReportTab" TargetType="TabItem">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="Bd" Padding="2,8,2,8" Margin="0,0,24,-1" Background="Transparent"
+                            BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                        <ContentPresenter x:Name="Hd" ContentSource="Header" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            <!-- Only the header goes bold; TabItem.FontWeight would leak into the tab content -->
+                            <Setter TargetName="Hd" Property="TextElement.FontWeight" Value="SemiBold"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtleBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+    </Style>
+
+    <Style x:Key="SectionHeading" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <Style x:Key="CountBadge" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource SubtleBrush}"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="Padding" Value="9,1"/>
+        <Setter Property="MinWidth" Value="28"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Peripheral groups: a virtualized TreeView styled as collapsible sections -->
+    <Style x:Key="PeripheralTree" TargetType="TreeView">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+        <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TreeView">
+                    <ScrollViewer Focusable="False" CanContentScroll="True" Padding="0"
+                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsPresenter/>
+                    </ScrollViewer>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="GroupHeaderToggle" TargetType="ToggleButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" Background="Transparent" Padding="8,10" CornerRadius="4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Path x:Name="Chevron" Data="M 0 0 L 4 4 L 0 8" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.6"
+                                  VerticalAlignment="Center" HorizontalAlignment="Left" Margin="2,0,0,0"
+                                  RenderTransformOrigin="0.5,0.5"/>
+                            <ContentPresenter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource WindowBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtleBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                <Setter.Value><RotateTransform Angle="90"/></Setter.Value>
+                            </Setter>
+                            <Setter TargetName="Chevron" Property="Stroke" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="GroupTreeItem" TargetType="TreeViewItem">
+        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TreeViewItem">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+                            <ToggleButton Style="{StaticResource GroupHeaderToggle}"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ContentPresenter ContentSource="Header"/>
+                            </ToggleButton>
+                        </Border>
+                        <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Visibility="Collapsed" Margin="38,2,8,10"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <!-- While searching, groups without matches disappear -->
+            <DataTrigger Binding="{Binding Count}" Value="0">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DeviceTreeItem" TargetType="TreeViewItem">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TreeViewItem">
+                    <Border Padding="0,6" BorderBrush="{StaticResource SubtleBrush}" BorderThickness="0,0,0,1">
+                        <ContentPresenter ContentSource="Header"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Read-only virtualized list that wraps instead of scrolling sideways -->
+    <Style x:Key="PlainList" TargetType="ListBox">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="0,6"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource SubtleBrush}"/>
+                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Search box with a hint shown while empty -->
+    <Style x:Key="SearchBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Bd" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                            BorderThickness="1" CornerRadius="4" Padding="8,0">
+                        <Grid>
+                            <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Foreground="{StaticResource MutedBrush}"
+                                       FontSize="14" Margin="2,0,0,0" IsHitTestVisible="False" Visibility="Collapsed"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalAlignment="Center"
+                                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 </ResourceDictionary>
