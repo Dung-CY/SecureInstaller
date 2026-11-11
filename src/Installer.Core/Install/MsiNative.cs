@@ -25,4 +25,9 @@ internal static class MsiNative
 
     [DllImport("msi.dll", CharSet = CharSet.Unicode)]
     public static extern uint MsiInstallProductW(string szPackagePath, string szCommandLine);
+
+    public const int INSTALLSTATE_ABSENT = 2;
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint MsiConfigureProductExW(string szProduct, int iInstallLevel, int eInstallState, string szCommandLine);
 }

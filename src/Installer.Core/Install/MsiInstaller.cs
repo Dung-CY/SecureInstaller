@@ -52,18 +52,25 @@ public sealed class MsiInstaller : IInstallerRunner
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static readonly Regex ActionName = new(@"Action \d+:\d+:\d+:\s*([^.]+)\.", RegexOptions.Compiled);
 
-    public async Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
+    public Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct) =>
+        RunMsiAsync(() => MsiNative.MsiInstallProductW(req.InstallerPath,
+            ("ACTION=INSTALL REBOOT=ReallySuppress " + req.SilentArgs).Trim()), req.Timeout, progress, ct);
+
+    /// <summary>Shared MSI machinery: global gate, silent UI, progress parsing, cancel via IDCANCEL, timeout.
+    /// <paramref name="nativeCall"/> runs on a dedicated thread while the external UI handler is registered.</summary>
+    internal static async Task<InstallOutcome> RunMsiAsync(Func<uint> nativeCall, TimeSpan timeout,
+        IProgress<InstallProgress> progress, CancellationToken ct)
     {
         try { await Gate.WaitAsync(ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.Cancelled); }
         try
         {
-            using var timeoutCts = new CancellationTokenSource(req.Timeout);
+            using var timeoutCts = new CancellationTokenSource(timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
             progress.Report(new InstallProgress(null, "Đang khởi động bộ cài"));
             var token = linked.Token;
             // Always wait for the install thread: the caller deletes the workspace afterwards.
-            uint code = await Task.Factory.StartNew(() => Install(req, progress, token),
+            uint code = await Task.Factory.StartNew(() => Install(nativeCall, progress, token),
                 CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
 
             if (code == 1602)
@@ -82,7 +89,7 @@ public sealed class MsiInstaller : IInstallerRunner
         finally { Gate.Release(); }
     }
 
-    private static uint Install(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken token)
+    private static uint Install(Func<uint> nativeCall, IProgress<InstallProgress> progress, CancellationToken token)
     {
         var parser = new MsiProgressParser();
         MsiNative.ExternalUIHandler handler = (_, msgType, msg) =>
@@ -111,8 +118,7 @@ public sealed class MsiInstaller : IInstallerRunner
             MsiNative.INSTALLLOGMODE_PROGRESS | MsiNative.INSTALLLOGMODE_ACTIONSTART, IntPtr.Zero);
         try
         {
-            var cmd = ("ACTION=INSTALL REBOOT=ReallySuppress " + req.SilentArgs).Trim();
-            return MsiNative.MsiInstallProductW(req.InstallerPath, cmd);
+            return nativeCall();
         }
         finally
         {
