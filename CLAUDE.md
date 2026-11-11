@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. Plan 1 is in progress on branch `feat/portable`; progress ledger lives in `.superpowers/sdd/2026-11-10-secureinstaller-portable/progress.md` (git-ignored).
+SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. Plan 1 (core + portable) is complete and merged to `main` (2026-11-11). Next work and the full Plan 1 decision log: `docs/superpowers/backlog-plan-1.1.md`.
 
 - Spec (source of truth, Vietnamese): `docs/spec.md`
 - Plan 1 — Core + Portable mode, 20 tasks: `docs/superpowers/plans/2026-11-10-secureinstaller-portable.md`
