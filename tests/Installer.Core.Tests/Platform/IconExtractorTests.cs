@@ -14,15 +14,87 @@ public class IconExtractorTests : IDisposable
     public IconExtractorTests() => Directory.CreateDirectory(_tmp);
     public void Dispose() { try { Directory.Delete(_tmp, true); } catch { } }
 
+    static uint Crc(byte[] d)
+    {
+        var c = 0xFFFFFFFFu;
+        foreach (var b in d)
+        {
+            c ^= b;
+            for (var k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        }
+        return ~c;
+    }
+
     static bool Has(byte[] b, string s) =>
         b.AsSpan().IndexOf(System.Text.Encoding.ASCII.GetBytes(s)) >= 0;
 
     [Fact]
-    public void EncodePng_produces_valid_signature_and_chunks()
+    public void EncodePng_round_trips_with_valid_crcs_and_header()
     {
-        var png = IconExtractor.EncodePng(2, 2, new byte[16]);
+        const int w = 3, h = 2;
+        var rgba = Enumerable.Range(0, w * h * 4).Select(i => (byte)(i * 7 + 1)).ToArray();
+        var png = IconExtractor.EncodePng(w, h, rgba);
         Assert.Equal(Sig, png[..8]);
-        Assert.True(Has(png, "IHDR")); Assert.True(Has(png, "IDAT")); Assert.True(Has(png, "IEND"));
+
+        var pos = 8; var names = new List<string>(); byte[]? ihdr = null; var idat = new MemoryStream();
+        while (pos < png.Length)
+        {
+            var len = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(pos));
+            var typeAndData = png.AsSpan(pos + 4, 4 + len).ToArray();
+            var crc = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(png.AsSpan(pos + 8 + len));
+            Assert.Equal(Crc(typeAndData), crc);
+            var name = System.Text.Encoding.ASCII.GetString(typeAndData, 0, 4);
+            names.Add(name);
+            if (name == "IHDR") ihdr = typeAndData[4..];
+            if (name == "IDAT") idat.Write(typeAndData, 4, len);
+            pos += 12 + len;
+        }
+        Assert.Equal(new[] { "IHDR", "IDAT", "IEND" }, names);
+        Assert.Equal(w, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(ihdr!.AsSpan(0)));
+        Assert.Equal(h, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(ihdr.AsSpan(4)));
+        Assert.Equal(new byte[] { 8, 6, 0, 0, 0 }, ihdr[8..13]);
+
+        idat.Position = 0;
+        var raw = new MemoryStream();
+        using (var z = new System.IO.Compression.ZLibStream(idat, System.IO.Compression.CompressionMode.Decompress)) z.CopyTo(raw);
+        var data = raw.ToArray();
+        Assert.Equal(h * (1 + 4 * w), data.Length);
+        for (var y = 0; y < h; y++)
+        {
+            Assert.Equal(0, data[y * (1 + 4 * w)]);
+            Assert.Equal(rgba.AsSpan(y * 4 * w, 4 * w).ToArray(), data.AsSpan(y * (1 + 4 * w) + 1, 4 * w).ToArray());
+        }
+    }
+
+    [Fact]
+    public void ApplyMask_leaves_existing_alpha_untouched()
+    {
+        var bgra = new byte[] { 1, 2, 3, 0, 4, 5, 6, 128 };
+        IconExtractor.ApplyMask(bgra, new byte[8]);
+        Assert.Equal(new byte[] { 1, 2, 3, 0, 4, 5, 6, 128 }, bgra);
+    }
+
+    [Fact]
+    public void ApplyMask_black_mask_is_opaque_white_is_transparent()
+    {
+        var bgra = new byte[] { 1, 2, 3, 0, 4, 5, 6, 0 };
+        IconExtractor.ApplyMask(bgra, new byte[] { 0, 0, 0, 0, 255, 255, 255, 0 });
+        Assert.Equal(255, bgra[3]);
+        Assert.Equal(0, bgra[7]);
+    }
+
+    [Fact]
+    public void ApplyMask_null_mask_is_fully_opaque()
+    {
+        var bgra = new byte[8];
+        IconExtractor.ApplyMask(bgra, null);
+        Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, bgra);
+    }
+
+    [Fact]
+    public void BgraToRgba_swaps_channels()
+    {
+        Assert.Equal(new byte[] { 3, 2, 1, 4 }, IconExtractor.BgraToRgba(new byte[] { 1, 2, 3, 4 }));
     }
 
     [Fact]
@@ -42,8 +114,12 @@ public class IconExtractorTests : IDisposable
     [InlineData("\"C:\\a b\\x.exe\",3", "C:\\a b\\x.exe", 3)]
     [InlineData("C:\\x.ico", "C:\\x.ico", 0)]
     [InlineData("C:\\x.exe,-12", "C:\\x.exe", -12)]
+    [InlineData("\"C:\\x.exe\"", "C:\\x.exe", 0)]
+    [InlineData("C:\\x.exe , 3", "C:\\x.exe", 3)]
+    [InlineData("\"C:\\x.exe\" , -5", "C:\\x.exe", -5)]
+    [InlineData("%SystemRoot%\\x.exe,1", "EXPAND", 1)]
     public void ParseDisplayIcon_cases(string value, string path, int index) =>
-        Assert.Equal((path, index), IconExtractor.ParseDisplayIcon(value));
+        Assert.Equal((path == "EXPAND" ? Environment.ExpandEnvironmentVariables("%SystemRoot%\\x.exe") : path, index), IconExtractor.ParseDisplayIcon(value));
 
     VaultAdmin NewAdmin(Func<string, byte[]?>? fromExe = null)
     {

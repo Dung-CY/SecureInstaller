@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 
@@ -61,22 +62,9 @@ public static class IconExtractor
             var bgra = ReadBits(dc, info.hbmColor, w, h);
             if (bgra is null) return null;
 
-            var hasAlpha = false;
-            for (var i = 3; i < bgra.Length; i += 4) if (bgra[i] != 0) { hasAlpha = true; break; }
-            if (!hasAlpha)
-            {
-                // Legacy icon without alpha: AND mask white = transparent, black = opaque.
-                var mask = info.hbmMask != IntPtr.Zero ? ReadBits(dc, info.hbmMask, w, h) : null;
-                for (var i = 0; i < bgra.Length; i += 4)
-                    bgra[i + 3] = mask is null || (mask[i] == 0 && mask[i + 1] == 0 && mask[i + 2] == 0) ? (byte)255 : (byte)0;
-            }
-
-            var rgba = new byte[bgra.Length];
-            for (var i = 0; i < bgra.Length; i += 4)
-            {
-                rgba[i] = bgra[i + 2]; rgba[i + 1] = bgra[i + 1]; rgba[i + 2] = bgra[i]; rgba[i + 3] = bgra[i + 3];
-            }
-            return EncodePng(w, h, rgba);
+            var mask = info.hbmMask != IntPtr.Zero ? ReadBits(dc, info.hbmMask, w, h) : null;
+            ApplyMask(bgra, mask);
+            return EncodePng(w, h, BgraToRgba(bgra));
         }
         finally
         {
@@ -84,6 +72,24 @@ public static class IconExtractor
             if (info.hbmColor != IntPtr.Zero) DeleteObject(info.hbmColor);
             if (info.hbmMask != IntPtr.Zero) DeleteObject(info.hbmMask);
         }
+    }
+
+    /// <summary>Legacy icons without alpha: if every alpha byte is 0, derive it from the AND mask (black = opaque, white = transparent; null = opaque).</summary>
+    internal static void ApplyMask(byte[] bgra, byte[]? maskBgra)
+    {
+        for (var i = 3; i < bgra.Length; i += 4) if (bgra[i] != 0) return;
+        for (var i = 0; i < bgra.Length; i += 4)
+            bgra[i + 3] = maskBgra is null || (maskBgra[i] == 0 && maskBgra[i + 1] == 0 && maskBgra[i + 2] == 0) ? (byte)255 : (byte)0;
+    }
+
+    internal static byte[] BgraToRgba(byte[] bgra)
+    {
+        var rgba = new byte[bgra.Length];
+        for (var i = 0; i < bgra.Length; i += 4)
+        {
+            rgba[i] = bgra[i + 2]; rgba[i + 1] = bgra[i + 1]; rgba[i + 2] = bgra[i]; rgba[i + 3] = bgra[i + 3];
+        }
+        return rgba;
     }
 
     static byte[]? ReadBits(IntPtr dc, IntPtr hbm, int w, int h)
@@ -172,12 +178,12 @@ public static class IconExtractor
         else
         {
             var comma = v.LastIndexOf(',');
-            if (comma > 0 && int.TryParse(v[(comma + 1)..].Trim(), out _)) { path = v[..comma]; rest = v[comma..]; }
+            if (comma > 0 && int.TryParse(v[(comma + 1)..].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _)) { path = v[..comma]; rest = v[comma..]; }
             else path = v;
         }
         var idx = 0;
         var r = rest.Trim();
-        if (r.StartsWith(',') && int.TryParse(r[1..].Trim(), out var parsed)) idx = parsed;
-        return (path.Trim(), idx);
+        if (r.StartsWith(',') && int.TryParse(r[1..].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) idx = parsed;
+        return (Environment.ExpandEnvironmentVariables(path.Trim()), idx);
     }
 }
