@@ -34,7 +34,7 @@ public sealed class InstallService
             ws = _workspaceFactory();
             outcome = await RunCoreAsync(pkg, ws, progress, ct, d => detail = d).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { outcome = new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt"); }
+        catch (OperationCanceledException) { outcome = new InstallOutcome(InstallStatus.Failed, null, ErrorText.Cancelled); }
         catch (Exception ex)
         {
             outcome = new InstallOutcome(InstallStatus.Failed, null, ErrorText.ForUser(ex));
@@ -45,6 +45,7 @@ public sealed class InstallService
         var parts = new List<string>();
         if (!string.IsNullOrEmpty(outcome.Message)) parts.Add(outcome.Message);
         if (detail != null) parts.Add(detail);
+        if (!string.IsNullOrEmpty(outcome.Detail)) parts.Add(outcome.Detail);
         if (ws != null && !ws.Deleted) parts.Add("Không xóa được thư mục tạm");
         detail = parts.Count > 0 ? string.Join("; ", parts) : null;
         try

@@ -55,7 +55,7 @@ public sealed class MsiInstaller : IInstallerRunner
     public async Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
     {
         try { await Gate.WaitAsync(ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt"); }
+        catch (OperationCanceledException) { return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.Cancelled); }
         try
         {
             using var timeoutCts = new CancellationTokenSource(req.Timeout);
@@ -69,7 +69,7 @@ public sealed class MsiInstaller : IInstallerRunner
             if (code == 1602)
                 return timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
                     ? new InstallOutcome(InstallStatus.Timeout, null, "Quá thời gian cài đặt")
-                    : new InstallOutcome(InstallStatus.Failed, 1602, "Người dùng hủy cài đặt");
+                    : new InstallOutcome(InstallStatus.Failed, 1602, Errors.ErrorText.Cancelled);
             var outcome = ExitCodeMapper.Map((int)code);
             if (outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
                 progress.Report(new InstallProgress(100, "Hoàn tất"));
@@ -77,7 +77,7 @@ public sealed class MsiInstaller : IInstallerRunner
         }
         catch (Exception ex)
         {
-            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex));
+            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex), ex.ToString());
         }
         finally { Gate.Release(); }
     }

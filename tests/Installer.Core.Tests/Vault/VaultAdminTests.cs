@@ -68,7 +68,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, s, a) = NewVault();
         a.AddPackage(SamplePackage.Create(_tmp));
-        Assert.Throws<InvalidOperationException>(() => a.AddPackage(SamplePackage.Create(_tmp)));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.AddPackage(SamplePackage.Create(_tmp)));
         Assert.Equal(1, s.Catalog.Version);
         Assert.Single(Directory.GetFiles(Path.Combine(root, "vault", "packages")));
     }
@@ -106,7 +106,7 @@ public class VaultAdminTests : IDisposable
         Assert.False(Directory.Exists(PackageBuilder.DocsDirFor(e, root)));
         Assert.Empty(s.Catalog.Packages);
         Assert.Equal(2, s.Catalog.Version);
-        Assert.Throws<InvalidOperationException>(() => a.RemovePackage("demo", null));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.RemovePackage("demo", null));
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, _, a) = NewVault();
         a.AddUser("bob", "pw-b", UserRole.User);
-        Assert.Throws<InvalidOperationException>(() => a.AddUser("BOB", "x", UserRole.User));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.AddUser("BOB", "x", UserRole.User));
         var bob = VaultStore.Open(root).Unlock("bob", "pw-b", T0);
         Assert.False(bob.IsAdmin);
         a.SetPassword("bob", "pw-new");
@@ -151,7 +151,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, _, a) = NewVault();
         a.AddUser("bob", "pw-b", UserRole.User);
-        Assert.Throws<InvalidOperationException>(() => a.RemoveUser("admin"));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.RemoveUser("admin"));
         a.RemoveUser("bob");
         Assert.Single(VaultStore.Open(root).Meta.Users);
     }

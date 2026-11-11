@@ -40,6 +40,17 @@ public class ScanReportViewModelTests
     }
 
     [Fact]
+    public async Task Scan_errors_are_localized_without_raw_text()
+    {
+        var r = Report(LicenseVerdict.Genuine);
+        r = r with { Hardware = r.Hardware with { Errors = new() { "Win32_BIOS: Access denied secret", "NoColon" } } };
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(r), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        var rows = vm.HardwareRows.Where(x => x.Label == "Lỗi quét").Select(x => x.Value).ToList();
+        Assert.Equal(new[] { "Win32_BIOS: Không đọc được dữ liệu", "NoColon: Không đọc được dữ liệu" }, rows);
+    }
+
+    [Fact]
     public void DisplayText_maps_all_enum_values()
     {
         Assert.Equal("Chính hãng", DisplayText.Of(LicenseVerdict.Genuine));

@@ -88,7 +88,10 @@ public partial class ScanReportViewModel : ObservableObject
         foreach (var n in h.Nics) HardwareRows.Add(new($"MAC {n.Name}", n.Mac));
         HardwareRows.Add(new("Thiết bị ngoại vi", h.Peripherals.Count.ToString()));
         foreach (var p in h.Peripherals) HardwareRows.Add(new("", p.Name));
-        foreach (var e in h.Errors) HardwareRows.Add(new("Lỗi quét", e));
+        foreach (var e in h.Errors) {
+            var i = e.IndexOf(':');
+            HardwareRows.Add(new("Lỗi quét", $"{(i > 0 ? e[..i] : e)}: Không đọc được dữ liệu"));
+        }
 
         NetworkRows.Clear();
         foreach (var p in r.Network.Profiles)

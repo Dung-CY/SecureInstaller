@@ -54,11 +54,11 @@ public sealed class ZipInstaller : IInstallerRunner
         }
         catch (OperationCanceledException)
         {
-            return new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt");
+            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.Cancelled);
         }
         catch (Exception ex)
         {
-            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex));
+            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex), ex.ToString());
         }
     }
 }

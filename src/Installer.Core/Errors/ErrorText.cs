@@ -13,12 +13,13 @@ public static class ErrorText
         CatalogCommitPendingException => CommitPending,
         UnsafePathException or WorkspaceUnsafeException or InvalidDataException or NotAdminException
             or BadCredentialsException or AccountLockedException => ex.Message,
+        VaultNotFoundException => Strings.VaultNotFound,
         PackageCorruptException => Strings.PackageCorrupt,
         VaultTamperedException or CryptographicException => Strings.VaultTampered,
         UnauthorizedAccessException => Strings.AccessDenied,
         IOException => Strings.IoError,
         OperationCanceledException => Cancelled,
-        InvalidOperationException when ex.Message.Any(c => c > 127) => ex.Message,
+        UserMessageException => ex.Message,
         _ => Strings.Unexpected
     };
 }

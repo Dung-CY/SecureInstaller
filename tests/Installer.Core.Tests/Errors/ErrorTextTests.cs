@@ -22,9 +22,13 @@ public class ErrorTextTests
         new object[] { new IOException("D:/x"), Strings.IoError },
         new object[] { new FileNotFoundException("D:/x"), Strings.IoError },
         new object[] { new OperationCanceledException(), "Người dùng hủy cài đặt" },
-        new object[] { new InvalidOperationException("Lỗi tiếng Việt"), "Lỗi tiếng Việt" },
         new object[] { new InvalidOperationException("ascii only"), Strings.Unexpected },
         new object[] { new NullReferenceException("x"), Strings.Unexpected },
+        new object[] { new VaultNotFoundException("raw"), Strings.VaultNotFound },
+        new object[] { new DirectoryNotFoundException("D:/x"), Strings.IoError },
+        new object[] { new AuthenticationTagMismatchException(), Strings.VaultTampered },
+        new object[] { new InvalidOperationException("Dự án 1"), Strings.Unexpected },
+        new object[] { new UserMessageException("Dự án 1"), "Dự án 1" },
         new object[] { new CatalogCommitPendingException(new Exception("i")), ErrorText.CommitPending },
     };
 

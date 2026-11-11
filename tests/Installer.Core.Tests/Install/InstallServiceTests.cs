@@ -195,6 +195,18 @@ public class InstallServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Runner_exception_detail_reaches_log()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp));
+        var runner = new FakeRunner { Outcome = new InstallOutcome(InstallStatus.Failed, null, "Lỗi", "RAW-DETAIL-XYZ") };
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal("Lỗi", res.Message);
+        Assert.Contains("RAW-DETAIL-XYZ", Assert.Single(ReadLogs(e)).Detail);
+    }
+
+    [Fact]
     public async Task Cancellation_returns_failed_and_deletes_workspace()
     {
         var e = NewVault();

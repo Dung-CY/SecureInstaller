@@ -12,7 +12,7 @@ public sealed class VaultAdmin
         if (!session.IsAdmin || session.SigningPrivateKey is null)
             throw new NotAdminException("Chỉ quản trị viên mới được thực hiện thao tác này");
         if (session.Store.IsReadOnly)
-            throw new InvalidOperationException("Kho đang ở chế độ chỉ đọc");
+            throw new Errors.UserMessageException("Kho đang ở chế độ chỉ đọc");
         _s = session;
     }
 
@@ -50,7 +50,7 @@ public sealed class VaultAdmin
     {
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
         if (_s.Catalog.Packages.Any(p => Same(p.Id, m.Id) && Same(p.Version, m.Version)))
-            throw new InvalidOperationException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
+            throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
         try { Commit(_s.Catalog.Packages.Append(entry).ToList()); }
         catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
@@ -62,10 +62,10 @@ public sealed class VaultAdmin
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
         if (!Same(m.Id, id)) throw new InvalidDataException("Trường id trong manifest không khớp với gói cần cập nhật");
         if (!_s.Catalog.Packages.Any(p => Same(p.Id, id)))
-            throw new InvalidOperationException("Không tìm thấy gói");
+            throw new Errors.UserMessageException("Không tìm thấy gói");
 
         if (keepOld && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)))
-            throw new InvalidOperationException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
+            throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
 
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
         var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (!keepOld || Same(p.Version, m.Version))).ToList();
@@ -80,7 +80,7 @@ public sealed class VaultAdmin
     {
         var removed = _s.Catalog.Packages
             .Where(p => Same(p.Id, id) && (version is null || Same(p.Version, version))).ToList();
-        if (removed.Count == 0) throw new InvalidOperationException("Không tìm thấy gói");
+        if (removed.Count == 0) throw new Errors.UserMessageException("Không tìm thấy gói");
         Commit(_s.Catalog.Packages.Except(removed).ToList());
         foreach (var e in removed) DeleteFiles(e);
     }
@@ -90,7 +90,7 @@ public sealed class VaultAdmin
         if (string.IsNullOrWhiteSpace(username)) throw new ArgumentException("Tên đăng nhập trống", nameof(username));
         var meta = _s.Store.Meta;
         if (meta.Users.Any(u => Same(u.Username, username)))
-            throw new InvalidOperationException("Tên đăng nhập đã tồn tại");
+            throw new Errors.UserMessageException("Tên đăng nhập đã tồn tại");
         var salt = KeyDerivation.NewSalt();
         var kek = KeyDerivation.DeriveKek(password, salt);
         var user = new UserEntry(username, role, Convert.ToBase64String(salt),
@@ -103,9 +103,9 @@ public sealed class VaultAdmin
     {
         var meta = _s.Store.Meta;
         var target = meta.Users.FirstOrDefault(u => Same(u.Username, username))
-                     ?? throw new InvalidOperationException("Không tìm thấy người dùng");
+                     ?? throw new Errors.UserMessageException("Không tìm thấy người dùng");
         if (target.WrappedSigningKeyB64 != null && meta.Users.Count(u => u.WrappedSigningKeyB64 != null) <= 1)
-            throw new InvalidOperationException("Không thể xóa quản trị viên cuối cùng");
+            throw new Errors.UserMessageException("Không thể xóa quản trị viên cuối cùng");
         _s.Store.UpdateMeta(meta with { Users = meta.Users.Where(u => u != target).ToList() });
     }
 
@@ -113,7 +113,7 @@ public sealed class VaultAdmin
     {
         var meta = _s.Store.Meta;
         var target = meta.Users.FirstOrDefault(u => Same(u.Username, username))
-                     ?? throw new InvalidOperationException("Không tìm thấy người dùng");
+                     ?? throw new Errors.UserMessageException("Không tìm thấy người dùng");
         var salt = KeyDerivation.NewSalt();
         var kek = KeyDerivation.DeriveKek(newPassword, salt);
         var updated = target with

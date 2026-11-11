@@ -8,7 +8,7 @@ public record InstallProgress(int? Percent, string Step);
 
 public record InstallRequest(InstallerType Type, string InstallerPath, string SilentArgs, string? TargetDir, TimeSpan Timeout);
 
-public record InstallOutcome(InstallStatus Status, int? ExitCode, string Message);
+public record InstallOutcome(InstallStatus Status, int? ExitCode, string Message, string? Detail = null);
 
 public interface IInstallerRunner
 {
