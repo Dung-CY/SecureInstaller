@@ -39,6 +39,31 @@ public class BundleTests : IDisposable
         Assert.Null(r[1].Package);
     }
 
+    [Fact]
+    public void Resolve_latest_is_deterministic_with_non_comparable_and_ties()
+    {
+        var b = new Bundle("k", "K", "", new() { new("a") });
+        string V(params PackageEntry[] p) => BundleResolver.Resolve(Cat(p), b)[0].Package!.Version;
+        Assert.Equal("2.0", V(Pkg("a", "beta"), Pkg("a", "2.0"), Pkg("a", "1.0")));
+        Assert.Equal("2.0", V(Pkg("a", "1.0"), Pkg("a", "2.0"), Pkg("a", "beta")));
+        Assert.Equal("zeta", V(Pkg("a", "alpha"), Pkg("a", "zeta")));
+        Assert.Equal("zeta", V(Pkg("a", "zeta"), Pkg("a", "alpha")));
+        Assert.Equal("v1.0", V(Pkg("a", "1.0"), Pkg("a", "v1.0")));
+        Assert.Equal("v1.0", V(Pkg("a", "v1.0"), Pkg("a", "1.0")));
+    }
+
+    [Fact]
+    public void Bundle_id_with_trailing_newline_rejected_and_duplicates_rejected()
+    {
+        var (_, _, a) = NewVault();
+        Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k\n", "K", "", new() { new("demo") })));
+        var ex = Assert.Throws<InvalidDataException>(() =>
+            a.AddBundle(new Bundle("k", "K", "", new() { new("demo", "1.0"), new("DEMO", "1.0") })));
+        Assert.Equal("Bộ gói có gói bị lặp: DEMO", ex.Message);
+        Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k", "K", "", new() { new("demo"), new("DEMO") })));
+        a.AddBundle(new Bundle("k", "K", "", new() { new("demo"), new("demo", "1.0") }));
+    }
+
     (string root, VaultSession s, VaultAdmin a) NewVault()
     {
         var root = Path.Combine(_tmp, "Kho Dự án");
@@ -116,5 +141,17 @@ public class BundleTests : IDisposable
         Assert.Equal(0, Program.Run(new[] { "add-bundle", root, f }.Concat(auth).ToArray()));
         Assert.Equal(1, Program.Run(new[] { "remove-bundle", root, "nope" }.Concat(auth).ToArray()));
         Assert.Equal(0, Program.Run(new[] { "remove-bundle", root, "ke-toan" }.Concat(auth).ToArray()));
+    }
+
+    [Fact]
+    public void Cli_add_bundle_malformed_json_returns_1()
+    {
+        var root = Path.Combine(_tmp, "kho");
+        Assert.Equal(0, Program.Run(new[] { "init", root, "--user", "admin", "--password", "pw-123456" }));
+        var f = Path.Combine(_tmp, "bad.json");
+        File.WriteAllText(f, "{ not json", new UTF8Encoding(false));
+        var auth = new[] { "--user", "admin", "--password", "pw-123456" };
+        Assert.Equal(1, Program.Run(new[] { "add-bundle", root, f }.Concat(auth).ToArray()));
+        Assert.Equal(1, Program.Run(new[] { "add-bundle", root, Path.Combine(_tmp, "missing.json") }.Concat(auth).ToArray()));
     }
 }

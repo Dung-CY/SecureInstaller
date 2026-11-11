@@ -26,6 +26,18 @@ public class ArgsTests : IDisposable
     }
 
     [Fact]
+    public void Parse_add_bundle_and_remove_bundle()
+    {
+        var p = Args.Parse(new[] { "add-bundle", Usb, "b.json", "--user", "admin" });
+        Assert.Equal("add-bundle", p.Command);
+        Assert.Equal(new[] { Usb, "b.json" }, p.Positionals);
+        Assert.Equal("admin", p.Options["user"]);
+        var r = Args.Parse(new[] { "remove-bundle", Usb, "ke-toan", "--user", "admin" });
+        Assert.Equal("remove-bundle", r.Command);
+        Assert.Equal(new[] { Usb, "ke-toan" }, r.Positionals);
+    }
+
+    [Fact]
     public void Parse_flag_without_value()
     {
         var p = Args.Parse(new[] { "update-package", "r", "id", "f", "--keep-old", "--user", "a" });

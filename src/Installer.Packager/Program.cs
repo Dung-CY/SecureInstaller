@@ -116,6 +116,8 @@ public static class Program
                     b = System.Text.Json.JsonSerializer.Deserialize<Bundle>(File.ReadAllText(pos[1], Encoding.UTF8), Json.Options)
                         ?? throw new InvalidDataException("bundle.json trống");
                 }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { throw new InvalidDataException("Không đọc được tệp bộ gói: " + ex.Message); }
                 catch (System.Text.Json.JsonException ex) { throw new InvalidDataException("bundle.json không hợp lệ: " + ex.Message); }
                 var admin = OpenAdmin(p, pos[0]);
                 var exists = admin.HasBundle(b.Id);

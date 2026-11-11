@@ -134,7 +134,7 @@ public sealed class VaultAdmin
     public void UpdateSettings(KeywordScanConfig keywordScan, List<CrackSignature> signatures) =>
         Commit(_s.Catalog.Packages, keywordScan, signatures);
 
-    static readonly System.Text.RegularExpressions.Regex BundleId = new(@"^[A-Za-z0-9._-]+$");
+    static readonly System.Text.RegularExpressions.Regex BundleId = new(@"^[A-Za-z0-9._-]+\z");
 
     void ValidateBundle(Bundle b)
     {
@@ -142,6 +142,10 @@ public sealed class VaultAdmin
             throw new InvalidDataException("Mã bộ gói không hợp lệ");
         if (string.IsNullOrWhiteSpace(b.Name)) throw new InvalidDataException("Tên bộ gói trống");
         if (b.Items is null || b.Items.Count == 0) throw new InvalidDataException("Bộ gói không có gói nào");
+        var seen = new HashSet<(string, string?)>();
+        foreach (var it in b.Items)
+            if (!seen.Add((it.PackageId.ToLowerInvariant(), it.Version?.ToLowerInvariant())))
+                throw new InvalidDataException($"Bộ gói có gói bị lặp: {it.PackageId}");
         foreach (var (item, pkg) in BundleResolver.Resolve(_s.Catalog, b))
             if (pkg is null)
                 throw new InvalidDataException($"Bộ gói tham chiếu gói không có trong kho: {item.PackageId}");
