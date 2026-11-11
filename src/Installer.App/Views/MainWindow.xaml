@@ -19,6 +19,9 @@
         <DataTemplate DataType="{x:Type vm:InstallViewModel}">
             <v:InstallView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AdminViewModel}">
+            <v:AdminView/>
+        </DataTemplate>
     </Window.Resources>
     <ContentControl Content="{Binding Current}"/>
 </Window>

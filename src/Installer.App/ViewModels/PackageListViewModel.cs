@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Installer.Core.Install;
 using Installer.Core.Model;
 using Installer.Core.Scanning;
@@ -18,8 +19,10 @@ public partial class PackageListViewModel : ObservableObject
         Func<DetectRule, IReadOnlyList<InstalledApp>> findInstalled,
         Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> install,
         Func<PackageEntry, string, CancellationToken, Task<string>> extractDoc,
-        Func<string, bool> confirm, Action<string> openFile, Action<object> navigate)
+        Func<string, bool> confirm, Action<string> openFile, Action<object> navigate, Action? openAdmin = null)
     {
+        CanOpenAdmin = openAdmin != null;
+        OpenAdminCommand = new RelayCommand(() => openAdmin?.Invoke());
         _install = install; _extractDoc = extractDoc; _confirm = confirm; _openFile = openFile; _navigate = navigate;
         var byVersionDesc = Comparer<string>.Create((a, b) => VersionComparer.Compare(b, a) ?? string.CompareOrdinal(b, a));
         var sorted = catalog.Packages
@@ -27,6 +30,9 @@ public partial class PackageListViewModel : ObservableObject
             .ThenBy(p => p.Version, byVersionDesc);
         foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, this));
     }
+
+    public bool CanOpenAdmin { get; }
+    public IRelayCommand OpenAdminCommand { get; }
 
     public List<PackageRowViewModel> Rows { get; } = new();
 

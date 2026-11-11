@@ -8,7 +8,12 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Phần mềm được phép cài" Style="{StaticResource Title}"/>
+            <Grid>
+                <TextBlock Text="Phần mềm được phép cài" Style="{StaticResource Title}"/>
+                <Button Content="Quản trị" Command="{Binding OpenAdminCommand}" HorizontalAlignment="Right"
+                        Padding="14,5" FontSize="13"
+                        Visibility="{Binding CanOpenAdmin, Converter={StaticResource BoolToVisibility}}"/>
+            </Grid>
             <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,8,0,0"
                        Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
         </StackPanel>

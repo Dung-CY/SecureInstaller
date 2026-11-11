@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO;
+using Microsoft.Win32;
 using System.Windows;
 using Installer.App.Converters;
 using Installer.Core.Install;
@@ -58,10 +60,33 @@ public sealed class AppServices
             rule => apps.Find(rule),
             (pkg, progress, ct) => installService.InstallAsync(pkg, session.Username, report.Hardware, progress, ct),
             (pkg, doc, ct) => installService.ExtractDocAsync(pkg, doc, ct),
-            msg => MessageBox.Show(msg, "Xác nhận", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes,
+            ConfirmYesNo,
             path => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }),
-            Main.NavigateTo));
+            Main.NavigateTo,
+            session.IsAdmin ? () => ShowAdmin(session, report) : null));
     }
+
+    private void ShowAdmin(VaultSession session, ScanReport report)
+    {
+        // Back rebuilds the package list from the current catalog, which the admin may have changed.
+        Main.NavigateTo(new AdminViewModel(session, Path.Combine(_root, "logs"), EncryptedLog.DefaultFallbackDir(),
+            PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report)));
+    }
+
+    private static string? PickFolder()
+    {
+        var dlg = new OpenFolderDialog { Title = "Chọn thư mục gói phần mềm" };
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    private static string? PickSavePath()
+    {
+        var dlg = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = "log.csv" };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private static bool ConfirmYesNo(string msg) =>
+        MessageBox.Show(msg, "Xác nhận", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
     private void LogScan(VaultSession session, ScanReport r)
     {
