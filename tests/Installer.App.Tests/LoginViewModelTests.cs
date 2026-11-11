@@ -54,10 +54,9 @@ public class LoginViewModelTests : IDisposable
         var store = NewVault();
         var vm = Make(() => store);
         vm.Username = "admin"; vm.Password = "wrong";
-        for (int i = 0; i < 5; i++) await vm.LoginCommand.ExecuteAsync(null);
-        await vm.LoginCommand.ExecuteAsync(null);
+        for (int i = 0; i < 6; i++) { vm.Password = "wrong"; await vm.LoginCommand.ExecuteAsync(null); }
         var until = _now + TimeSpan.FromMinutes(15);
-        Assert.Equal(string.Format(Strings.AccountLocked, until), vm.Error);
+        Assert.Equal(string.Format(Strings.AccountLocked, until.ToLocalTime()), vm.Error);
     }
 
     [Fact]
@@ -67,5 +66,41 @@ public class LoginViewModelTests : IDisposable
         vm.Username = "a"; vm.Password = "b";
         await vm.LoginCommand.ExecuteAsync(null);
         Assert.Equal(Strings.VaultNotFound, vm.Error);
+    }
+
+    [Fact]
+    public async Task Fingerprint_visible_before_login_and_after_failed_login()
+    {
+        var store = NewVault();
+        var vm = Make(() => store);
+        Assert.Matches("^[0-9A-F]{4}(-[0-9A-F]{4}){3}$", vm.VaultFingerprint!);
+        Assert.StartsWith("Mã kho: ", vm.FingerprintText);
+        vm.Username = "admin"; vm.Password = "wrong";
+        await vm.LoginCommand.ExecuteAsync(null);
+        Assert.NotNull(vm.VaultFingerprint);
+    }
+
+    [Fact]
+    public async Task OnSuccess_throwing_sets_error_not_crash()
+    {
+        var store = NewVault();
+        var vm = Make(() => store, _ => throw new InvalidOperationException("boom"));
+        vm.Username = "admin"; vm.Password = "pw-1234";
+        await vm.LoginCommand.ExecuteAsync(null);
+        Assert.Equal("boom", vm.Error);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task Password_cleared_after_attempt()
+    {
+        var store = NewVault();
+        var vm = Make(() => store);
+        vm.Username = "admin"; vm.Password = "wrong";
+        await vm.LoginCommand.ExecuteAsync(null);
+        Assert.Equal("", vm.Password);
+        vm.Password = "pw-1234";
+        await vm.LoginCommand.ExecuteAsync(null);
+        Assert.Equal("", vm.Password);
     }
 }

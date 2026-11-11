@@ -94,7 +94,15 @@
             </TabItem>
 
             <TabItem Header="File từ khóa">
-                <ListBox ItemsSource="{Binding KeywordFiles}" BorderThickness="0" FontFamily="Consolas"/>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding KeywordWarning}" Style="{StaticResource ErrorText}" Margin="12,10"
+                               Visibility="{Binding KeywordWarning, Converter={StaticResource NullToCollapsed}}"/>
+                    <ListBox Grid.Row="1" ItemsSource="{Binding KeywordFiles}" BorderThickness="0" FontFamily="Consolas"/>
+                </Grid>
             </TabItem>
         </TabControl>
 

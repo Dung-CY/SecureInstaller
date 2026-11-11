@@ -11,10 +11,32 @@ public partial class LoginViewModel : ObservableObject
     private readonly Action<VaultSession> _onSuccess;
     private readonly TimeProvider _time;
 
+    private VaultStore? _store;
+
     public LoginViewModel(Func<VaultStore> openVault, Action<VaultSession> onSuccess, TimeProvider time)
     {
         _openVault = openVault; _onSuccess = onSuccess; _time = time;
+        try { EnsureStore(); }
+        catch (Exception ex) { Error = Describe(ex); }
     }
+
+    private VaultStore EnsureStore()
+    {
+        if (_store is not null) return _store;
+        var store = _openVault();
+        VaultFingerprint = VaultStore.Fingerprint(store.Meta.SigningPublicKeyB64);
+        return _store = store;
+    }
+
+    private static string Describe(Exception ex) => ex switch
+    {
+        VaultNotFoundException => Strings.VaultNotFound,
+        VaultTamperedException => Strings.VaultTampered,
+        FormatException => Strings.VaultTampered,
+        BadCredentialsException => Strings.BadCredentials,
+        AccountLockedException l => string.Format(Strings.AccountLocked, l.Until.ToLocalTime()),
+        _ => ex.Message
+    };
 
     [ObservableProperty] private string _username = "";
     [ObservableProperty] private string _password = "";
@@ -31,28 +53,16 @@ public partial class LoginViewModel : ObservableObject
     {
         IsBusy = true;
         Error = null;
-        VaultSession? session = null;
         try
         {
             var user = Username;
             var pw = Password;
+            Password = "";
             var now = _time.GetUtcNow();
-            string? fp = null;
-            session = await Task.Run(() =>
-            {
-                var store = _openVault();
-                fp = VaultStore.Fingerprint(store.Meta.SigningPublicKeyB64);
-                return store.Unlock(user, pw, now);
-            });
-            VaultFingerprint = fp;
+            var session = await Task.Run(() => EnsureStore().Unlock(user, pw, now));
+            _onSuccess(session);
         }
-        catch (VaultNotFoundException) { Error = Strings.VaultNotFound; }
-        catch (VaultTamperedException) { Error = Strings.VaultTampered; }
-        catch (BadCredentialsException) { Error = Strings.BadCredentials; }
-        catch (AccountLockedException ex) { Error = string.Format(Strings.AccountLocked, ex.Until); }
-        catch (Exception ex) { Error = ex.Message; }
+        catch (Exception ex) { Error = Describe(ex); }
         finally { IsBusy = false; }
-
-        if (session is not null) _onSuccess(session);
     }
 }

@@ -29,30 +29,37 @@ public partial class ScanReportViewModel : ObservableObject
     [ObservableProperty] private string _officeLicenseText = "";
     [ObservableProperty] private bool _windowsIsCracked;
     [ObservableProperty] private bool _officeIsCracked;
+    [ObservableProperty] private string? _keywordWarning;
 
     public ObservableCollection<HardwareRow> HardwareRows { get; } = new();
     public ObservableCollection<NetworkRow> NetworkRows { get; } = new();
     public ObservableCollection<string> KeywordFiles { get; } = new();
 
+    private bool _done;
+
     [RelayCommand]
     private async Task ScanAsync()
     {
         IsScanning = true;
+        _done = false;
         Error = null;
         CurrentStep = "Đang chuẩn bị";
         try
         {
-            var progress = new Progress<string>(s => CurrentStep = s);
+            var progress = new Progress<string>(s => { if (!_done) CurrentStep = s; });
             var r = await _scan(progress, CancellationToken.None);
             Apply(r);
-            CurrentStep = "Hoàn tất";
         }
         catch (Exception ex)
         {
             Error = ex.Message;
-            CurrentStep = "Quét thất bại";
         }
-        finally { IsScanning = false; }
+        finally
+        {
+            _done = true;
+            CurrentStep = Error is null ? "Hoàn tất" : "Quét thất bại";
+            IsScanning = false;
+        }
     }
 
     private bool CanContinue() => Report is not null && !IsScanning;
@@ -94,6 +101,10 @@ public partial class ScanReportViewModel : ObservableObject
 
         KeywordFiles.Clear();
         foreach (var f in r.Keywords.MatchedFiles) KeywordFiles.Add(f);
+        var warn = new List<string>();
+        if (r.Keywords.TimedOut) warn.Add("Đã hết thời gian quét, kết quả có thể chưa đầy đủ");
+        if (r.Keywords.Truncated) warn.Add("Chỉ hiển thị 1000 file đầu tiên");
+        KeywordWarning = warn.Count == 0 ? null : string.Join(Environment.NewLine, warn);
         Report = r;
     }
 
