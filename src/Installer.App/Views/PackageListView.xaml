@@ -1,0 +1,59 @@
+<UserControl x:Class="Installer.App.Views.PackageListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Phần mềm được phép cài" Style="{StaticResource Title}"/>
+            <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,8,0,0"
+                       Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
+        </StackPanel>
+
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" RowHeight="44">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Phần mềm" Binding="{Binding Name}" Width="1.4*"/>
+                <DataGridTextColumn Header="Phiên bản gói" Binding="{Binding PackageVersion}" Width="110"/>
+                <DataGridTextColumn Header="Trên máy" Binding="{Binding InstalledVersion}" Width="110"/>
+                <DataGridTextColumn Header="Trạng thái" Binding="{Binding StatusText}" Width="130"/>
+                <DataGridTextColumn Header="Lý do" Width="1.6*" Binding="{Binding ReasonsText}">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                            <Setter Property="ToolTip" Value="{Binding ReasonsText}"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="" Width="330">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                                <Button Content="Cài đặt" Command="{Binding InstallCommand}"
+                                        Padding="14,5" FontSize="13" ToolTip="{Binding ReasonsText}"
+                                        ToolTipService.ShowOnDisabled="True"/>
+                                <ItemsControl ItemsSource="{Binding Docs}" Margin="8,0,0,0"
+                                              Visibility="{Binding HasDocs, Converter={StaticResource BoolToVisibility}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Hướng dẫn" ToolTip="{Binding}" Padding="10,5" FontSize="13"
+                                                    Margin="0,0,6,0" Background="{StaticResource MutedBrush}"
+                                                    Command="{Binding DataContext.OpenDocCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

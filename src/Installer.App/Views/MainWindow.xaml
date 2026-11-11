@@ -13,9 +13,11 @@
         <DataTemplate DataType="{x:Type vm:ScanReportViewModel}">
             <v:ScanReportView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:PlaceholderViewModel}">
-            <TextBlock Text="{Binding Message}" Style="{StaticResource Title}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <DataTemplate DataType="{x:Type vm:PackageListViewModel}">
+            <v:PackageListView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:InstallViewModel}">
+            <v:InstallView/>
         </DataTemplate>
     </Window.Resources>
     <ContentControl Content="{Binding Current}"/>

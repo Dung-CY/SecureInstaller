@@ -9,6 +9,7 @@
                 <ResourceDictionary Source="Themes/Theme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <conv:NullToCollapsed x:Key="NullToCollapsed"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

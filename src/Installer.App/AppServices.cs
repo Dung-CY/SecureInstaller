@@ -1,10 +1,15 @@
+using System.Diagnostics;
+using System.Windows;
 using Installer.App.Converters;
+using Installer.Core.Install;
+using Installer.Core.Repository;
 using Installer.App.ViewModels;
 using Installer.Core.Licensing;
 using Installer.Core.Logging;
 using Installer.Core.Platform;
 using Installer.Core.Scanning;
 using Installer.Core.Vault;
+using Installer.Core.Versioning;
 
 namespace Installer.App;
 
@@ -40,9 +45,22 @@ public sealed class AppServices
                 LogScan(session, report);
                 return report;
             },
-            report => Main.NavigateTo(new PlaceholderViewModel("Danh sách gói sẽ có ở bước tiếp theo.", report)));
+            report => ShowPackages(session, report));
         Main.NavigateTo(vm);
         _ = vm.ScanCommand.ExecuteAsync(null);
+    }
+
+    private void ShowPackages(VaultSession session, ScanReport report)
+    {
+        var installService = new InstallService(new PortableRepositorySource(session, _log!), new InstallerRunnerFactory());
+        var apps = new InstalledAppsScanner(new RegistryReader());
+        Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
+            rule => apps.Find(rule),
+            (pkg, progress, ct) => installService.InstallAsync(pkg, session.Username, report.Hardware, progress, ct),
+            (pkg, doc, ct) => installService.ExtractDocAsync(pkg, doc, ct),
+            msg => MessageBox.Show(msg, "Xác nhận", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes,
+            path => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }),
+            Main.NavigateTo));
     }
 
     private void LogScan(VaultSession session, ScanReport r)
