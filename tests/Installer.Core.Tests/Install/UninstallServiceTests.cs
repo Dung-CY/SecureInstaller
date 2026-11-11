@@ -182,6 +182,23 @@ public class UninstallServiceTests : IDisposable
     }
 
     [Fact]
+    public void Explicit_msi_without_guid_does_not_fall_through_to_zip()
+    {
+        var (svc, _, _, _) = Make();
+        var pkg = Pkg(InstallerType.Zip, Path.Combine(_tmp, "t"), new UninstallSpec("msi"));
+        Assert.False(svc.CanUninstall(pkg, None));
+    }
+
+    [Fact]
+    public void Malformed_command_cannot_uninstall_and_does_not_throw()
+    {
+        var (svc, _, _, _) = Make();
+        var pkg = Pkg(InstallerType.Exe, un: new UninstallSpec("command", "C:\\a\0b\\un.exe", "/S"));
+        Assert.False(svc.CanUninstall(pkg, None));
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Exe), new List<InstalledApp> { App(false, "C:\\a\0b\\un.exe /S") }));
+    }
+
+    [Fact]
     public async Task Message_uses_NoUninstall()
     {
         var (svc, _, _, _) = Make();

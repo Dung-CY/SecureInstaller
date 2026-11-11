@@ -25,20 +25,28 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
 
     /// <summary>
     /// Picks and validates the first applicable strategy; null when none applies or validation fails.
-    /// Order: an explicit manifest <c>Uninstall.Type</c> (zip, msi, command) wins over strategies derived from
+    /// Order: an explicit manifest <c>Uninstall.Type</c> (zip, msi, command) yields only its own plan or null (never falls through) and wins over strategies derived from
     /// <c>InstallerType</c>; after that: zip (InstallerType), msi (InstallerType), then a machine-wide (HKLM)
     /// QuietUninstallString. HKCU (PerUser) data and marker rows are never used.
     /// </summary>
     private static Plan? Resolve(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
     {
+        try { return ResolveCore(pkg, installed); }
+        catch (Exception) { return null; }
+    }
+
+    private static Plan? ResolveCore(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
+    {
         var type = pkg.Uninstall?.Type;
         bool Is(string t) => string.Equals(type, t, StringComparison.OrdinalIgnoreCase);
 
         if (Is("zip")) return ZipFor(pkg);
-        if (Is("msi") && MsiFor(pkg, installed) is { } m1) return m1;
+        if (Is("msi")) return MsiFor(pkg, installed);
         if (Is("command"))
             return string.IsNullOrWhiteSpace(pkg.Uninstall!.Command) ? null
                 : ValidExe(pkg.Uninstall.Command!, pkg.Uninstall.Args ?? "");
+
+        if (!string.IsNullOrWhiteSpace(type)) return null; // explicit but unknown type: never fall through
 
         if (pkg.InstallerType == InstallerType.Zip) return ZipFor(pkg);
         if (pkg.InstallerType == InstallerType.Msi && MsiFor(pkg, installed) is { } m2) return m2;
@@ -72,11 +80,13 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
 
     private static Plan? ValidExe(string command, string args)
     {
+        if (command.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return null; // before expansion: it truncates at NUL
         var exe = Environment.ExpandEnvironmentVariables(command.Trim());
+        if (exe.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return null;
         if (!Path.IsPathFullyQualified(exe) || exe.StartsWith(@"\\") || exe.StartsWith("//")
             || exe.StartsWith(@"\/") || exe.StartsWith(@"/\")) return null;
         try { SafePath.EnsureNoReparseAncestors(Path.GetFullPath(exe)); }
-        catch (UnsafePathException) { return null; }
+        catch (Exception) { return null; }
         return new CmdPlan(exe, args);
     }
 
