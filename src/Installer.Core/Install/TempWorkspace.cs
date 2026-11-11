@@ -20,7 +20,13 @@ public sealed class TempWorkspace : IDisposable
         SecureDirectory.CreateProtected(baseP, elevated);
         var path = System.IO.Path.Combine(baseP, Guid.NewGuid().ToString("N"));
         SecureDirectory.CreateProtected(path, elevated);
-        return new TempWorkspace(path);
+        var ws = new TempWorkspace(path);
+        if (!SecureDirectory.VerifyChain(path, elevated))
+        {
+            ws.Dispose();
+            throw new Errors.WorkspaceUnsafeException(Strings.WorkspaceUnsafe);
+        }
+        return ws;
     }
 
     public void Dispose()
@@ -113,7 +119,7 @@ public sealed class TempWorkspace : IDisposable
         int count = 0;
         try
         {
-            if (IsReparsePoint(root)) return 0;
+            SecureDirectory.CheckNoReparse(System.IO.Path.GetFullPath(root));
             foreach (var d in Directory.EnumerateDirectories(root, pattern))
             {
                 try

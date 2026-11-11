@@ -45,7 +45,7 @@ public class InstallServiceTests : IDisposable
     sealed class Tracker { public TempWorkspace? Ws; }
 
     static InstallService Svc(IRepositorySource repo, FakeRunner r, Tracker t) =>
-        new(repo, new InstallerRunnerFactory(_ => r), () => t.Ws = TempWorkspace.Create());
+        new(repo, new InstallerRunnerFactory(_ => r), () => t.Ws = TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")));
 
     static string CopyAction(string src, string dst) =>
         "{\"type\":\"copy\",\"src\":" + JsonSerializer.Serialize(src) + ",\"dst\":" + JsonSerializer.Serialize(dst) + "}";

@@ -16,6 +16,96 @@ public class TempWorkspaceTests
     }
 
     [Fact]
+    public void IsTrusted_elevated_rejects_user_owner_or_extra_ace()
+    {
+        var me = WindowsIdentity.GetCurrent().User!;
+        var userOwned = SecureDirectory.BuildSecurity(true);
+        userOwned.SetOwner(me);
+        Assert.False(SecureDirectory.IsTrusted(userOwned, true));
+
+        var extra = SecureDirectory.BuildSecurity(true);
+        extra.AddAccessRule(new FileSystemAccessRule(me, FileSystemRights.Modify, AccessControlType.Allow));
+        Assert.False(SecureDirectory.IsTrusted(extra, true));
+
+        var unprotected = SecureDirectory.BuildSecurity(true);
+        unprotected.SetAccessRuleProtection(false, false);
+        Assert.False(SecureDirectory.IsTrusted(unprotected, true));
+    }
+
+    [Fact]
+    public void IsTrusted_accepts_our_built_security()
+    {
+        Assert.True(SecureDirectory.IsTrusted(SecureDirectory.BuildSecurity(true), true));
+        var nonElevated = SecureDirectory.BuildSecurity(false);
+        nonElevated.SetOwner(WindowsIdentity.GetCurrent().User!);
+        Assert.True(SecureDirectory.IsTrusted(nonElevated, false));
+    }
+
+    [Fact]
+    public void Existing_base_with_foreign_ace_is_reset_non_elevated()
+    {
+        var b = NewBase();
+        try
+        {
+            Directory.CreateDirectory(b);
+            var di = new DirectoryInfo(b);
+            var sec = di.GetAccessControl();
+            var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+            sec.AddAccessRule(new FileSystemAccessRule(everyone, FileSystemRights.FullControl, AccessControlType.Allow));
+            di.SetAccessControl(sec);
+            using var ws = TempWorkspace.Create(b, () => false);
+            var rules = new DirectoryInfo(b).GetAccessControl()
+                .GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>();
+            Assert.DoesNotContain(everyone.Value, rules.Select(r => r.IdentityReference.Value));
+        }
+        finally { Cleanup(b); }
+    }
+
+    [Fact]
+    public void Elevated_untrusted_segment_is_renamed_not_deleted()
+    {
+        var b = NewBase();
+        var seg = System.IO.Path.Combine(b, "seg");
+        try
+        {
+            Directory.CreateDirectory(seg);
+            File.WriteAllText(System.IO.Path.Combine(seg, "marker.txt"), "x");
+            SecureDirectory.SecureSegment(seg, false, _ => false);
+            var renamed = Directory.GetDirectories(b, "seg.untrusted-*");
+            Assert.Single(renamed);
+            Assert.True(File.Exists(System.IO.Path.Combine(renamed[0], "marker.txt")));
+            Assert.True(Directory.Exists(seg));
+            Assert.Empty(Directory.GetFileSystemEntries(seg));
+        }
+        finally { Cleanup(b); }
+    }
+
+    [Fact]
+    public void Sweep_skips_base_with_reparse_ancestor()
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SItest_" + Guid.NewGuid().ToString("N"));
+        var target = System.IO.Path.Combine(root, "target");
+        var link = System.IO.Path.Combine(root, "link");
+        var old = System.IO.Path.Combine(target, "work", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(old);
+        Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-2));
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+            { CreateNoWindow = true, UseShellExecute = false };
+            using (var p = System.Diagnostics.Process.Start(psi)!) p.WaitForExit();
+            Assert.True(Directory.Exists(link), "mklink /J failed");
+            TempWorkspace.SweepStale(TimeSpan.FromDays(1), System.IO.Path.Combine(link, "work"));
+            Assert.True(Directory.Exists(old));
+        }
+        finally
+        {
+            try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { }
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Workspace_is_created_under_given_base()
     {
         var b = NewBase();

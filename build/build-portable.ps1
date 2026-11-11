@@ -66,10 +66,6 @@ function Publish-Project([string]$proj, [string]$dest) {
 Publish-Project 'src\Installer.App' $appDir
 Publish-Project 'src\Installer.Packager' $toolsDir
 
-$sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
-Write-Host ('Dung lượng: {0:N0} MB' -f $sizeMb)
-if ($sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
-
 $packager = Join-Path $toolsDir 'SecureInstaller.Packager.exe'
 if (-not (Test-Path -LiteralPath $packager)) { throw "Không thấy $packager sau khi publish." }
 
@@ -110,6 +106,10 @@ try {
     }
 }
 finally { $plain = $null }
+
+$sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
+Write-Host ('Dung lượng: {0:N0} MB' -f $sizeMb)
+if ($sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
 
 Write-Host ''
 Write-Host "Hoàn tất. Thư mục portable: $appDir"
