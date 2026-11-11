@@ -17,7 +17,7 @@ public sealed class InstallService
 
     public InstallService(IRepositorySource repo, InstallerRunnerFactory runners, Func<TempWorkspace>? workspaceFactory = null)
     {
-        _repo = repo; _runners = runners; _workspaceFactory = workspaceFactory ?? TempWorkspace.Create;
+        _repo = repo; _runners = runners; _workspaceFactory = workspaceFactory ?? (() => TempWorkspace.Create());
     }
 
     private static string DocsBase => Path.Combine(Path.GetTempPath(), "SI_docs");

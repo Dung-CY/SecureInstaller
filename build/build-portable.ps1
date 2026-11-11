@@ -59,12 +59,16 @@ if ($InitVault) {
 
 function Publish-Project([string]$proj, [string]$dest) {
     & $dotnet publish (Join-Path $repo $proj) -c $Configuration -r win-x64 --self-contained `
-        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o $dest
+        -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o $dest
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish thất bại cho $proj (mã $LASTEXITCODE)" }
 }
 
 Publish-Project 'src\Installer.App' $appDir
 Publish-Project 'src\Installer.Packager' $toolsDir
+
+$sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
+Write-Host ('Dung lượng: {0:N0} MB' -f $sizeMb)
+if ($sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
 
 $packager = Join-Path $toolsDir 'SecureInstaller.Packager.exe'
 if (-not (Test-Path -LiteralPath $packager)) { throw "Không thấy $packager sau khi publish." }

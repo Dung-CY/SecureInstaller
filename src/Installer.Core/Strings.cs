@@ -2,6 +2,7 @@ namespace Installer.Core;
 
 public static class Strings
 {
+    public const string WorkspaceUnsafe = "Không tạo được thư mục làm việc an toàn.";
     public const string VaultTampered = "Kho bị sửa đổi, không thể sử dụng.";
     public const string BadCredentials = "Sai tên đăng nhập hoặc mật khẩu.";
     public const string AccountLocked = "Tài khoản bị khóa đến {0:HH:mm}.";
