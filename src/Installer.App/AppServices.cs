@@ -97,6 +97,7 @@ public sealed class AppServices
     {
         _repo?.WriteLog(new LogEntry(DateTimeOffset.Now, session.Username, r.Hardware.Hostname, r.Hardware.BiosSerial,
             "scan", null, null, "ok", null,
-            $"Windows: {DisplayText.Of(r.Windows.Verdict)}; Office: {DisplayText.Of(r.Office.Verdict)}; File từ khóa: {r.Keywords.MatchedFiles.Count}"));
+            $"Windows: {DisplayText.Of(r.Windows.Verdict)}; Office: {DisplayText.Of(r.Office.Verdict)}; File từ khóa: {r.Keywords.MatchedFiles.Count}",
+            System.Text.Json.JsonSerializer.Serialize(r, Installer.Core.Model.Json.Options)));
     }
 }
