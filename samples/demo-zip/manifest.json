@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "installer_type": "zip",
   "installer_file": "app.zip",
-  "target_dir": "%ProgramData%\\SecureInstaller\\demo",
+  "target_dir": "%ProgramData%\\SecureInstallerDemo",
   "docs": ["HuongDan.txt"],
   "post_actions": [
-    { "type": "copy", "src": "extras/config.ini", "dst": "%ProgramData%\\SecureInstaller\\demo\\config.ini" }
+    { "type": "copy", "src": "extras/config.ini", "dst": "%ProgramData%\\SecureInstallerDemo\\config.ini" }
   ],
   "rules": [],
   "detect": { "display_name_regex": "^SecureInstaller Demo$" }

@@ -50,6 +50,21 @@ public class EncryptedLogTests : IClassFixture<LogVaultFixture>
     }
 
     [Fact]
+    public void Fallback_log_dir_created_protected()
+    {
+        var root = NewDir("root");
+        var fb = Path.Combine(Path.GetTempPath(), "SI_fb_" + Guid.NewGuid().ToString("N"), "logs");
+        try
+        {
+            var log = new EncryptedLog(root, _f.VaultId, _f.Vk, true, fb);
+            log.Append(E(1));
+            Assert.Single(EncryptedLog.ReadAll(fb, _f.VaultId, _f.Vk));
+            Assert.True(new DirectoryInfo(fb).GetAccessControl().AreAccessRulesProtected);
+        }
+        finally { try { Directory.Delete(Path.GetDirectoryName(fb)!, true); } catch { } }
+    }
+
+    [Fact]
     public void Readonly_vault_writes_to_fallback()
     {
         var root = NewDir("root"); var fb = NewDir("fb");

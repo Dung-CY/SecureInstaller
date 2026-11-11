@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using Installer.Core.Errors;
@@ -110,24 +111,57 @@ public static class SecureDirectory
     {
         CheckNoReparse(segmentPath);
         var di = new DirectoryInfo(segmentPath);
-        if (di.Exists && !trust(di.GetAccessControl()))
+        bool exists = di.Exists;
+        if (exists && !trust(di.GetAccessControl()))
         {
             // Quarantine by rename, never delete: a delete could follow attacker-planted links.
             try { Directory.Move(segmentPath, segmentPath + ".untrusted-" + Guid.NewGuid().ToString("N").Substring(0, 8)); }
             catch { throw new WorkspaceUnsafeException(Strings.WorkspaceUnsafe); }
             di = new DirectoryInfo(segmentPath);
+            exists = false;
         }
-        if (!di.Exists) di.Create(BuildSecurity(elevated));
-        CheckNoReparse(segmentPath);
-        // Always (re)apply the DACL; the owner is set separately because it needs elevation.
-        di.SetAccessControl(BuildSecurity(elevated));
         if (elevated)
         {
-            var owner = new DirectorySecurity();
-            owner.SetOwner(Admins);
-            try { di.SetAccessControl(owner); }
-            catch { throw new WorkspaceUnsafeException(Strings.WorkspaceUnsafe); }
+            // Fail closed: a trusted existing folder is left untouched; a missing one is created exclusively
+            // with our descriptor applied at creation, so there is no window where it is weakly protected.
+            if (!exists) CreateExclusive(segmentPath, BuildSecurity(true));
         }
+        else
+        {
+            if (!exists) di.Create(BuildSecurity(false));
+            CheckNoReparse(segmentPath);
+            di.SetAccessControl(BuildSecurity(false));
+        }
+        CheckNoReparse(segmentPath);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SECURITY_ATTRIBUTES
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        public int bInheritHandle;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateDirectoryW(string lpPathName, ref SECURITY_ATTRIBUTES lpSecurityAttributes);
+
+    /// <summary>Creates a directory that must not already exist, applying the descriptor at creation.</summary>
+    internal static void CreateExclusive(string path, DirectorySecurity security)
+    {
+        var sd = security.GetSecurityDescriptorBinaryForm();
+        var handle = GCHandle.Alloc(sd, GCHandleType.Pinned);
+        try
+        {
+            var sa = new SECURITY_ATTRIBUTES
+            {
+                nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>(),
+                lpSecurityDescriptor = handle.AddrOfPinnedObject(),
+                bInheritHandle = 0,
+            };
+            if (!CreateDirectoryW(path, ref sa)) throw new WorkspaceUnsafeException(Strings.WorkspaceUnsafe);
+        }
+        finally { handle.Free(); }
     }
 
     internal static void CheckNoReparse(string full)

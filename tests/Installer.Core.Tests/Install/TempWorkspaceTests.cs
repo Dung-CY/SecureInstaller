@@ -168,33 +168,6 @@ public class TempWorkspaceTests
     }
 
     [Fact]
-    public void SweepStale_cleans_new_base_and_legacy_temp()
-    {
-        var b = NewBase();
-        var legacy = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SI_" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            using var keep = TempWorkspace.Create(b);
-            var old = System.IO.Path.Combine(b, Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(old);
-            var other = System.IO.Path.Combine(b, "notaworkspace");
-            Directory.CreateDirectory(other);
-            Directory.CreateDirectory(legacy);
-            var past = DateTime.UtcNow.AddDays(-2);
-            Directory.SetLastWriteTimeUtc(old, past);
-            Directory.SetLastWriteTimeUtc(legacy, past);
-            Directory.SetLastWriteTimeUtc(other, past);
-            int n = TempWorkspace.SweepStale(TimeSpan.FromDays(1), b);
-            Assert.True(n >= 2);
-            Assert.False(Directory.Exists(old));
-            Assert.False(Directory.Exists(legacy));
-            Assert.True(Directory.Exists(other));
-            Assert.True(Directory.Exists(keep.Path));
-        }
-        finally { Cleanup(b); try { Directory.Delete(legacy, true); } catch { } }
-    }
-
-    [Fact]
     public void Workspace_deleted_on_dispose_even_after_exception()
     {
         string path = "";
@@ -256,72 +229,74 @@ public class TempWorkspaceTests
         }
     }
 
-    [Fact]
-    public void SweepStale_removes_old_workspaces_only()
-    {
-        var tmp = System.IO.Path.GetTempPath();
-        var oldDir = System.IO.Path.Combine(tmp, "SI_" + Guid.NewGuid().ToString("N"));
-        var newDir = System.IO.Path.Combine(tmp, "SI_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(oldDir); Directory.CreateDirectory(newDir);
-        try
-        {
-            Directory.SetLastWriteTimeUtc(oldDir, DateTime.UtcNow.AddDays(-2));
-            int n = TempWorkspace.SweepStale(TimeSpan.FromDays(1));
-            Assert.True(n >= 1);
-            Assert.False(Directory.Exists(oldDir));
-            Assert.True(Directory.Exists(newDir));
-        }
-        finally { try { Directory.Delete(newDir, true); } catch { } try { Directory.Delete(oldDir, true); } catch { } }
-    }
 
     [Fact]
-    public void SweepStale_ignores_non_workspace_names()
+    public void SweepStale_cleans_old_children_of_verified_base_only()
     {
-        var other = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SI_other");
-        Directory.CreateDirectory(other);
+        var b = NewBase();
         try
         {
-            Directory.SetLastWriteTimeUtc(other, DateTime.UtcNow.AddDays(-2));
-            TempWorkspace.SweepStale(TimeSpan.FromDays(1));
+            using var keep = TempWorkspace.Create(b);
+            var old = System.IO.Path.Combine(b, Guid.NewGuid().ToString("N"));
+            var other = System.IO.Path.Combine(b, "notaworkspace");
+            Directory.CreateDirectory(old);
+            Directory.CreateDirectory(other);
+            var past = DateTime.UtcNow.AddDays(-2);
+            Directory.SetLastWriteTimeUtc(old, past);
+            Directory.SetLastWriteTimeUtc(other, past);
+            Assert.Equal(1, TempWorkspace.SweepStale(TimeSpan.FromDays(1), b, isElevated: () => false));
+            Assert.False(Directory.Exists(old));
             Assert.True(Directory.Exists(other));
+            Assert.True(Directory.Exists(keep.Path));
         }
-        finally { try { Directory.Delete(other, true); } catch { } }
+        finally { Cleanup(b); }
     }
 
     [Fact]
-    public void SweepStale_does_not_follow_junction_root()
+    public void Sweep_skips_unverified_base()
     {
-        var tmp = System.IO.Path.GetTempPath();
-        var target = System.IO.Path.Combine(tmp, "SItarget_" + Guid.NewGuid().ToString("N"));
-        var junction = System.IO.Path.Combine(tmp, "SI_test_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(target);
-        var file = System.IO.Path.Combine(target, "keep.txt");
-        File.WriteAllText(file, "x");
-        File.SetAttributes(file, FileAttributes.ReadOnly);
+        var b = NewBase();
         try
         {
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{junction}\" \"{target}\"")
-                { CreateNoWindow = true, UseShellExecute = false };
-                using var p = System.Diagnostics.Process.Start(psi)!;
-                p.WaitForExit();
-            }
-            catch { }
-            if (!Directory.Exists(junction))
-            {
-                try { Directory.CreateSymbolicLink(junction, target); } catch { }
-            }
-            if (!Directory.Exists(junction)) return; // cannot create links here
-            Directory.SetLastWriteTimeUtc(junction, DateTime.UtcNow.AddDays(-2));
-            TempWorkspace.SweepStale(TimeSpan.FromDays(1));
-            Assert.True(File.Exists(file));
-            Assert.True((File.GetAttributes(file) & FileAttributes.ReadOnly) != 0);
+            using var keep = TempWorkspace.Create(b);
+            var old = System.IO.Path.Combine(b, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(old);
+            Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-2));
+            Assert.Equal(0, TempWorkspace.SweepStale(TimeSpan.FromDays(1), b, _ => false));
+            Assert.True(Directory.Exists(old));
         }
-        finally
-        {
-            try { if (Directory.Exists(junction)) Directory.Delete(junction, false); } catch { }
-            try { File.SetAttributes(file, FileAttributes.Normal); Directory.Delete(target, true); } catch { }
-        }
+        finally { Cleanup(b); }
     }
+
+    [Fact]
+    public void Exclusive_create_fails_when_folder_appears_first()
+    {
+        var b = NewBase();
+        try
+        {
+            Directory.CreateDirectory(b);
+            Assert.Throws<WorkspaceUnsafeException>(() => SecureDirectory.CreateExclusive(b, SecureDirectory.BuildSecurity(false)));
+        }
+        finally { Cleanup(b); }
+    }
+
+    [Fact]
+    public void CreateExclusive_applies_descriptor_at_creation()
+    {
+        var b = NewBase();
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(b)!);
+            SecureDirectory.CreateExclusive(b, SecureDirectory.BuildSecurity(false));
+            var sec = new DirectoryInfo(b).GetAccessControl();
+            Assert.True(sec.AreAccessRulesProtected);
+            var got = sec.GetAccessRules(true, false, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+                .Select(r => r.IdentityReference.Value).ToHashSet();
+            var want = SecureDirectory.BuildSecurity(false).GetAccessRules(true, false, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>().Select(r => r.IdentityReference.Value).ToHashSet();
+            Assert.True(want.SetEquals(got));
+        }
+        finally { Cleanup(b); }
+    }
+
 }

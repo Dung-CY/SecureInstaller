@@ -28,7 +28,7 @@ Chuẩn bị: chạy `build\build-portable.ps1 -Out <thư mục> -InitVault -Wit
 
 7. **Bước sau cài chép file**
    - [ ] Làm: cài gói `demo-notepad` (đăng nhập `nguoidung` hoặc admin).
-   - Kết quả mong đợi: `%ProgramData%\SecureInstaller\demo\readme.txt` chứa "SecureInstaller demo" và `config.ini` được chép đến cùng thư mục. Gói demo trước khi cài hiện "Chưa cài".
+   - Kết quả mong đợi: `%ProgramData%\SecureInstallerDemo\readme.txt` chứa "SecureInstaller demo" và `config.ini` được chép đến cùng thư mục. Gói demo trước khi cài hiện "Chưa cài".
 
 8. **Lab KMS loopback**
    - [ ] Làm: trên máy ảo, **chỉ** chạy `slmgr /skms 127.0.0.2` (không dùng bất kỳ tool crack nào), chạy lại quét.
@@ -74,4 +74,4 @@ Chuẩn bị: chạy `build\build-portable.ps1 -Out <thư mục> -InitVault -Wit
     - [ ] Làm: quét trên máy LTSC/kích hoạt bằng KMS (GVLK) không join domain.
     - Kết quả mong đợi: báo "Nghi vấn" (hành vi dự kiến trên máy lab); không báo "Có dấu hiệu crack" nếu không có thêm bằng chứng.
 
-Dọn dẹp sau khi thử: xóa `%ProgramData%\SecureInstaller\demo`, và xóa tài khoản thử trước khi phát hành: `tools\SecureInstaller.Packager.exe remove-user . nguoidung --user admin`.
+Dọn dẹp sau khi thử: xóa `%ProgramData%\SecureInstallerDemo`, và xóa tài khoản thử trước khi phát hành: `tools\SecureInstaller.Packager.exe remove-user . nguoidung --user admin`.

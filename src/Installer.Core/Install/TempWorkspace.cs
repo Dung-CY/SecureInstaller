@@ -21,11 +21,9 @@ public sealed class TempWorkspace : IDisposable
         var path = System.IO.Path.Combine(baseP, Guid.NewGuid().ToString("N"));
         SecureDirectory.CreateProtected(path, elevated);
         var ws = new TempWorkspace(path);
+        // Fail closed: report the problem but never delete anything on a verification failure.
         if (!SecureDirectory.VerifyChain(path, elevated))
-        {
-            ws.Dispose();
             throw new Errors.WorkspaceUnsafeException(Strings.WorkspaceUnsafe);
-        }
         return ws;
     }
 
@@ -101,30 +99,33 @@ public sealed class TempWorkspace : IDisposable
         catch { }
     }
 
-    private const System.Text.RegularExpressions.RegexOptions Opts =
-        System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant;
-    private static readonly System.Text.RegularExpressions.Regex LegacyName = new("^SI_[0-9a-f]{32}$", Opts);
-    private static readonly System.Text.RegularExpressions.Regex NewName = new("^[0-9a-f]{32}$", Opts);
+    private static readonly System.Text.RegularExpressions.Regex NewName =
+        new("^[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    /// <summary>Removes stale workspaces (new base and legacy %TEMP%\SI_*) older than the given age. Never throws.</summary>
-    public static int SweepStale(TimeSpan olderThan, string? baseDir = null)
+    /// <summary>Removes stale workspaces in the base older than the given age, only if the base chain verifies. Never throws.</summary>
+    public static int SweepStale(TimeSpan olderThan, string? baseDir = null, Func<string, bool>? verify = null, Func<bool>? isElevated = null)
     {
-        var cutoff = DateTime.UtcNow - olderThan;
-        return Sweep(baseDir ?? DefaultBase, "*", n => NewName.IsMatch(n), cutoff)
-             + Sweep(System.IO.Path.GetTempPath(), "SI_*", n => n == "SI_docs" || LegacyName.IsMatch(n), cutoff);
+        try
+        {
+            var root = baseDir ?? DefaultBase;
+            bool elevated = (isElevated ?? SecureDirectory.IsElevated)();
+            if (!(verify ?? (p => SecureDirectory.VerifyChain(p, elevated)))(root)) return 0;
+            return Sweep(root, DateTime.UtcNow - olderThan);
+        }
+        catch { return 0; }
     }
 
-    private static int Sweep(string root, string pattern, Func<string, bool> match, DateTime cutoff)
+    private static int Sweep(string root, DateTime cutoff)
     {
         int count = 0;
         try
         {
-            SecureDirectory.CheckNoReparse(System.IO.Path.GetFullPath(root));
-            foreach (var d in Directory.EnumerateDirectories(root, pattern))
+            foreach (var d in Directory.EnumerateDirectories(root))
             {
                 try
                 {
-                    if (!match(System.IO.Path.GetFileName(d))) continue;
+                    if (!NewName.IsMatch(System.IO.Path.GetFileName(d))) continue;
+                    if (IsReparsePoint(d)) continue;
                     if (Directory.GetLastWriteTimeUtc(d) < cutoff && TryDelete(d, false)) count++;
                 }
                 catch { }

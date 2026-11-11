@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Installer.Core.Crypto;
 using Installer.Core.Model;
+using Installer.Core.Platform;
 
 namespace Installer.Core.Logging;
 
@@ -62,9 +63,11 @@ public sealed class EncryptedLog
         }
     }
 
-    private static void WriteTo(string dir, string name, byte[] bytes)
+    private void WriteTo(string dir, string name, byte[] bytes)
     {
-        Directory.CreateDirectory(dir);
+        if (string.Equals(dir, _fallback, StringComparison.OrdinalIgnoreCase))
+            SecureDirectory.CreateProtected(dir, SecureDirectory.IsElevated());
+        else Directory.CreateDirectory(dir);
         AppendBytes(Path.Combine(dir, name), bytes);
     }
 
