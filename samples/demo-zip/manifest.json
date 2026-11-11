@@ -1,0 +1,14 @@
+{
+  "id": "demo-notepad",
+  "name": "Gói thử nghiệm",
+  "version": "1.0.0",
+  "installer_type": "zip",
+  "installer_file": "app.zip",
+  "target_dir": "%ProgramData%\\SecureInstaller\\demo",
+  "docs": ["HuongDan.txt"],
+  "post_actions": [
+    { "type": "copy", "src": "extras/config.ini", "dst": "%ProgramData%\\SecureInstaller\\demo\\config.ini" }
+  ],
+  "rules": [],
+  "detect": { "display_name_regex": "^SecureInstaller Demo$" }
+}

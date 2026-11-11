@@ -13,8 +13,13 @@ publish/
 *.pfx
 admin-signing*
 vault/
+!src/**/Vault/
+!tests/**/Vault/
 logs/
 
 ## OS
 Thumbs.db
 Desktop.ini
+
+## Samples (installer binaries are never committed)
+samples/**/installer/

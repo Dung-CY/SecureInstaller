@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. **As of 2026-11-10 no code exists yet**; the repo holds only the spec and Plan 1. Update this file once Task 1 (solution scaffold) lands.
+SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. Plan 1 is in progress on branch `feat/portable`; progress ledger lives in `.superpowers/sdd/2026-11-10-secureinstaller-portable/progress.md` (git-ignored).
 
 - Spec (source of truth, Vietnamese): `docs/spec.md`
 - Plan 1 — Core + Portable mode, 20 tasks: `docs/superpowers/plans/2026-11-10-secureinstaller-portable.md`
@@ -15,7 +15,7 @@ The user communicates in Vietnamese; reply in Vietnamese. All UI strings are Vie
 ## Environment
 
 - Windows 11 LTSC (no winget). .NET SDK 8.0.428 is installed per-user at `%LOCALAPPDATA%\Microsoft\dotnet` and added to the user PATH; a shell started before the install may not see `dotnet` — call it by full path if needed.
-- The repo path contains Vietnamese characters and spaces (`D:\Claude Code\Dự án 1`). Quote paths everywhere; several tests deliberately use such paths.
+- The repo lives at `D:\Claude Code\SecureInstaller` (parent folder has a space). Quote paths everywhere; several tests deliberately use Vietnamese/space paths such as `Dự án 1` because end users' paths may contain them.
 
 ## Commands (as defined by Plan 1)
 

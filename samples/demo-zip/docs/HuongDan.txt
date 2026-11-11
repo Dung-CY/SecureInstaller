@@ -1,0 +1,4 @@
+Đây là gói thử nghiệm của SecureInstaller.
+Gói chỉ giải nén một tệp readme.txt vào %ProgramData%\SecureInstaller\demo
+và chép thêm config.ini. Không có phần mềm thật nào được cài.
+Có thể xóa thư mục đó sau khi thử xong.

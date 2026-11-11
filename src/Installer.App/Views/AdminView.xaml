@@ -1,0 +1,144 @@
+<UserControl x:Class="Installer.App.Views.AdminView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <Grid>
+                <StackPanel>
+                    <TextBlock Text="Quản trị kho" Style="{StaticResource Title}"/>
+                    <TextBlock Text="{Binding VaultFingerprint}" Style="{StaticResource Muted}" FontFamily="Consolas"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+                <Button Content="Quay lại" Command="{Binding BackCommand}" HorizontalAlignment="Right"
+                        VerticalAlignment="Top" Padding="14,5" FontSize="13"/>
+            </Grid>
+            <Border Background="{StaticResource DangerBgBrush}" Padding="10,6" Margin="0,8,0,0"
+                    Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding ReadOnlyBanner}" Style="{StaticResource ErrorText}"/>
+            </Border>
+            <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource Muted}" Margin="0,8,0,0"
+                       Visibility="{Binding BusyMessage, Converter={StaticResource NullToCollapsed}}"/>
+            <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,8,0,0"
+                       Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
+            <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" Margin="0,8,0,0"
+                       Visibility="{Binding Status, Converter={StaticResource NullToCollapsed}}"/>
+        </StackPanel>
+
+        <TabControl Grid.Row="1">
+            <TabItem Header="Gói">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <DataGrid Grid.Row="0" ItemsSource="{Binding Packages}" SelectedItem="{Binding SelectedPackage}"
+                              AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tên" Binding="{Binding Name}" Width="1.5*"/>
+                            <DataGridTextColumn Header="Phiên bản" Binding="{Binding Version}" Width="100"/>
+                            <DataGridTextColumn Header="Mã gói" Binding="{Binding Id}" Width="1*"/>
+                            <DataGridTextColumn Header="Loại" Binding="{Binding InstallerType}" Width="80"/>
+                            <DataGridTextColumn Header="Tài liệu" Binding="{Binding DocCount}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Thêm gói..." Command="{Binding AddPackageCommand}" Margin="0,0,8,0"/>
+                        <Button Content="Cập nhật gói..." Command="{Binding UpdatePackageCommand}" Margin="0,0,8,0"/>
+                        <CheckBox Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" VerticalAlignment="Center"
+                                  Margin="0,0,16,0"/>
+                        <Button Content="Xóa gói" Command="{Binding RemovePackageCommand}"
+                                Background="{StaticResource DangerBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Người dùng">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="320"/>
+                    </Grid.ColumnDefinitions>
+                    <DataGrid Grid.Column="0" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser}"
+                              AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,16,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tên đăng nhập" Binding="{Binding Username}" Width="1.5*"/>
+                            <DataGridTextColumn Header="Vai trò" Binding="{Binding RoleText}" Width="1*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Tên đăng nhập" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding NewUsername, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+                        <TextBlock Text="Mật khẩu" Margin="0,0,0,4"/>
+                        <PasswordBox x:Name="PwBox" PasswordChanged="PwBox_PasswordChanged" Margin="0,0,0,12"/>
+                        <TextBlock Text="Vai trò" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding Roles}" SelectedValue="{Binding NewRole}" SelectedValuePath="Role"
+                                  DisplayMemberPath="Label" Margin="0,0,0,12"/>
+                        <Button Content="Thêm người dùng" Command="{Binding AddUserCommand}" Margin="0,0,0,8"/>
+                        <Button Content="Đặt lại mật khẩu (người đang chọn)" Command="{Binding ResetPasswordCommand}"
+                                Margin="0,0,0,8"/>
+                        <Button Content="Xóa người dùng" Command="{Binding RemoveUserCommand}"
+                                Background="{StaticResource DangerBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Cấu hình quét">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Từ khóa (mỗi dòng một từ)" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding KeywordsText}" AcceptsReturn="True" Height="90"
+                                 VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
+                        <TextBlock Text="Đường dẫn quét (mỗi dòng một đường dẫn)" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding PathsText}" AcceptsReturn="True" Height="90"
+                                 VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
+                        <TextBlock Text="Số giây tối đa (1 - 3600)" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding MaxSecondsText}" Width="120" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+                        <TextBlock Text="Dấu hiệu crack (mỗi dòng: loại|biểu thức; loại: kms_host, service, file, hosts_block)"
+                                   Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding SignaturesText}" AcceptsReturn="True" Height="140"
+                                 FontFamily="Consolas" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
+                        <Button Content="Lưu cấu hình" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Log">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Từ ngày" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding FromDate}" Margin="0,0,16,0"/>
+                        <TextBlock Text="Đến ngày" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding ToDate}" Margin="0,0,16,0"/>
+                        <TextBlock Text="Người dùng" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding UserFilter, UpdateSourceTrigger=PropertyChanged}" Width="120" Margin="0,0,16,0"/>
+                        <TextBlock Text="Máy" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding MachineFilter, UpdateSourceTrigger=PropertyChanged}" Width="120" Margin="0,0,16,0"/>
+                        <Button Content="Tải lại" Command="{Binding LoadLogsCommand}" Margin="0,0,8,0"/>
+                        <Button Content="Xuất CSV..." Command="{Binding ExportCsvCommand}"/>
+                    </WrapPanel>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredLogs}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Thời gian" Binding="{Binding Ts, StringFormat=dd/MM/yyyy HH:mm:ss}" Width="150"/>
+                            <DataGridTextColumn Header="Người dùng" Binding="{Binding Username}" Width="110"/>
+                            <DataGridTextColumn Header="Máy" Binding="{Binding Hostname}" Width="110"/>
+                            <DataGridTextColumn Header="Hành động" Binding="{Binding Action}" Width="90"/>
+                            <DataGridTextColumn Header="Gói" Binding="{Binding PackageId}" Width="100"/>
+                            <DataGridTextColumn Header="Phiên bản" Binding="{Binding PackageVersion}" Width="80"/>
+                            <DataGridTextColumn Header="Kết quả" Binding="{Binding Status}" Width="80"/>
+                            <DataGridTextColumn Header="Chi tiết" Binding="{Binding Detail}" Width="1*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>
