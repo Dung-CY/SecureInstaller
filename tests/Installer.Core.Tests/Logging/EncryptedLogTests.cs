@@ -106,6 +106,54 @@ public class EncryptedLogTests : IClassFixture<LogVaultFixture>
     }
 
     [Fact]
+    public void Torn_last_line_does_not_swallow_next_record()
+    {
+        var root = NewDir("root"); var fb = NewDir("fb");
+        var log = new EncryptedLog(root, _f.VaultId, _f.Vk, false, fb);
+        log.Append(E(1));
+        File.AppendAllText(Directory.GetFiles(log.ActiveDir).Single(), "abc");
+        log.Append(E(2));
+        Assert.Equal(new[] { "d1", "d2" }, EncryptedLog.ReadAll(log.ActiveDir, _f.VaultId, _f.Vk).Select(x => x.Detail));
+    }
+
+    [Fact]
+    public void Sync_onto_torn_target_keeps_all_records()
+    {
+        var root = NewDir("root"); var fb = NewDir("fb");
+        new EncryptedLog(root, _f.VaultId, _f.Vk, true, fb).Append(E(2));
+        var rw = new EncryptedLog(root, _f.VaultId, _f.Vk, false, fb);
+        rw.Append(E(1));
+        File.AppendAllText(Directory.GetFiles(Path.Combine(root, "logs")).Single(), "abc");
+        Assert.Equal(1, rw.SyncFallbackIntoVault());
+        Assert.Equal(2, EncryptedLog.ReadAll(Path.Combine(root, "logs"), _f.VaultId, _f.Vk).Count());
+    }
+
+    [Fact]
+    public void Parallel_appends_are_all_readable()
+    {
+        var root = NewDir("root"); var fb = NewDir("fb");
+        var log = new EncryptedLog(root, _f.VaultId, _f.Vk, false, fb);
+        Parallel.For(0, 50, i => log.Append(E(i)));
+        Assert.Equal(50, EncryptedLog.ReadAll(log.ActiveDir, _f.VaultId, _f.Vk).Count());
+    }
+
+    [Fact]
+    public void Fallback_switch_is_permanent()
+    {
+        var root = NewDir("root"); var fb = NewDir("fb");
+        Directory.CreateDirectory(root);
+        var block = Path.Combine(root, "logs");
+        File.WriteAllText(block, "block");
+        var log = new EncryptedLog(root, _f.VaultId, _f.Vk, false, fb);
+        log.Append(E(1));
+        File.Delete(block); // vault becomes writable again, switch must stay
+        log.Append(E(2));
+        Assert.Equal(fb, log.ActiveDir);
+        Assert.Equal(2, EncryptedLog.ReadAll(fb, _f.VaultId, _f.Vk).Count());
+        Assert.False(Directory.Exists(block));
+    }
+
+    [Fact]
     public void Csv_has_bom_header_and_escapes_commas_and_vietnamese()
     {
         var path = Path.Combine(_f.Tmp, "out.csv");

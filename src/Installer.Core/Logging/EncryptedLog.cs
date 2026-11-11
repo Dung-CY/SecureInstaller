@@ -65,8 +65,27 @@ public sealed class EncryptedLog
     private static void WriteTo(string dir, string name, byte[] bytes)
     {
         Directory.CreateDirectory(dir);
-        using var fs = new FileStream(Path.Combine(dir, name), FileMode.Append, FileAccess.Write, FileShare.Read);
-        fs.Write(bytes, 0, bytes.Length);
+        AppendBytes(Path.Combine(dir, name), bytes);
+    }
+
+    // Appends bytes, isolating any torn last line (no trailing '\n') left by an unplug.
+    private static void AppendBytes(string path, byte[] bytes)
+    {
+        using var fs = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+        var buf = bytes;
+        if (fs.Length > 0)
+        {
+            fs.Seek(-1, SeekOrigin.End);
+            var last = fs.ReadByte();
+            if (last != '\n')
+            {
+                buf = new byte[bytes.Length + 1];
+                buf[0] = (byte)'\n';
+                Buffer.BlockCopy(bytes, 0, buf, 1, bytes.Length);
+            }
+        }
+        fs.Seek(0, SeekOrigin.End);
+        fs.Write(buf, 0, buf.Length);
         fs.Flush(true);
     }
 
@@ -82,19 +101,20 @@ public sealed class EncryptedLog
             {
                 try
                 {
-                    var target = Path.Combine(dest, Path.GetFileName(src));
-                    if (File.Exists(target))
+                    lock (_lock)
                     {
-                        var data = File.ReadAllBytes(src);
-                        using (var fs = new FileStream(target, FileMode.Append, FileAccess.Write, FileShare.Read))
+                        var target = Path.Combine(dest, Path.GetFileName(src));
+                        if (File.Exists(target))
                         {
-                            fs.Write(data, 0, data.Length);
-                            fs.Flush(true);
+                            var data = File.ReadAllBytes(src);
+                            if (data.Length > 0 && data[^1] != (byte)'\n')
+                                data = data.Concat(new[] { (byte)'\n' }).ToArray();
+                            AppendBytes(target, data);
+                            File.Delete(src);
                         }
-                        File.Delete(src);
+                        else File.Move(src, target);
+                        n++;
                     }
-                    else File.Move(src, target);
-                    n++;
                 }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Log sync failed: " + ex.Message); }
             }
@@ -115,7 +135,12 @@ public sealed class EncryptedLog
         foreach (var f in files)
         {
             string[] lines;
-            try { lines = File.ReadAllLines(f, Encoding.UTF8); }
+            try
+            {
+                using var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var sr = new StreamReader(fs, Encoding.UTF8);
+                lines = sr.ReadToEnd().Split('\n');
+            }
             catch { continue; }
             foreach (var l in lines)
             {
