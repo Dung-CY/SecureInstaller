@@ -1,4 +1,5 @@
 using System.Text;
+using Installer.Core.Logging;
 using Installer.Core.Model;
 using Installer.Core.Vault;
 
@@ -129,9 +130,15 @@ public static class Program
             }
             case "export-logs":
                 Need(2);
-                User();
-                Console.Error.WriteLine("export-logs: chưa hỗ trợ");
-                return 2;
+                var ses = OpenSession(p, pos[0]);
+                if (!ses.IsAdmin || ses.SigningPrivateKey is null)
+                    throw new NotAdminException("Chỉ quản trị viên mới được thực hiện thao tác này");
+                var id = ses.Store.Meta.VaultId;
+                var merged = EncryptedLog.ReadAll(Path.Combine(pos[0], "logs"), id, ses.VaultKey)
+                    .Concat(EncryptedLog.ReadAll(EncryptedLog.DefaultFallbackDir(), id, ses.VaultKey)).ToList();
+                CsvExporter.Export(merged, pos[1]);
+                Console.WriteLine($"Đã xuất {merged.Count} dòng ra {pos[1]}");
+                return 0;
             default:
                 throw new UsageException($"Lệnh không hợp lệ: {p.Command}");
         }
@@ -140,13 +147,14 @@ public static class Program
     private static string? Opt(ParsedArgs p, string name) =>
         p.Options.TryGetValue(name, out var v) ? v : null;
 
-    private static VaultAdmin OpenAdmin(ParsedArgs p, string root)
+    private static VaultAdmin OpenAdmin(ParsedArgs p, string root) => new VaultAdmin(OpenSession(p, root));
+
+    private static VaultSession OpenSession(ParsedArgs p, string root)
     {
         var user = Opt(p, "user") ?? throw new UsageException("Thiếu --user.");
         var pw = Opt(p, "password") ?? PromptPassword("Mật khẩu: ", confirm: false);
         var store = VaultStore.Open(root);
-        var session = store.Unlock(user, pw, DateTimeOffset.UtcNow);
-        return new VaultAdmin(session);
+        return store.Unlock(user, pw, DateTimeOffset.UtcNow);
     }
 
     private static string PromptPassword(string prompt, bool confirm)
