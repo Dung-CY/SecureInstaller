@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="TestData\fake-setup.cmd" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/Installer.Core/Installer.Core.csproj" />
     <ProjectReference Include="../../src/Installer.Packager/Installer.Packager.csproj" />
   </ItemGroup>
