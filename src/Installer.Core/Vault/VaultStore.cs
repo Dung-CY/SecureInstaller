@@ -41,6 +41,13 @@ public sealed class VaultStore
         }
     }
 
+    /// <summary>Short human-comparable fingerprint of the signing public key (SHA-256 of SPKI, first 8 bytes, 4-4-4-4).</summary>
+    public static string Fingerprint(string signingPublicKeyB64)
+    {
+        var hex = Convert.ToHexString(SHA256.HashData(Convert.FromBase64String(signingPublicKeyB64)))[..16];
+        return $"{hex[..4]}-{hex[4..8]}-{hex[8..12]}-{hex[12..16]}";
+    }
+
     public static VaultStore Create(string root, string adminUser, string adminPassword)
     {
         var vaultDir = Path.Combine(root, "vault");

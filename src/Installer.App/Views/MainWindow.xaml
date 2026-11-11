@@ -1,0 +1,22 @@
+<Window x:Class="Installer.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Installer.App.ViewModels"
+        xmlns:v="clr-namespace:Installer.App.Views"
+        Title="SecureInstaller" Width="960" Height="680" MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBrush}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:LoginViewModel}">
+            <v:LoginView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ScanReportViewModel}">
+            <v:ScanReportView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PlaceholderViewModel}">
+            <TextBlock Text="{Binding Message}" Style="{StaticResource Title}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </DataTemplate>
+    </Window.Resources>
+    <ContentControl Content="{Binding Current}"/>
+</Window>
