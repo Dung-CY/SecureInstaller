@@ -9,6 +9,8 @@ namespace Installer.App.ViewModels;
 
 public sealed record AdminPackageRow(string Name, string Version, string Id, string InstallerType, int DocCount);
 
+public sealed record RoleOption(UserRole Role, string Label);
+
 public sealed record AdminUserRow(string Username, string RoleText);
 
 public partial class AdminViewModel : ObservableObject
@@ -29,6 +31,7 @@ public partial class AdminViewModel : ObservableObject
     public AdminViewModel(VaultSession session, string logsDir, string fallbackDir, Func<string?> pickFolder,
         Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack)
     {
+        if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
         _session = session; _logsDir = logsDir; _fallbackDir = fallbackDir;
         _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack;
         IsReadOnly = session.Store.IsReadOnly;
@@ -47,17 +50,31 @@ public partial class AdminViewModel : ObservableObject
     [ObservableProperty] private string? _error;
     [ObservableProperty] private string? _status;
 
-    private bool CanMutate() => !IsReadOnly;
+    public const string BusyText = "Đang xử lý…";
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BackCommand), nameof(AddPackageCommand), nameof(UpdatePackageCommand),
+        nameof(RemovePackageCommand), nameof(AddUserCommand), nameof(RemoveUserCommand),
+        nameof(ResetPasswordCommand), nameof(SaveSettingsCommand))]
+    [NotifyPropertyChangedFor(nameof(BusyMessage))]
+    private bool _isBusy;
+
+    public string? BusyMessage => IsBusy ? BusyText : null;
+
+    private bool CanMutate() => !IsReadOnly && !IsBusy;
+    private bool CanMutatePackage() => CanMutate() && SelectedPackage != null;
+    private bool CanMutateUser() => CanMutate() && SelectedUser != null;
 
     private VaultAdmin Admin => _admin ??= new VaultAdmin(_session);
 
     /// <summary>Single funnel for every VaultAdmin call: maps exceptions to Error, success to Status.</summary>
-    private bool Run(Action action, string? okStatus = null)
+    private async Task<bool> Run(Action action, string? okStatus = null)
     {
         Error = null; Status = null;
+        IsBusy = true;
         try
         {
-            action();
+            await Task.Run(action);
             Status = okStatus;
             return true;
         }
@@ -71,14 +88,18 @@ public partial class AdminViewModel : ObservableObject
             Error = ex.Message;
             return false;
         }
+        finally { IsBusy = false; }
     }
 
-    [RelayCommand]
+    private bool CanBack() => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanBack))]
     private void Back() => _onBack();
 
     // ---------- Packages ----------
     public List<AdminPackageRow> Packages { get; private set; } = new();
-    [ObservableProperty] private AdminPackageRow? _selectedPackage;
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(UpdatePackageCommand), nameof(RemovePackageCommand))]
+    private AdminPackageRow? _selectedPackage;
     [ObservableProperty] private bool _keepOld;
 
     private void RefreshPackages()
@@ -92,45 +113,47 @@ public partial class AdminViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void AddPackage()
+    private async Task AddPackage()
     {
         var folder = _pickFolder();
         if (string.IsNullOrEmpty(folder)) return;
         PackageEntry? added = null;
-        if (Run(() => added = Admin.AddPackage(folder)))
+        if (await Run(() => added = Admin.AddPackage(folder)))
             Status = $"Đã thêm gói {added!.Name} {added.Version}";
         RefreshPackages();
     }
 
-    [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void UpdatePackage()
+    [RelayCommand(CanExecute = nameof(CanMutatePackage))]
+    private async Task UpdatePackage()
     {
         if (SelectedPackage is not { } sel) return;
         var folder = _pickFolder();
         if (string.IsNullOrEmpty(folder)) return;
         PackageEntry? updated = null;
-        if (Run(() => updated = Admin.UpdatePackage(sel.Id, folder, KeepOld)))
+        if (await Run(() => updated = Admin.UpdatePackage(sel.Id, folder, KeepOld)))
             Status = $"Đã cập nhật gói {updated!.Name} {updated.Version}";
         RefreshPackages();
     }
 
-    [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void RemovePackage()
+    [RelayCommand(CanExecute = nameof(CanMutatePackage))]
+    private async Task RemovePackage()
     {
         if (SelectedPackage is not { } sel) return;
         if (!_confirm($"Xóa gói {sel.Name} {sel.Version}?")) return;
-        Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa gói {sel.Name} {sel.Version}");
+        await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa gói {sel.Name} {sel.Version}");
         RefreshPackages();
     }
 
     // ---------- Users ----------
     public List<AdminUserRow> Users { get; private set; } = new();
-    [ObservableProperty] private AdminUserRow? _selectedUser;
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(RemoveUserCommand), nameof(ResetPasswordCommand))]
+    private AdminUserRow? _selectedUser;
     [ObservableProperty] private string _newUsername = "";
     [ObservableProperty] private string _newPassword = "";
     [ObservableProperty] private UserRole _newRole = UserRole.User;
 
-    public IReadOnlyList<UserRole> Roles { get; } = new[] { UserRole.User, UserRole.Admin };
+    public IReadOnlyList<RoleOption> Roles { get; } =
+        new[] { new RoleOption(UserRole.User, "Người dùng"), new RoleOption(UserRole.Admin, "Quản trị") };
 
     private void RefreshUsers()
     {
@@ -143,30 +166,30 @@ public partial class AdminViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void AddUser()
+    private async Task AddUser()
     {
         var name = NewUsername.Trim();
-        if (Run(() => Admin.AddUser(name, NewPassword, NewRole), $"Đã thêm người dùng {name}"))
+        if (await Run(() => Admin.AddUser(name, NewPassword, NewRole), $"Đã thêm người dùng {name}"))
             NewUsername = "";
         NewPassword = "";
         RefreshUsers();
     }
 
-    [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void RemoveUser()
+    [RelayCommand(CanExecute = nameof(CanMutateUser))]
+    private async Task RemoveUser()
     {
         if (SelectedUser is not { } sel) return;
         if (!_confirm($"Xóa người dùng {sel.Username}?")) return;
-        Run(() => Admin.RemoveUser(sel.Username), $"Đã xóa người dùng {sel.Username}");
+        await Run(() => Admin.RemoveUser(sel.Username), $"Đã xóa người dùng {sel.Username}");
         RefreshUsers();
     }
 
-    [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void ResetPassword()
+    [RelayCommand(CanExecute = nameof(CanMutateUser))]
+    private async Task ResetPassword()
     {
         if (SelectedUser is not { } sel) return;
         if (string.IsNullOrEmpty(NewPassword)) { Error = "Mật khẩu mới không được để trống"; return; }
-        Run(() => Admin.SetPassword(sel.Username, NewPassword), $"Đã đặt lại mật khẩu cho {sel.Username}");
+        await Run(() => Admin.SetPassword(sel.Username, NewPassword), $"Đã đặt lại mật khẩu cho {sel.Username}");
         NewPassword = "";
     }
 
@@ -192,7 +215,7 @@ public partial class AdminViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
-    private void SaveSettings()
+    private async Task SaveSettings()
     {
         Error = null; Status = null;
         if (!int.TryParse(MaxSecondsText.Trim(), out var max) || max < 1 || max > 3600)
@@ -216,7 +239,7 @@ public partial class AdminViewModel : ObservableObject
             sigs.Add(new CrackSignature(kind, pattern));
         }
         var kw = new KeywordScanConfig(NonEmptyLines(KeywordsText), NonEmptyLines(PathsText), max);
-        Run(() => Admin.UpdateSettings(kw, sigs), "Đã lưu cấu hình quét");
+        await Run(() => Admin.UpdateSettings(kw, sigs), "Đã lưu cấu hình quét");
     }
 
     private static bool IsValidRegex(string p)

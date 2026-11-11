@@ -21,6 +21,8 @@
                     Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibility}}">
                 <TextBlock Text="{Binding ReadOnlyBanner}" Style="{StaticResource ErrorText}"/>
             </Border>
+            <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource Muted}" Margin="0,8,0,0"
+                       Visibility="{Binding BusyMessage, Converter={StaticResource NullToCollapsed}}"/>
             <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,8,0,0"
                        Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
             <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" Margin="0,8,0,0"
@@ -74,7 +76,8 @@
                         <TextBlock Text="Mật khẩu" Margin="0,0,0,4"/>
                         <PasswordBox x:Name="PwBox" PasswordChanged="PwBox_PasswordChanged" Margin="0,0,0,12"/>
                         <TextBlock Text="Vai trò" Margin="0,0,0,4"/>
-                        <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding NewRole}" Margin="0,0,0,12"/>
+                        <ComboBox ItemsSource="{Binding Roles}" SelectedValue="{Binding NewRole}" SelectedValuePath="Role"
+                                  DisplayMemberPath="Label" Margin="0,0,0,12"/>
                         <Button Content="Thêm người dùng" Command="{Binding AddUserCommand}" Margin="0,0,0,8"/>
                         <Button Content="Đặt lại mật khẩu (người đang chọn)" Command="{Binding ResetPasswordCommand}"
                                 Margin="0,0,0,8"/>

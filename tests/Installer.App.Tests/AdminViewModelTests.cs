@@ -88,13 +88,13 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
-    public void Add_package_from_picked_folder_appears_in_list_and_version_bumped()
+    public async Task Add_package_from_picked_folder_appears_in_list_and_version_bumped()
     {
         var s = Login();
         var v0 = s.Catalog.Version;
         var src = MakePackage(_tmp);
         var vm = Make(s, () => src);
-        vm.AddPackageCommand.Execute(null);
+        await vm.AddPackageCommand.ExecuteAsync(null);
         Assert.Null(vm.Error);
         var row = Assert.Single(vm.Packages);
         Assert.Equal("demo", row.Id);
@@ -105,29 +105,29 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
-    public void Cancel_picker_does_nothing()
+    public async Task Cancel_picker_does_nothing()
     {
         var s = Login();
         var v0 = s.Catalog.Version;
         var vm = Make(s, () => null);
-        vm.AddPackageCommand.Execute(null);
+        await vm.AddPackageCommand.ExecuteAsync(null);
         Assert.Empty(vm.Packages);
         Assert.Equal(v0, s.Catalog.Version);
         Assert.Null(vm.Error);
     }
 
     [Fact]
-    public void Remove_last_admin_shows_error()
+    public async Task Remove_last_admin_shows_error()
     {
         var vm = Make(Login());
         vm.SelectedUser = vm.Users.Single();
-        vm.RemoveUserCommand.Execute(null);
+        await vm.RemoveUserCommand.ExecuteAsync(null);
         Assert.Equal("Không thể xóa quản trị viên cuối cùng", vm.Error);
         Assert.Single(vm.Users);
     }
 
     [Fact]
-    public void Save_settings_persists_after_reopen()
+    public async Task Save_settings_persists_after_reopen()
     {
         var s = Login();
         var vm = Make(s);
@@ -135,7 +135,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         vm.PathsText = "C:\\Dữ liệu";
         vm.MaxSecondsText = "120";
         vm.SignaturesText = "service|^Kms.*\nfile|crack\\.exe";
-        vm.SaveSettingsCommand.Execute(null);
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
         Assert.Null(vm.Error);
 
         var s2 = Login();
@@ -147,20 +147,20 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
-    public void Settings_invalid_signature_line_shows_error()
+    public async Task Settings_invalid_signature_line_shows_error()
     {
         var s = Login();
         var v0 = s.Catalog.Version;
         var vm = Make(s);
         vm.SignaturesText = "service|ok\nbogus|x";
-        vm.SaveSettingsCommand.Execute(null);
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
         Assert.Equal("Dòng 2 không hợp lệ", vm.Error);
         vm.SignaturesText = "file|([unclosed";
-        vm.SaveSettingsCommand.Execute(null);
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
         Assert.Equal("Dòng 1 không hợp lệ", vm.Error);
         vm.SignaturesText = "";
         vm.MaxSecondsText = "0";
-        vm.SaveSettingsCommand.Execute(null);
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
         Assert.Equal("Số giây phải từ 1 đến 3600", vm.Error);
         Assert.Equal(v0, s.Catalog.Version);
     }
@@ -201,7 +201,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
-    public void Users_role_shown_from_signing_key_not_role_field()
+    public async Task Users_role_shown_from_signing_key_not_role_field()
     {
         var s = Login();
         // Rewrite vault.meta so the Role field lies (User) while the signing key is still wrapped.
@@ -214,14 +214,14 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         var vm = Make(s);
         Assert.Equal("Quản trị", vm.Users.Single().RoleText);
         vm.NewUsername = "an"; vm.NewPassword = "pw-an-1"; vm.NewRole = UserRole.User;
-        vm.AddUserCommand.Execute(null);
+        await vm.AddUserCommand.ExecuteAsync(null);
         Assert.Null(vm.Error);
         Assert.Equal("Người dùng", vm.Users.Single(x => x.Username == "an").RoleText);
         Assert.Equal("", vm.NewPassword);
     }
 
     [Fact]
-    public void Commit_pending_shows_reopen_message()
+    public async Task Commit_pending_shows_reopen_message()
     {
         var s = Login();
         var sigPath = Path.Combine(_root, "vault", "catalog.sig");
@@ -230,22 +230,22 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         {
             var src = MakePackage(_tmp);
             var vm = Make(s, () => src);
-            vm.AddPackageCommand.Execute(null);
+            await vm.AddPackageCommand.ExecuteAsync(null);
             Assert.Equal("Thay đổi đã ghi một phần; hãy mở lại ứng dụng để hoàn tất.", vm.Error);
         }
         finally { File.SetAttributes(sigPath, FileAttributes.Normal); }
     }
 
     [Fact]
-    public void Remove_package_confirms_and_removes()
+    public async Task Remove_package_confirms_and_removes()
     {
         var s = Login();
         var src = MakePackage(_tmp);
         string? asked = null;
         var vm = Make(s, () => src, confirm: m => { asked = m; return true; });
-        vm.AddPackageCommand.Execute(null);
+        await vm.AddPackageCommand.ExecuteAsync(null);
         vm.SelectedPackage = vm.Packages.Single();
-        vm.RemovePackageCommand.Execute(null);
+        await vm.RemovePackageCommand.ExecuteAsync(null);
         Assert.Equal("Xóa gói Demo demo 1.0?", asked);
         Assert.Empty(vm.Packages);
     }
@@ -254,13 +254,62 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     public async Task Closing_guard_blocks_only_while_install_running()
     {
         var main = new MainViewModel();
-        Assert.False(main.IsBusyInstalling);
+        Assert.Null(main.CloseBlockedMessage);
         var tcs = new TaskCompletionSource<InstallOutcome>();
         var inst = new InstallViewModel("x", (_, _) => tcs.Task, () => { });
         main.NavigateTo(inst);
-        Assert.True(main.IsBusyInstalling);
+        Assert.Equal("Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.", main.CloseBlockedMessage);
         tcs.SetResult(new(InstallStatus.Success, 0, "ok"));
         await inst.Completion;
-        Assert.False(main.IsBusyInstalling);
+        Assert.Null(main.CloseBlockedMessage);
+    }
+
+    [Fact]
+    public void Non_admin_session_cannot_open_admin()
+    {
+        new VaultAdmin(Login()).AddUser("an", "pw-an-1", UserRole.User);
+        var user = VaultStore.Open(_root).Unlock("an", "pw-an-1", T0);
+        Assert.False(user.IsAdmin);
+        Assert.Throws<NotAdminException>(() => Make(user));
+    }
+
+    [Fact]
+    public async Task Busy_disables_commands_during_operation()
+    {
+        var s = Login();
+        var src = MakePackage(_tmp);
+        var vm = Make(s, () => src);
+        var seen = new List<bool>();
+        vm.PropertyChanged += (_, a) =>
+        {
+            if (a.PropertyName == nameof(AdminViewModel.IsBusy) && vm.IsBusy)
+            {
+                seen.Add(vm.AddPackageCommand.CanExecute(null));
+                seen.Add(vm.BackCommand.CanExecute(null));
+                seen.Add(vm.SaveSettingsCommand.CanExecute(null));
+                var main = new MainViewModel();
+                main.NavigateTo(vm);
+                Assert.Equal("Đang xử lý. Vui lòng đợi trước khi thoát.", main.CloseBlockedMessage);
+                Assert.Equal(AdminViewModel.BusyText, vm.BusyMessage);
+            }
+        };
+        await vm.AddPackageCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { false, false, false }, seen);
+        Assert.False(vm.IsBusy);
+        Assert.True(vm.AddPackageCommand.CanExecute(null));
+        Assert.True(vm.BackCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Update_and_remove_need_selection()
+    {
+        var vm = Make(Login());
+        Assert.False(vm.UpdatePackageCommand.CanExecute(null));
+        Assert.False(vm.RemovePackageCommand.CanExecute(null));
+        Assert.False(vm.RemoveUserCommand.CanExecute(null));
+        Assert.False(vm.ResetPasswordCommand.CanExecute(null));
+        vm.SelectedUser = vm.Users.Single();
+        Assert.True(vm.RemoveUserCommand.CanExecute(null));
+        Assert.True(vm.ResetPasswordCommand.CanExecute(null));
     }
 }

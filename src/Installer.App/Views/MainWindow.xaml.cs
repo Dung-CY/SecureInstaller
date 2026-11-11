@@ -14,10 +14,10 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (DataContext is MainViewModel { IsBusyInstalling: true })
+        if (DataContext is MainViewModel { CloseBlockedMessage: { } msg })
         {
             e.Cancel = true;
-            MessageBox.Show("Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.", "SecureInstaller",
+            MessageBox.Show(msg, "SecureInstaller",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
