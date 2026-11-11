@@ -87,7 +87,7 @@ public class LoginViewModelTests : IDisposable
         var vm = Make(() => store, _ => throw new InvalidOperationException("boom"));
         vm.Username = "admin"; vm.Password = "pw-1234";
         await vm.LoginCommand.ExecuteAsync(null);
-        Assert.Equal("boom", vm.Error);
+        Assert.Equal(Installer.Core.Strings.Unexpected, vm.Error);
         Assert.False(vm.IsBusy);
     }
 

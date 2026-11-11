@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core.Errors;
 using Installer.Core;
 using Installer.Core.Vault;
 
@@ -35,7 +36,7 @@ public partial class LoginViewModel : ObservableObject
         FormatException => Strings.VaultTampered,
         BadCredentialsException => Strings.BadCredentials,
         AccountLockedException l => string.Format(Strings.AccountLocked, l.Until.ToLocalTime()),
-        _ => ex.Message
+        _ => ErrorText.ForUser(ex)
     };
 
     [ObservableProperty] private string _username = "";

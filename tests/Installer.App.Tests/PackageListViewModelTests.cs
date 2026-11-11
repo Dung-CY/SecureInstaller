@@ -182,7 +182,7 @@ public class PackageListViewModelTests
         var p = Pkg("Foo", "1.0", docs: new[] { "guide.pdf" });
         var h = Harness.Create(Cat(p), Report(), x => x.Extract = (_, _, _) => throw new IOException("hỏng"));
         await h.Vm.Rows[0].OpenDocCommand.ExecuteAsync("guide.pdf");
-        Assert.Equal("Không mở được tài liệu: hỏng", h.Vm.Error);
+        Assert.Equal("Không mở được tài liệu: " + Installer.Core.Strings.IoError, h.Vm.Error);
         Assert.Empty(h.Opened);
     }
 

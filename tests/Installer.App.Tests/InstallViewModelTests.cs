@@ -43,7 +43,7 @@ public class InstallViewModelTests
         var vm = new InstallViewModel("Foo", (pr, ct) => throw new InvalidOperationException("boom"), () => { },
             a => new SyncProgress(a));
         await vm.Completion;
-        Assert.Equal("boom", vm.Result);
+        Assert.Equal(Installer.Core.Strings.Unexpected, vm.Result);
         Assert.True(vm.IsDone);
         Assert.False(vm.IsSuccess);
     }

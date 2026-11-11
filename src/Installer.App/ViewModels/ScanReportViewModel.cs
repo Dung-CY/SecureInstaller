@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core.Errors;
 using Installer.App.Converters;
 using Installer.Core.Licensing;
 using Installer.Core.Scanning;
@@ -52,7 +53,7 @@ public partial class ScanReportViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Error = ex.Message;
+            Error = ErrorText.ForUser(ex);
         }
         finally
         {

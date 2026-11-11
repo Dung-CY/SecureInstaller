@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core.Errors;
 using Installer.Core.Logging;
 using Installer.Core.Model;
 using Installer.Core.Vault;
@@ -16,7 +17,7 @@ public sealed record AdminUserRow(string Username, string RoleText);
 public partial class AdminViewModel : ObservableObject
 {
     public const string ReadOnlyMessage = "Kho đang ở chế độ chỉ đọc";
-    public const string CommitPendingMessage = "Thay đổi đã ghi một phần; hãy mở lại ứng dụng để hoàn tất.";
+    public const string CommitPendingMessage = ErrorText.CommitPending;
     static readonly string[] SignatureKinds = { "kms_host", "service", "file", "hosts_block" };
 
     private readonly VaultSession _session;
@@ -85,7 +86,7 @@ public partial class AdminViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Error = ex.Message;
+            Error = ErrorText.ForUser(ex);
             return false;
         }
         finally { IsBusy = false; }
@@ -271,7 +272,7 @@ public partial class AdminViewModel : ObservableObject
                 .Concat(EncryptedLog.ReadAll(_fallbackDir, id, _session.VaultKey))
                 .OrderByDescending(e => e.Ts).ToList();
         }
-        catch (Exception ex) { Error = ex.Message; _allLogs = new(); }
+        catch (Exception ex) { Error = ErrorText.ForUser(ex); _allLogs = new(); }
         ApplyLogFilter();
     }
 
@@ -302,6 +303,6 @@ public partial class AdminViewModel : ObservableObject
             CsvExporter.Export(FilteredLogs, path);
             Status = $"Đã xuất {FilteredLogs.Count} dòng log";
         }
-        catch (Exception ex) { Error = ex.Message; }
+        catch (Exception ex) { Error = ErrorText.ForUser(ex); }
     }
 }

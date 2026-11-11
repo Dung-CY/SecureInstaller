@@ -77,7 +77,7 @@ public sealed class MsiInstaller : IInstallerRunner
         }
         catch (Exception ex)
         {
-            return new InstallOutcome(InstallStatus.Failed, null, ex.Message);
+            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex));
         }
         finally { Gate.Release(); }
     }

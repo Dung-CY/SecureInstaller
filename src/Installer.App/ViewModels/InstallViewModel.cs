@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core.Errors;
 using Installer.Core.Install;
 
 namespace Installer.App.ViewModels;
@@ -51,8 +52,8 @@ public partial class InstallViewModel : ObservableObject
             var progress = progressFactory(p => { if (!_finished) { Percent = p.Percent; Step = p.Step; } });
             outcome = await run(progress, _cts.Token);
         }
-        catch (OperationCanceledException) { outcome = new(InstallStatus.Failed, null, "Người dùng hủy cài đặt"); }
-        catch (Exception ex) { outcome = new(InstallStatus.Failed, null, ex.Message); }
+        catch (OperationCanceledException) { outcome = new(InstallStatus.Failed, null, ErrorText.Cancelled); }
+        catch (Exception ex) { outcome = new(InstallStatus.Failed, null, ErrorText.ForUser(ex)); }
 
         _finished = true;
         Result = outcome.Status == InstallStatus.RebootRequired ? outcome.Message + "\n" + RebootLine : outcome.Message;

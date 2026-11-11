@@ -18,7 +18,7 @@ public sealed class ExeInstaller : IInstallerRunner
         };
         Process? proc;
         try { proc = Process.Start(psi); }
-        catch (Exception ex) { return new InstallOutcome(InstallStatus.Failed, null, ex.Message); }
+        catch (Exception ex) { return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex)); }
         if (proc == null) return new InstallOutcome(InstallStatus.Failed, null, "Không khởi động được bộ cài");
 
         using (proc)

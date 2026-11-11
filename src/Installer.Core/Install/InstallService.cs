@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Installer.Core.Crypto;
+using Installer.Core.Errors;
 using Installer.Core.Logging;
 using Installer.Core.Repository;
 using Installer.Core.Model;
@@ -34,7 +35,11 @@ public sealed class InstallService
             outcome = await RunCoreAsync(pkg, ws, progress, ct, d => detail = d).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { outcome = new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt"); }
-        catch (Exception ex) { outcome = new InstallOutcome(InstallStatus.Failed, null, ex.Message); }
+        catch (Exception ex)
+        {
+            outcome = new InstallOutcome(InstallStatus.Failed, null, ErrorText.ForUser(ex));
+            detail = ex.ToString();
+        }
         finally { try { ws?.Dispose(); } catch { } }
 
         var parts = new List<string>();

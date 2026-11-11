@@ -58,7 +58,7 @@ public sealed class ZipInstaller : IInstallerRunner
         }
         catch (Exception ex)
         {
-            return new InstallOutcome(InstallStatus.Failed, null, ex.Message);
+            return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex));
         }
     }
 }

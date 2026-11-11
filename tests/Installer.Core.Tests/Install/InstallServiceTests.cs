@@ -154,6 +154,30 @@ public class InstallServiceTests : IDisposable
         Assert.Contains("m.ini", Assert.Single(ReadLogs(e)).Detail);
     }
 
+    sealed class ThrowingRepo : IRepositorySource
+    {
+        public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct) => throw new IOException("D:/secret/vault/x");
+        public Task<Stream> OpenDocBlobAsync(PackageEntry pkg, string docName, CancellationToken ct) => throw new NotSupportedException();
+        public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => throw new NotSupportedException();
+        public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) => throw new NotSupportedException();
+        public Catalog Catalog => throw new NotSupportedException();
+        public readonly List<LogEntry> Logs = new();
+        public void WriteLog(LogEntry entry) => Logs.Add(entry);
+    }
+
+    [Fact]
+    public async Task Install_io_failure_shows_IoError_and_no_path()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp));
+        var repo = new ThrowingRepo();
+        var res = await Svc(repo, new FakeRunner(), new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(Strings.IoError, res.Message);
+        Assert.DoesNotContain("secret", res.Message);
+        Assert.Contains("D:/secret/vault/x", Assert.Single(repo.Logs).Detail);
+    }
+
     [Fact]
     public async Task Runner_throws_workspace_still_deleted()
     {
@@ -164,7 +188,8 @@ public class InstallServiceTests : IDisposable
         var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, t)
             .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal(InstallStatus.Failed, res.Status);
-        Assert.Equal("kaboom", res.Message);
+        Assert.Equal(Strings.Unexpected, res.Message);
+        Assert.Contains("kaboom", Assert.Single(ReadLogs(e)).Detail);
         Assert.True(t.Ws!.Deleted);
         Assert.Equal("Failed", Assert.Single(ReadLogs(e)).Status);
     }

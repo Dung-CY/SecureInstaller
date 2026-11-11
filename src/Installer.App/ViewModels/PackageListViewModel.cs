@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core.Errors;
 using Installer.Core.Install;
 using Installer.Core.Model;
 using Installer.Core.Scanning;
@@ -80,7 +81,7 @@ public partial class PackageListViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Error = $"Không mở được tài liệu: {ex.Message}";
+            Error = $"Không mở được tài liệu: {ErrorText.ForUser(ex)}";
         }
     }
 }

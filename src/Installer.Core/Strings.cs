@@ -9,6 +9,13 @@ public static class Strings
     public const string AccountLocked = "Tài khoản bị khóa đến {0:HH:mm}.";
     public const string PackageCorrupt = "Gói bị hỏng hoặc không đầy đủ.";
     public const string VaultNotFound = "Không tìm thấy kho (thư mục vault) cạnh SecureInstaller.exe.";
+    public const string IoError = "Không đọc/ghi được dữ liệu. Hãy kiểm tra USB hoặc ổ đĩa.";
+    public const string AccessDenied = "Không đủ quyền truy cập.";
+    public const string Unexpected = "Đã xảy ra lỗi không mong muốn.";
+    public const string ReadOnlyNotice = "Kho chỉ đọc — nhật ký được lưu tạm trên máy này";
+    public const string VaultInfo = "Kho phiên bản {0} · cập nhật {1:dd/MM/yyyy}";
+    public const string NoUninstall = "Gói này không hỗ trợ gỡ tự động";
+    public const string NotInVault = "Không có trong kho";
     public const string ReasonWindowsCracked = "Windows có dấu hiệu crack";
     public const string ReasonOfficeCracked = "Office có dấu hiệu crack";
     public const string ReasonInstalledGte = "Đã cài phiên bản {0} (bằng hoặc mới hơn)";
