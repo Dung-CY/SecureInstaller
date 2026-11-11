@@ -6,14 +6,16 @@ namespace Installer.Core.Vault;
 public sealed class VaultAdmin
 {
     readonly VaultSession _s;
+    readonly Func<string, byte[]?>? _iconFromExe;
 
-    public VaultAdmin(VaultSession session)
+    public VaultAdmin(VaultSession session, Func<string, byte[]?>? iconFromExe = null)
     {
         if (!session.IsAdmin || session.SigningPrivateKey is null)
             throw new NotAdminException("Chỉ quản trị viên mới được thực hiện thao tác này");
         if (session.Store.IsReadOnly)
             throw new Errors.UserMessageException("Kho đang ở chế độ chỉ đọc");
         _s = session;
+        _iconFromExe = iconFromExe;
     }
 
     string VaultDir => Path.Combine(_s.Store.Root, "vault");
@@ -51,7 +53,7 @@ public sealed class VaultAdmin
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
         if (_s.Catalog.Packages.Any(p => Same(p.Id, m.Id) && Same(p.Version, m.Version)))
             throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
-        var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
+        var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
         try { Commit(_s.Catalog.Packages.Append(entry).ToList()); }
         catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
         return entry;
@@ -67,7 +69,7 @@ public sealed class VaultAdmin
         if (keepOld && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)))
             throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
 
-        var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root);
+        var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
         var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (!keepOld || Same(p.Version, m.Version))).ToList();
         var packages = _s.Catalog.Packages.Except(removed).Append(entry).ToList();
         try { Commit(packages); }

@@ -95,9 +95,32 @@ public static class PackageBuilder
         return Path.Combine(vaultRoot, "vault", "docs", stem);
     }
 
-    public static PackageEntry Build(string sourceFolder, string vaultRoot)
+    const int MaxIconBytes = 24 * 1024;
+
+    static string? ResolveIcon(string sourceFolder, PackageEntry entry, Func<string, byte[]?>? iconFromExe)
+    {
+        var iconPath = Path.Combine(sourceFolder, "icon.png");
+        if (File.Exists(iconPath))
+        {
+            var bytes = File.ReadAllBytes(iconPath);
+            if (bytes.Length > MaxIconBytes || bytes.Length < 8 ||
+                !bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }))
+                throw new InvalidDataException("icon.png phải là ảnh PNG ≤ 24 KB");
+            return Convert.ToBase64String(bytes);
+        }
+        if (entry.InstallerType == InstallerType.Exe && iconFromExe is not null)
+        {
+            byte[]? png = null;
+            try { png = iconFromExe(Path.Combine(sourceFolder, "installer", entry.InstallerFile)); } catch { }
+            if (png is { Length: > 0 } && png.Length <= MaxIconBytes) return Convert.ToBase64String(png);
+        }
+        return null;
+    }
+
+    public static PackageEntry Build(string sourceFolder, string vaultRoot, Func<string, byte[]?>? iconFromExe = null)
     {
         var entry = ReadManifest(sourceFolder).Entry;
+        var iconB64 = ResolveIcon(sourceFolder, entry, iconFromExe);
         var vaultDir = Path.Combine(vaultRoot, "vault");
         var pkgDir = Path.Combine(vaultDir, "packages");
         var stem = $"{entry.Id}-{entry.Version}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
@@ -153,7 +176,7 @@ public static class PackageBuilder
             }
             ok = true;
             return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key),
-                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey) };
+                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey), IconPngB64 = iconB64 };
         }
         finally
         {

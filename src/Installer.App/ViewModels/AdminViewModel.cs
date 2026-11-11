@@ -28,13 +28,15 @@ public partial class AdminViewModel : ObservableObject
     private readonly Func<string, bool> _confirm;
     private readonly Action _onBack;
     private VaultAdmin? _admin;
+    private readonly Func<string, byte[]?>? _iconFromExe;
 
     public AdminViewModel(VaultSession session, string logsDir, string fallbackDir, Func<string?> pickFolder,
-        Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack)
+        Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack,
+        Func<string, byte[]?>? iconFromExe = null)
     {
         if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
         _session = session; _logsDir = logsDir; _fallbackDir = fallbackDir;
-        _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack;
+        _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack; _iconFromExe = iconFromExe;
         IsReadOnly = session.Store.IsReadOnly;
         VaultFingerprint = $"Mã kho: {VaultStore.Fingerprint(session.Store.Meta.SigningPublicKeyB64)}";
 
@@ -66,7 +68,7 @@ public partial class AdminViewModel : ObservableObject
     private bool CanMutatePackage() => CanMutate() && SelectedPackage != null;
     private bool CanMutateUser() => CanMutate() && SelectedUser != null;
 
-    private VaultAdmin Admin => _admin ??= new VaultAdmin(_session);
+    private VaultAdmin Admin => _admin ??= new VaultAdmin(_session, _iconFromExe);
 
     /// <summary>Single funnel for every VaultAdmin call: maps exceptions to Error, success to Status.</summary>
     private async Task<bool> Run(Action action, string? okStatus = null)

@@ -152,7 +152,7 @@ public static class Program
     private static string? Opt(ParsedArgs p, string name) =>
         p.Options.TryGetValue(name, out var v) ? v : null;
 
-    private static VaultAdmin OpenAdmin(ParsedArgs p, string root) => new VaultAdmin(OpenSession(p, root));
+    private static VaultAdmin OpenAdmin(ParsedArgs p, string root) => new VaultAdmin(OpenSession(p, root), path => Installer.Core.Platform.IconExtractor.ExtractPng(path));
 
     private static VaultSession OpenSession(ParsedArgs p, string root)
     {
