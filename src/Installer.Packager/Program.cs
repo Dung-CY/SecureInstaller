@@ -21,6 +21,7 @@ public static class Program
           SecureInstaller.Packager add-user <root> <name> --role user|admin --new-password <pw> --user <u> [--password <pw>]
           SecureInstaller.Packager remove-user <root> <name> --user <u> [--password <pw>]
           SecureInstaller.Packager export-logs <root> <out.csv> --user <u> [--password <pw>]
+          SecureInstaller.Packager fingerprint <root>
         """;
 
     public static int Main(string[] args)
@@ -128,6 +129,10 @@ public static class Program
                 Console.WriteLine($"Đã xóa người dùng {pos[1]}");
                 return 0;
             }
+            case "fingerprint":
+                Need(1);
+                Console.WriteLine(VaultStore.Fingerprint(VaultStore.Open(pos[0]).Meta.SigningPublicKeyB64));
+                return 0;
             case "export-logs":
                 Need(2);
                 var ses = OpenSession(p, pos[0]);

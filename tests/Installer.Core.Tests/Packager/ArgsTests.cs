@@ -81,4 +81,19 @@ public class ArgsTests : IDisposable
         var p = Args.Parse(new[] { "init", "r", "--password=a=b" });
         Assert.Equal("a=b", p.Options["password"]);
     }
+
+    [Fact]
+    public void Fingerprint_prints_vault_code_without_login()
+    {
+        var root = Path.Combine(_tmp, "kho vân tay");
+        Assert.Equal(0, Program.Run(new[] { "init", root, "--user", "admin", "--password", "pw-123456" }));
+        var expected = Installer.Core.Vault.VaultStore.Fingerprint(Installer.Core.Vault.VaultStore.Open(root).Meta.SigningPublicKeyB64);
+        var old = Console.Out;
+        var sw = new StringWriter();
+        Console.SetOut(sw);
+        try { Assert.Equal(0, Program.Run(new[] { "fingerprint", root })); }
+        finally { Console.SetOut(old); }
+        Assert.Equal(expected, sw.ToString().Trim());
+        Assert.Equal(1, Program.Run(new[] { "fingerprint", Path.Combine(_tmp, "khong-co") }));
+    }
 }

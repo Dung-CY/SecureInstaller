@@ -20,3 +20,6 @@ logs/
 ## OS
 Thumbs.db
 Desktop.ini
+
+## Samples (installer binaries are never committed)
+samples/**/installer/

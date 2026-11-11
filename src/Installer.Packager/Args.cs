@@ -6,7 +6,7 @@ public static class Args
 {
     public static readonly string[] Commands =
     {
-        "init", "add-package", "update-package", "remove-package", "add-user", "remove-user", "export-logs"
+        "init", "add-package", "update-package", "remove-package", "add-user", "remove-user", "export-logs", "fingerprint"
     };
 
     public static ParsedArgs Parse(string[] argv)
