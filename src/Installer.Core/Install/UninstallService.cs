@@ -16,39 +16,68 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
     private abstract record Plan;
     private sealed record ZipPlan(string Dir) : Plan;
     private sealed record MsiPlan(string ProductCode) : Plan;
-    private sealed record CmdPlan(string Command, string Args) : Plan;
+    private sealed record CmdPlan(string Exe, string Args) : Plan;
 
+    private static readonly Regex MsiexecGuid = new(@"(?:^|\s)[/-][XIxi]\s*(\{[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\})", RegexOptions.Compiled);
+
+    /// <summary>True exactly when a valid plan exists (all validation happens in <see cref="Resolve"/>).</summary>
     public bool CanUninstall(PackageEntry pkg, IReadOnlyList<InstalledApp> installed) => Resolve(pkg, installed) != null;
 
-    // Only machine-wide (HKLM) data may supply a command or ProductCode; HKCU is never trusted.
+    /// <summary>
+    /// Picks and validates the first applicable strategy; null when none applies or validation fails.
+    /// Order: an explicit manifest <c>Uninstall.Type</c> (zip, msi, command) wins over strategies derived from
+    /// <c>InstallerType</c>; after that: zip (InstallerType), msi (InstallerType), then a machine-wide (HKLM)
+    /// QuietUninstallString. HKCU (PerUser) data and marker rows are never used.
+    /// </summary>
     private static Plan? Resolve(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
     {
         var type = pkg.Uninstall?.Type;
-        if (string.Equals(type, "zip", StringComparison.OrdinalIgnoreCase) || pkg.InstallerType == InstallerType.Zip)
-            return new ZipPlan(pkg.TargetDir ?? "");
+        bool Is(string t) => string.Equals(type, t, StringComparison.OrdinalIgnoreCase);
 
-        if (string.Equals(type, "msi", StringComparison.OrdinalIgnoreCase) || pkg.InstallerType == InstallerType.Msi)
+        if (Is("zip")) return ZipFor(pkg);
+        if (Is("msi") && MsiFor(pkg, installed) is { } m1) return m1;
+        if (Is("command"))
+            return string.IsNullOrWhiteSpace(pkg.Uninstall!.Command) ? null
+                : ValidExe(pkg.Uninstall.Command!, pkg.Uninstall.Args ?? "");
+
+        if (pkg.InstallerType == InstallerType.Zip) return ZipFor(pkg);
+        if (pkg.InstallerType == InstallerType.Msi && MsiFor(pkg, installed) is { } m2) return m2;
+
+        var q = installed.FirstOrDefault(a => !a.PerUser && !a.IsMarker && !string.IsNullOrWhiteSpace(a.QuietUninstallString));
+        if (q == null) return null;
+        try
         {
-            var code = pkg.Detect?.ProductCode?.Trim();
-            if (string.IsNullOrEmpty(code) || !GuidRx.IsMatch(code))
-                code = installed.FirstOrDefault(a => !a.PerUser && !a.IsMarker && GuidRx.IsMatch(a.KeyName ?? ""))?.KeyName;
-            if (!string.IsNullOrEmpty(code)) return new MsiPlan(code);
-        }
-
-        if (string.Equals(type, "command", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(pkg.Uninstall!.Command))
-            return new CmdPlan(pkg.Uninstall.Command!, pkg.Uninstall.Args ?? "");
-
-        var q = installed.FirstOrDefault(a => !a.PerUser && !string.IsNullOrWhiteSpace(a.QuietUninstallString));
-        if (q != null)
-        {
-            try
+            var (exe, args) = CommandLineSplitter.Split(q.QuietUninstallString!);
+            var name = Path.GetFileName(exe.Replace('/', '\\'));
+            if (name.Equals("msiexec", StringComparison.OrdinalIgnoreCase) || name.Equals("msiexec.exe", StringComparison.OrdinalIgnoreCase))
             {
-                var (exe, args) = CommandLineSplitter.Split(q.QuietUninstallString!);
-                return new CmdPlan(exe, args);
+                var g = MsiexecGuid.Match(args);
+                return g.Success ? new MsiPlan(g.Groups[1].Value) : null; // never run msiexec by name / PATH
             }
-            catch (InvalidDataException) { return null; }
+            return ValidExe(exe, args);
         }
-        return null;
+        catch (InvalidDataException) { return null; }
+    }
+
+    private static Plan? ZipFor(PackageEntry pkg) =>
+        string.IsNullOrWhiteSpace(pkg.TargetDir) ? null : new ZipPlan(pkg.TargetDir);
+
+    private static Plan? MsiFor(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
+    {
+        var code = pkg.Detect?.ProductCode?.Trim();
+        if (string.IsNullOrEmpty(code) || !GuidRx.IsMatch(code))
+            code = installed.FirstOrDefault(a => !a.PerUser && !a.IsMarker && GuidRx.IsMatch(a.KeyName ?? ""))?.KeyName;
+        return string.IsNullOrEmpty(code) ? null : new MsiPlan(code);
+    }
+
+    private static Plan? ValidExe(string command, string args)
+    {
+        var exe = Environment.ExpandEnvironmentVariables(command.Trim());
+        if (!Path.IsPathFullyQualified(exe) || exe.StartsWith(@"\\") || exe.StartsWith("//")
+            || exe.StartsWith(@"\/") || exe.StartsWith(@"/\")) return null;
+        try { SafePath.EnsureNoReparseAncestors(Path.GetFullPath(exe)); }
+        catch (UnsafePathException) { return null; }
+        return new CmdPlan(exe, args);
     }
 
     public async Task<InstallOutcome> UninstallAsync(PackageEntry pkg, IReadOnlyList<InstalledApp> installed, string username,
@@ -63,13 +92,13 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
             switch (plan)
             {
                 case null:
-                    outcome = new InstallOutcome(InstallStatus.Blocked, null, "Gói này không hỗ trợ gỡ cài đặt tự động");
+                    outcome = new InstallOutcome(InstallStatus.Blocked, null, Strings.NoUninstall);
                     break;
                 case ZipPlan z:
                     {
                         var r = PostActionRunner.Run(new[] { new PostAction("delete", null, z.Dir) }, "")[0];
-                        outcome = r.Ok ? new InstallOutcome(InstallStatus.Success, 0, "Đã gỡ cài đặt")
-                            : new InstallOutcome(InstallStatus.Failed, null, "Không xóa được thư mục cài đặt", r.Error);
+                        outcome = r.Ok ? new InstallOutcome(InstallStatus.Success, 0, Strings.Uninstalled)
+                            : new InstallOutcome(InstallStatus.Failed, null, Strings.UninstallFolderFailed, r.Error);
                         break;
                     }
                 case MsiPlan m:
@@ -78,22 +107,24 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
                         outcome = await MsiInstaller.RunMsiAsync(
                             () => MsiNative.MsiConfigureProductExW(code, 0, MsiNative.INSTALLSTATE_ABSENT, "REBOOT=ReallySuppress"),
                             timeout, progress, ct).ConfigureAwait(false);
+                        if (outcome.ExitCode == 1605) // product not installed: already gone
+                            outcome = new InstallOutcome(InstallStatus.Success, 1605, Strings.Uninstalled);
                         break;
                     }
                 case CmdPlan c:
-                    {
-                        var exe = Environment.ExpandEnvironmentVariables(c.Command);
-                        if (!Path.IsPathFullyQualified(exe) || exe.StartsWith(@"\\") || exe.StartsWith("//")
-                            || exe.StartsWith(@"\/") || exe.StartsWith(@"/\"))
-                            throw new UnsafePathException(Strings.UnsafePath);
-                        SafePath.EnsureNoReparseAncestors(Path.GetFullPath(exe));
-                        outcome = await exeRunner(InstallerType.Exe).RunAsync(
-                            new InstallRequest(InstallerType.Exe, exe, c.Args, null, timeout), progress, ct).ConfigureAwait(false);
-                        break;
-                    }
+                    outcome = await exeRunner(InstallerType.Exe).RunAsync(
+                        new InstallRequest(InstallerType.Exe, c.Exe, c.Args, null, timeout), progress, ct).ConfigureAwait(false);
+                    break;
                 default:
                     throw new InvalidOperationException();
             }
+            if (plan != null)
+                outcome = outcome.Status switch
+                {
+                    InstallStatus.Success => outcome with { Message = Strings.Uninstalled },
+                    InstallStatus.Timeout => outcome with { Message = Strings.UninstallTimeout },
+                    _ => outcome,
+                };
         }
         catch (OperationCanceledException) { outcome = new InstallOutcome(InstallStatus.Failed, null, ErrorText.Cancelled); }
         catch (Exception ex)

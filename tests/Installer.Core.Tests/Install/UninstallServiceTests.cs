@@ -103,9 +103,91 @@ public class UninstallServiceTests : IDisposable
         var (svc, _, runner, reg) = Make();
         var pkg = Pkg(InstallerType.Exe, un: new UninstallSpec("command", cmd, "/S"));
         var o = await svc.UninstallAsync(pkg, new List<InstalledApp>(), "u", Hw, NoProgress, CancellationToken.None);
-        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal(InstallStatus.Blocked, o.Status);
         Assert.Empty(runner.Requests);
         Assert.True(MarkerExists(reg));
+    }
+
+    static readonly List<InstalledApp> None = new();
+    const string G = "{12345678-1234-1234-1234-123456789ABC}";
+
+    [Theory]
+    [InlineData("un.exe")]
+    [InlineData("\\\\server\\share\\un.exe")]
+    public void CanUninstall_false_for_invalid_manifest_command(string cmd)
+    {
+        var (svc, _, _, _) = Make();
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Exe, un: new UninstallSpec("command", cmd, "/S")), None));
+    }
+
+    [Theory]
+    [InlineData("MsiExec.exe /X" + G)]
+    [InlineData("\"C:\\Windows\\System32\\msiexec.exe\" /I" + G + " /qn")]
+    public void Msiexec_quiet_string_resolves_to_msi_plan(string line)
+    {
+        var (svc, _, runner, _) = Make();
+        Assert.True(svc.CanUninstall(Pkg(InstallerType.Exe), new List<InstalledApp> { App(false, line) }));
+        Assert.Empty(runner.Requests);
+    }
+
+    [Fact]
+    public async Task Msiexec_without_guid_cannot_uninstall()
+    {
+        var (svc, _, runner, _) = Make();
+        var inst = new List<InstalledApp> { App(false, "MsiExec.exe /quiet") };
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Exe), inst));
+        var o = await svc.UninstallAsync(Pkg(InstallerType.Exe), inst, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Blocked, o.Status);
+        Assert.Empty(runner.Requests);
+    }
+
+    [Fact]
+    public void Zip_without_target_cannot_uninstall()
+    {
+        var (svc, _, _, _) = Make();
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Zip, null), None));
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Zip, "  "), None));
+    }
+
+    [Fact]
+    public async Task Zip_with_protected_target_fails()
+    {
+        var (svc, _, _, reg) = Make();
+        var o = await svc.UninstallAsync(Pkg(InstallerType.Zip, "C:\\"), None, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.True(MarkerExists(reg));
+    }
+
+    [Fact]
+    public void PerUser_guid_and_marker_rows_ignored_for_msi()
+    {
+        var (svc, _, _, _) = Make();
+        var inst = new List<InstalledApp>
+        {
+            new("App", "1.0", G, true, true),
+            new("App", "1.0", G, true, false, IsMarker: true),
+        };
+        Assert.False(svc.CanUninstall(Pkg(InstallerType.Msi), inst));
+    }
+
+    [Fact]
+    public async Task Explicit_manifest_command_wins_over_installer_type()
+    {
+        var (svc, _, runner, _) = Make();
+        var pkg = Pkg(InstallerType.Msi, un: new UninstallSpec("command", "C:\\Tools\\un.exe", "/S"));
+        var inst = new List<InstalledApp> { new("App", "1.0", G, true, false) };
+        var o = await svc.UninstallAsync(pkg, inst, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, o.Status);
+        Assert.Equal("C:\\Tools\\un.exe", Assert.Single(runner.Requests).InstallerPath);
+    }
+
+    [Fact]
+    public async Task Message_uses_NoUninstall()
+    {
+        var (svc, _, _, _) = Make();
+        var o = await svc.UninstallAsync(Pkg(InstallerType.Exe), None, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Blocked, o.Status);
+        Assert.Equal(Strings.NoUninstall, o.Message);
     }
 
     [Fact]

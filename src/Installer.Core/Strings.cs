@@ -15,6 +15,9 @@ public static class Strings
     public const string ReadOnlyNotice = "Kho chỉ đọc — nhật ký được lưu tạm trên máy này";
     public const string VaultInfo = "Kho phiên bản {0} · cập nhật {1:dd/MM/yyyy}";
     public const string NoUninstall = "Gói này không hỗ trợ gỡ tự động";
+    public const string Uninstalled = "Đã gỡ cài đặt";
+    public const string UninstallTimeout = "Quá thời gian gỡ cài đặt";
+    public const string UninstallFolderFailed = "Không xóa được thư mục cài đặt";
     public const string NotInVault = "Không có trong kho";
     public const string ReasonWindowsCracked = "Windows có dấu hiệu crack";
     public const string ReasonOfficeCracked = "Office có dấu hiệu crack";
