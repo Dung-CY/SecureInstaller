@@ -48,8 +48,8 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Bộ gói" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding Bundles}" SelectedItem="{Binding SelectedBundle}"
-                              DisplayMemberPath="Name" FontSize="14" Padding="8,5" VerticalContentAlignment="Center"
+                    <ComboBox Grid.Column="1" Style="{StaticResource AppComboBox}" ItemsSource="{Binding Bundles}"
+                              SelectedItem="{Binding SelectedBundle}" DisplayMemberPath="Name"
                               AutomationProperties.Name="Chọn bộ gói"/>
                     <Button Grid.Column="2" Content="Tick các gói trong bộ" Command="{Binding ApplyBundleCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="8,0,14,0"/>

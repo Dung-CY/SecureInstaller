@@ -40,6 +40,7 @@ public partial class QueueInstallViewModel : ObservableObject
     public const string RebootLine = "Hãy khởi động lại máy để hoàn tất.";
     public const string UninstallRunningText = "Đang gỡ";
     public const string CancellingText = "Đang hủy…";
+    public const string TimeoutText = "Đã hết thời gian chờ";
 
     private readonly CancellationTokenSource _cts = new();
     private readonly Action _onBack;
@@ -116,7 +117,11 @@ public partial class QueueInstallViewModel : ObservableObject
             {
                 outcome = new(InstallStatus.Failed, null, ErrorText.Cancelled);
             }
-            // Includes an OperationCanceledException the user did not ask for (e.g. an internal timeout): that is a failure.
+            catch (OperationCanceledException)
+            {
+                // Cancelled without the user pressing Hủy (e.g. an internal timeout): a failure, not a cancel.
+                outcome = new(InstallStatus.Failed, null, TimeoutText);
+            }
             catch (Exception ex) { outcome = new(InstallStatus.Failed, null, ErrorText.ForUser(ex)); }
             active = false;
 

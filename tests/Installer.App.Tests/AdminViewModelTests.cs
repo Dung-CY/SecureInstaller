@@ -441,18 +441,25 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.False(vm.NextPageCommand.CanExecute(null));
         Assert.True(vm.PrevPageCommand.CanExecute(null));
 
-        vm.MachineFilter = "may-02";
+        // The Log tab's filters do not touch the history.
+        vm.MachineFilter = "không có";
+        vm.FromDate = vm.ToDate = new DateTime(2000, 1, 1);
+        Assert.Empty(vm.FilteredLogs);
+        Assert.Equal(205, vm.HistoryCount);
+        Assert.Equal("Trang 2/2", vm.PageText);
+
+        vm.HistoryMachineFilter = "may-02";
         Assert.Equal("Trang 1/1", vm.PageText);
         Assert.Equal(2, vm.HistoryPage.Count);
-        vm.FromDate = new DateTime(2026, 11, 5);
-        vm.ToDate = new DateTime(2026, 11, 5);
+        vm.HistoryFrom = new DateTime(2026, 11, 5);
+        vm.HistoryTo = new DateTime(2026, 11, 5);
         var row = Assert.Single(vm.HistoryPage);
         Assert.Equal(may2a, row.Item.Ts);
-        vm.MachineFilter = "không có";
+        vm.HistoryMachineFilter = "không có";
         Assert.Empty(vm.HistoryPage);
         Assert.Equal("Trang 1/1", vm.PageText);
         Assert.False(vm.NextPageCommand.CanExecute(null));
-        vm.MachineFilter = "MAY-02";
+        vm.HistoryMachineFilter = "MAY-02";
 
         vm.SelectedTabIndex = AdminViewModel.HistoryTabIndex;
         vm.OpenScanCommand.Execute(row.Item);
@@ -464,6 +471,55 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         report.ContinueCommand.Execute(null);
         Assert.Same(vm, nav[1]);
         Assert.Equal(AdminViewModel.HistoryTabIndex, vm.SelectedTabIndex);
+    }
+
+    [Fact]
+    public async Task History_filter_resets_to_page_1()
+    {
+        var s = Login();
+        var log = new EncryptedLog(_root, s.Store.Meta.VaultId, s.VaultKey, false);
+        var day = new DateTimeOffset(new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Local));
+        for (var i = 0; i < 410; i++) log.Append(ScanLog(i < 300 ? "MAY-A" : "MAY-B", day.AddMinutes(i)));
+        var vm = Make(s);
+        await vm.InitialLoad;
+        Assert.Equal(410, vm.HistoryCount);
+        Assert.Equal("Trang 1/3", vm.PageText);
+        vm.NextPageCommand.Execute(null);
+        Assert.Equal("Trang 2/3", vm.PageText);
+        vm.HistoryMachineFilter = "may-a"; // 300 matches: still two pages
+        Assert.Equal(300, vm.HistoryCount);
+        Assert.Equal("Trang 1/2", vm.PageText);
+        Assert.Equal(200, vm.HistoryPage.Count);
+        Assert.False(vm.PrevPageCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task LoadLogsAsync_failure_sets_error_and_clears_busy()
+    {
+        var s = Login();
+        Directory.CreateDirectory(_logs);
+        var dir = new DirectoryInfo(_logs);
+        var rule = new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+        var sec = dir.GetAccessControl();
+        sec.AddAccessRule(rule);
+        dir.SetAccessControl(sec);
+        try
+        {
+            var vm = Make(s);
+            await vm.InitialLoad;
+            Assert.Equal(Installer.Core.Strings.AccessDenied, vm.Error);
+            Assert.False(vm.IsLoadingLogs);
+            Assert.False(vm.IsBusy);
+            Assert.Empty(vm.FilteredLogs);
+            Assert.Empty(vm.HistoryPage);
+            Assert.True(vm.LoadLogsCommand.CanExecute(null));
+        }
+        finally
+        {
+            sec = dir.GetAccessControl();
+            sec.RemoveAccessRule(rule);
+            dir.SetAccessControl(sec);
+        }
     }
 
     [Fact]

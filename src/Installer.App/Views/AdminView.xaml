@@ -265,7 +265,7 @@
                         <TextBlock Text="Mật khẩu" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
                         <PasswordBox x:Name="PwBox" PasswordChanged="PwBox_PasswordChanged" Margin="0,0,0,12"/>
                         <TextBlock Text="Vai trò" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
-                        <ComboBox ItemsSource="{Binding Roles}" SelectedValue="{Binding NewRole}" SelectedValuePath="Role"
+                        <ComboBox Style="{StaticResource AppComboBox}" ItemsSource="{Binding Roles}" SelectedValue="{Binding NewRole}" SelectedValuePath="Role"
                                   DisplayMemberPath="Label" Margin="0,0,0,14"/>
                         <Button Content="Thêm người dùng" Command="{Binding AddUserCommand}" Padding="16,7" Margin="0,0,0,8"/>
                         <Button Content="Đặt lại mật khẩu (người đang chọn)" Command="{Binding ResetPasswordCommand}"
@@ -307,9 +307,9 @@
                     </Grid.RowDefinitions>
                     <WrapPanel Grid.Row="0" Margin="0,0,0,12">
                         <TextBlock Text="Từ ngày" Style="{StaticResource FilterLabel}"/>
-                        <DatePicker SelectedDate="{Binding FromDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                        <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding FromDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <TextBlock Text="Đến ngày" Style="{StaticResource FilterLabel}"/>
-                        <DatePicker SelectedDate="{Binding ToDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                        <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding ToDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <TextBlock Text="Người dùng" Style="{StaticResource FilterLabel}"/>
                         <TextBox Text="{Binding UserFilter, UpdateSourceTrigger=PropertyChanged}" Width="110" Margin="0,0,14,0"/>
                         <TextBlock Text="Máy" Style="{StaticResource FilterLabel}"/>
@@ -344,12 +344,12 @@
                     </Grid.RowDefinitions>
                     <WrapPanel Grid.Row="0" Margin="0,0,0,12">
                         <TextBlock Text="Máy" Style="{StaticResource FilterLabel}"/>
-                        <TextBox Text="{Binding MachineFilter, UpdateSourceTrigger=PropertyChanged}" Width="140" Margin="0,0,14,0"
+                        <TextBox Text="{Binding HistoryMachineFilter, UpdateSourceTrigger=PropertyChanged}" Width="140" Margin="0,0,14,0"
                                  AutomationProperties.Name="Lọc theo máy"/>
                         <TextBlock Text="Từ ngày" Style="{StaticResource FilterLabel}"/>
-                        <DatePicker SelectedDate="{Binding FromDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                        <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding HistoryFrom}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <TextBlock Text="Đến ngày" Style="{StaticResource FilterLabel}"/>
-                        <DatePicker SelectedDate="{Binding ToDate}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                        <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding HistoryTo}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <Button Content="Tải lại" Command="{Binding LoadLogsCommand}" Style="{StaticResource SecondaryButton}"/>
                         <TextBlock Style="{StaticResource LoadingHint}"/>
                     </WrapPanel>

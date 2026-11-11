@@ -388,10 +388,10 @@ public partial class AdminViewModel : ObservableObject
 
     [ObservableProperty] private bool _isLoadingLogs;
 
-    partial void OnFromDateChanged(DateTime? value) => ApplyFilters();
-    partial void OnToDateChanged(DateTime? value) => ApplyFilters();
+    partial void OnFromDateChanged(DateTime? value) => ApplyLogFilter();
+    partial void OnToDateChanged(DateTime? value) => ApplyLogFilter();
     partial void OnUserFilterChanged(string value) => ApplyLogFilter();
-    partial void OnMachineFilterChanged(string value) => ApplyFilters();
+    partial void OnMachineFilterChanged(string value) => ApplyLogFilter();
 
     private int _loadSeq;
 
@@ -404,6 +404,7 @@ public partial class AdminViewModel : ObservableObject
     {
         var seq = ++_loadSeq;
         IsLoadingLogs = true;
+        var errorAtStart = Error;
         List<LogEntry> logs;
         List<ScanHistoryItem> history;
         string? error = null;
@@ -423,24 +424,24 @@ public partial class AdminViewModel : ObservableObject
         if (seq != _loadSeq) return; // a newer load superseded this one
         _allLogs = logs;
         _history = history;
-        Error = error;
+        // Only touch Error if nothing else (e.g. an admin operation that ran meanwhile) changed it during the load.
+        if (Error == errorAtStart) Error = error;
         IsLoadingLogs = false;
         ApplyFilters();
     }
 
-    /// <summary>Date and machine filters are shared by the Log and Lịch sử quét tabs; the user filter applies to the log only.</summary>
+    /// <summary>Re-applies both tabs' filters after a load; the history goes back to page 1.</summary>
     private void ApplyFilters()
     {
         ApplyLogFilter();
-        HistoryPageIndex = 0;
-        ApplyHistoryFilter();
+        ApplyHistoryFilterFromStart();
     }
 
-    private bool InDateRange(DateTimeOffset ts)
+    private static bool InDateRange(DateTimeOffset ts, DateTime? from, DateTime? to)
     {
         var d = ts.ToLocalTime().Date;
-        if (FromDate is { } f && d < f.Date) return false;
-        if (ToDate is { } t && d > t.Date) return false;
+        if (from is { } f && d < f.Date) return false;
+        if (to is { } t && d > t.Date) return false;
         return true;
     }
 
@@ -451,7 +452,7 @@ public partial class AdminViewModel : ObservableObject
     {
         var u = UserFilter?.Trim() ?? "";
         var m = MachineFilter?.Trim() ?? "";
-        FilteredLogs = _allLogs.Where(e => InDateRange(e.Ts) && Matches(e.Username, u) && Matches(e.Hostname, m)).ToList();
+        FilteredLogs = _allLogs.Where(e => InDateRange(e.Ts, FromDate, ToDate) && Matches(e.Username, u) && Matches(e.Hostname, m)).ToList();
         OnPropertyChanged(nameof(FilteredLogs));
     }
 
@@ -467,10 +468,21 @@ public partial class AdminViewModel : ObservableObject
     public int HistoryPageCount => Math.Max(1, (_filteredHistory.Count + HistoryPageSize - 1) / HistoryPageSize);
     public string PageText => $"Trang {HistoryPageIndex + 1}/{HistoryPageCount}";
 
-    private void ApplyHistoryFilter()
+    // The history tab has its own filters, independent of the Log tab's.
+    [ObservableProperty] private string _historyMachineFilter = "";
+    [ObservableProperty] private DateTime? _historyFrom;
+    [ObservableProperty] private DateTime? _historyTo;
+
+    partial void OnHistoryMachineFilterChanged(string value) => ApplyHistoryFilterFromStart();
+    partial void OnHistoryFromChanged(DateTime? value) => ApplyHistoryFilterFromStart();
+    partial void OnHistoryToChanged(DateTime? value) => ApplyHistoryFilterFromStart();
+
+    /// <summary>Any filter change shows page 1 of the new result.</summary>
+    private void ApplyHistoryFilterFromStart()
     {
-        var m = MachineFilter?.Trim() ?? "";
-        _filteredHistory = _history.Where(h => InDateRange(h.Ts) && Matches(h.Hostname, m)).ToList();
+        HistoryPageIndex = 0;
+        var m = HistoryMachineFilter?.Trim() ?? "";
+        _filteredHistory = _history.Where(h => InDateRange(h.Ts, HistoryFrom, HistoryTo) && Matches(h.Hostname, m)).ToList();
         ShowHistoryPage();
     }
 

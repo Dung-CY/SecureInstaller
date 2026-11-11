@@ -161,7 +161,7 @@ public class QueueInstallViewModelTests
         await vm.Completion;
         Assert.Equal(new[] { "A", "B" }, ran);
         Assert.Equal(new[] { "Lỗi", "Thành công" }, vm.Items.Select(i => i.Status));
-        Assert.Equal(ErrorText.ForUser(new TaskCanceledException()), vm.Items[0].Message);
+        Assert.Equal("Đã hết thời gian chờ", vm.Items[0].Message);
         Assert.Equal("Hoàn tất", vm.Step);
     }
 
