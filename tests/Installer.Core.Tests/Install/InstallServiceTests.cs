@@ -300,4 +300,29 @@ public class InstallServiceTests : IDisposable
         try { Assert.Equal("huong dan", File.ReadAllText(path, Encoding.UTF8)); }
         finally { InstallService.CleanupDocs(); }
     }
+
+    [Fact]
+    public async Task Successful_install_writes_marker_failed_does_not()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target"), "[]"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        InstallService Mk(FakeRunner r) => new(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => r),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+
+        var bad = await Mk(new FakeRunner { Outcome = new InstallOutcome(InstallStatus.Failed, 5, "boom") })
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, bad.Status);
+        Assert.Empty(marker.ReadAll());
+
+        var ok = await Mk(new FakeRunner()).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, ok.Status);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+
+        reg.ThrowOnWrite = true;
+        var soft = await Mk(new FakeRunner()).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, soft.Status);
+        Assert.Contains("Không ghi được dấu cài đặt", ReadLogs(e).Last().Detail);
+    }
 }

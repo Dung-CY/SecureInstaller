@@ -56,4 +56,36 @@ public class InstalledAppsScannerTests
         Assert.Empty(s.Find(new DetectRule("a", null)));
         Assert.Null(Assert.Single(s.Find(new DetectRule(null, "Foo"))).DisplayVersion);
     }
+
+    [Fact]
+    public void FindForPackage_includes_marker_entry()
+    {
+        var reg = new FakeRegistry();
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("zip1", "2.0", DateTimeOffset.UtcNow);
+        var pkg = new PackageEntry("zip1", "Zip App", "2.0", InstallerType.Zip, "a.zip", "", null, 60,
+            new DetectRule(null, "^NoSuch$"), new(), new(), new(), "b", "s", "k");
+        var r = new InstalledAppsScanner(reg, marker).FindForPackage(pkg);
+        var a = Assert.Single(r);
+        Assert.True(a.IsMarker);
+        Assert.Equal("marker:zip1", a.KeyName);
+        Assert.Equal("2.0", a.DisplayVersion);
+        Assert.Empty(new InstalledAppsScanner(reg).FindForPackage(pkg));
+    }
+
+    [Fact]
+    public void Uninstall_fields_are_read_as_strings_and_dword_ignored()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\App", new()
+        {
+            ["DisplayName"] = "App", ["UninstallString"] = "u.exe /x", ["QuietUninstallString"] = 5,
+            ["DisplayIcon"] = "i.ico",
+        });
+        var a = Assert.Single(new InstalledAppsScanner(reg).Find(new DetectRule(null, "App")));
+        Assert.Equal("u.exe /x", a.UninstallString);
+        Assert.Null(a.QuietUninstallString);
+        Assert.Equal("i.ico", a.DisplayIcon);
+        Assert.False(a.IsMarker);
+    }
 }

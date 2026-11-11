@@ -1,11 +1,13 @@
 using System.Text.RegularExpressions;
+using Installer.Core.Install;
 using Installer.Core.Model;
 using Installer.Core.Platform;
 using Microsoft.Win32;
 
 namespace Installer.Core.Versioning;
 
-public record InstalledApp(string DisplayName, string? DisplayVersion, string KeyName, bool Is64Bit, bool PerUser);
+public record InstalledApp(string DisplayName, string? DisplayVersion, string KeyName, bool Is64Bit, bool PerUser,
+    string? UninstallString = null, string? QuietUninstallString = null, string? DisplayIcon = null, bool IsMarker = false);
 
 public sealed class InstalledAppsScanner
 {
@@ -19,7 +21,23 @@ public sealed class InstalledAppsScanner
     };
 
     private readonly IRegistryReader _reg;
-    public InstalledAppsScanner(IRegistryReader reg) => _reg = reg;
+    private readonly InstallMarker? _marker;
+    public InstalledAppsScanner(IRegistryReader reg, InstallMarker? marker = null) { _reg = reg; _marker = marker; }
+
+    public IReadOnlyList<InstalledApp> FindForPackage(PackageEntry pkg)
+    {
+        var result = Find(pkg.Detect).ToList();
+        try
+        {
+            if (_marker != null && _marker.ReadAll().TryGetValue(pkg.Id, out var v))
+                result.Add(new InstalledApp(pkg.Name, v, "marker:" + pkg.Id, true, false, IsMarker: true));
+        }
+        catch (Exception) { }
+        return result;
+    }
+
+    private string? Str(RegistryHive hive, RegistryView view, string path, string name) =>
+        _reg.GetValue(hive, view, path, name) is string s && s.Length > 0 ? s : null;
 
     public IReadOnlyList<InstalledApp> Find(DetectRule rule)
     {
@@ -54,7 +72,9 @@ public sealed class InstalledAppsScanner
                     var raw = _reg.GetValue(hive, view, path, "DisplayVersion");
                     var ver = raw is string s ? s : raw?.ToString();
                     if (string.IsNullOrEmpty(ver)) ver = null;
-                    result.Add(new InstalledApp(name, ver, sub, is64, perUser));
+                    result.Add(new InstalledApp(name, ver, sub, is64, perUser,
+                        Str(hive, view, path, "UninstallString"), Str(hive, view, path, "QuietUninstallString"),
+                        Str(hive, view, path, "DisplayIcon")));
                 }
                 catch (Exception) { /* a bad entry must never break the scan */ }
             }

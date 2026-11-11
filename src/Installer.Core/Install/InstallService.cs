@@ -16,8 +16,12 @@ public sealed class InstallService
     private readonly InstallerRunnerFactory _runners;
     private readonly Func<TempWorkspace> _workspaceFactory;
 
-    public InstallService(IRepositorySource repo, InstallerRunnerFactory runners, Func<TempWorkspace>? workspaceFactory = null)
+    private readonly InstallMarker? _marker;
+
+    public InstallService(IRepositorySource repo, InstallerRunnerFactory runners, Func<TempWorkspace>? workspaceFactory = null,
+        InstallMarker? marker = null)
     {
+        _marker = marker;
         _repo = repo; _runners = runners; _workspaceFactory = workspaceFactory ?? (() => TempWorkspace.Create());
     }
 
@@ -42,10 +46,18 @@ public sealed class InstallService
         }
         finally { try { ws?.Dispose(); } catch { } }
 
+        string? markerError = null;
+        if (_marker != null && outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
+        {
+            try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now); }
+            catch (Exception ex) { markerError = "Không ghi được dấu cài đặt: " + ex.Message; }
+        }
+
         var parts = new List<string>();
         if (!string.IsNullOrEmpty(outcome.Message)) parts.Add(outcome.Message);
         if (detail != null) parts.Add(detail);
         if (!string.IsNullOrEmpty(outcome.Detail)) parts.Add(outcome.Detail);
+        if (markerError != null) parts.Add(markerError);
         if (ws != null && !ws.Deleted) parts.Add("Không xóa được thư mục tạm");
         detail = parts.Count > 0 ? string.Join("; ", parts) : null;
         try
