@@ -83,7 +83,7 @@ public sealed class AppServices
         // Back rebuilds the package list from the current catalog, which the admin may have changed.
         Main.NavigateTo(new AdminViewModel(session, Path.Combine(_root, "logs"), EncryptedLog.DefaultFallbackDir(),
             PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report),
-            p => Installer.Core.Platform.IconExtractor.ExtractPng(p)));
+            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo));
     }
 
     private static string? PickFolder()

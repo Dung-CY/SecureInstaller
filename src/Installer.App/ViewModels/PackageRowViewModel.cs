@@ -128,13 +128,21 @@ public partial class PackageRowViewModel : ObservableObject
                 try
                 {
                     var (path, index) = IconExtractor.ParseDisplayIcon(app.DisplayIcon!);
-                    if (path.Length > 0) _installedIcon = _owner.ExtractIconCached(path, index);
+                    if (IsSafeLocalIconPath(path)) _installedIcon = _owner.ExtractIconCached(path, index);
                 }
                 catch (Exception) { _installedIcon = null; }
             }
             return _installedIcon;
         }
     }
+
+    /// <summary>
+    /// Only absolute local paths are opened: a UNC-style (\\ or //) path would make the elevated app touch the network and
+    /// can freeze the UI, and a relative path would resolve against the app's current directory.
+    /// </summary>
+    internal static bool IsSafeLocalIconPath(string path) =>
+        path.Length > 0 && !path.StartsWith(@"\\", StringComparison.Ordinal) && !path.StartsWith("//", StringComparison.Ordinal)
+        && System.IO.Path.IsPathFullyQualified(path);
 
     internal static byte[]? DecodeIcon(string? b64)
     {

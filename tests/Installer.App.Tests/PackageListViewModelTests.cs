@@ -341,6 +341,78 @@ public class PackageListViewModelTests
         Assert.Empty(h.Opened);
     }
 
+    static Catalog BundleCat(out Bundle bundle)
+    {
+        bundle = new Bundle("office", "Văn phòng", "Bộ cho phòng kế toán", new()
+        {
+            new BundleItem("id-C1.0"), new BundleItem("id-Foo1.0"), new BundleItem("ghost"), new BundleItem("ID-A1.0", "1.0"),
+        });
+        return Cat(Pkg("A", "1.0"), Pkg("B", "1.0"), Pkg("C", "1.0"), Pkg("Foo", "1.0", BlockRules)) with
+        {
+            Bundles = new() { bundle }
+        };
+    }
+
+    [Fact]
+    public void Apply_bundle_selects_in_bundle_order_and_lists_blocked_and_missing()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        Assert.True(h.Vm.HasBundles);
+        Assert.Same(bundle, Assert.Single(h.Vm.Bundles));
+        Assert.False(h.Vm.ApplyBundleCommand.CanExecute(null));
+        var b = h.Vm.Rows.Single(r => r.Name == "B");
+        b.IsSelected = true; // cleared by applying the bundle
+
+        h.Vm.SelectedBundle = bundle;
+        Assert.True(h.Vm.ApplyBundleCommand.CanExecute(null));
+        h.Vm.ApplyBundleCommand.Execute(null);
+
+        Assert.Equal(new[] { "A", "C" }, h.Vm.Rows.Where(r => r.IsSelected).Select(r => r.Name));
+        Assert.Equal(2, h.Vm.SelectedCount);
+        var foo = h.Vm.Rows.Single(r => r.Name == "Foo");
+        Assert.Equal(new[] { $"Foo: {foo.ReasonsText}", "ghost: Không có trong kho" }, h.Vm.BundleNotices);
+        Assert.True(h.Vm.HasBundleNotices);
+
+        h.Vm.InstallSelectedCommand.Execute(null);
+        Assert.Equal(new[] { "C", "A" }, h.Installs); // bundle order, not display order
+    }
+
+    [Fact]
+    public void Manual_tick_after_bundle_falls_back_to_display_order()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        h.Vm.SelectedBundle = bundle;
+        h.Vm.ApplyBundleCommand.Execute(null);
+        h.Vm.Rows.Single(r => r.Name == "B").IsSelected = true;
+        h.Vm.InstallSelectedCommand.Execute(null);
+        Assert.Equal(new[] { "A", "B", "C" }, h.Installs);
+    }
+
+    [Fact]
+    public void Bundle_picker_hidden_without_bundles()
+    {
+        var h = Harness.Create(Cat(Pkg("A", "1.0")), Report());
+        Assert.False(h.Vm.HasBundles);
+        Assert.Empty(h.Vm.Bundles);
+        Assert.False(h.Vm.HasBundleNotices);
+    }
+
+    [Fact]
+    public void Installed_icon_skips_relative_and_network_paths()
+    {
+        var h = Harness.Create(Cat(Pkg("A", "1.0"), Pkg("B", "1.0"), Pkg("C", "1.0")), Report(), x => x.InstalledApps = p => new List<InstalledApp>
+        {
+            new(p.Name, "1.0", "k", true, false, DisplayIcon: p.Name switch
+            {
+                "A" => @"\\server\share\a.exe,0",
+                "B" => "//server/share/b.exe",
+                _ => @"relative\c.exe",
+            }),
+        });
+        Assert.All(h.Vm.Rows, r => Assert.Null(r.InstalledIcon));
+        Assert.Empty(h.IconExtracts);
+    }
+
     [Fact]
     public async Task Install_disabled_while_queue_runs()
     {

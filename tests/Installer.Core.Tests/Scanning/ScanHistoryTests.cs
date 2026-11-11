@@ -56,6 +56,20 @@ public class ScanHistoryTests
     }
 
     [Fact]
+    public void One_bad_entry_of_any_kind_does_not_break_history()
+    {
+        var t1 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var json = JsonSerializer.Serialize(Report(t1), Json.Options);
+        var items = ScanHistory.From(new LogEntry[]
+        {
+            null!, // NullReferenceException, not JsonException
+            Entry(t1, "scan", "\"just a string\""),
+            Entry(t1, "scan", json),
+        });
+        Assert.Equal(t1, Assert.Single(items).Ts);
+    }
+
+    [Fact]
     public void Report_size_with_many_devices()
     {
         var json = JsonSerializer.Serialize(Report(DateTimeOffset.Now, 300), Json.Options);

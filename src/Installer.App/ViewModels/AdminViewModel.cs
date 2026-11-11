@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.App.Converters;
 using Installer.Core.Errors;
 using Installer.Core.Logging;
 using Installer.Core.Model;
+using Installer.Core.Scanning;
 using Installer.Core.Vault;
 
 namespace Installer.App.ViewModels;
@@ -13,6 +16,28 @@ public sealed record AdminPackageRow(string Name, string Version, string Id, str
 public sealed record RoleOption(UserRole Role, string Label);
 
 public sealed record AdminUserRow(string Username, string RoleText);
+
+public sealed record AdminBundleRow(Bundle Bundle)
+{
+    public string Id => Bundle.Id;
+    public string Name => Bundle.Name;
+    public string Description => Bundle.Description ?? "";
+    public int ItemCount => Bundle.Items?.Count ?? 0;
+    public string ItemsText => string.Join(", ", (Bundle.Items ?? new()).Select(AdminViewModel.FormatItem));
+}
+
+/// <summary>One scan in the admin's history list; null-safe for reports written by older or damaged logs.</summary>
+public sealed record ScanHistoryRow(ScanHistoryItem Item)
+{
+    public string TimeText => Item.Ts.ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+    public string Hostname => Item.Hostname;
+    public string Username => Item.Username;
+    public string BiosSerial => string.IsNullOrEmpty(Item.BiosSerial) ? "—" : Item.BiosSerial;
+    public string WindowsText => Item.Report.Windows is { } w ? DisplayText.Of(w.Verdict) : "—";
+    public string OfficeText => Item.Report.Office is { } o ? DisplayText.Of(o.Verdict) : "—";
+    public bool WindowsWarn => Item.Report.Windows?.Verdict is Installer.Core.Licensing.LicenseVerdict.CrackSuspected;
+    public bool OfficeWarn => Item.Report.Office?.Verdict is Installer.Core.Licensing.LicenseVerdict.CrackSuspected;
+}
 
 public partial class AdminViewModel : ObservableObject
 {
@@ -29,11 +54,17 @@ public partial class AdminViewModel : ObservableObject
     private readonly Action _onBack;
     private VaultAdmin? _admin;
     private readonly Func<string, byte[]?>? _iconFromExe;
+    private readonly Action<object>? _navigate;
+
+    /// <summary>Tab order in AdminView: Gói, Bộ gói, Người dùng, Cấu hình quét, Log, Lịch sử quét.</summary>
+    public const int HistoryTabIndex = 5;
+    public const int HistoryPageSize = 200;
 
     public AdminViewModel(VaultSession session, string logsDir, string fallbackDir, Func<string?> pickFolder,
         Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack,
-        Func<string, byte[]?>? iconFromExe = null)
+        Func<string, byte[]?>? iconFromExe = null, Action<object>? navigate = null)
     {
+        _navigate = navigate;
         if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
         _session = session; _logsDir = logsDir; _fallbackDir = fallbackDir;
         _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack; _iconFromExe = iconFromExe;
@@ -41,10 +72,17 @@ public partial class AdminViewModel : ObservableObject
         VaultFingerprint = $"Mã kho: {VaultStore.Fingerprint(session.Store.Meta.SigningPublicKeyB64)}";
 
         RefreshPackages();
+        RefreshBundles();
         RefreshUsers();
         LoadSettingsFromCatalog();
-        LoadLogs();
+        InitialLoad = LoadLogsAsync();
     }
+
+    /// <summary>The first log/history load started by the constructor (runs off the UI thread; never faults).</summary>
+    internal Task InitialLoad { get; }
+
+    /// <summary>Selected tab; kept on the instance so returning from a history report lands on the same tab.</summary>
+    [ObservableProperty] private int _selectedTabIndex;
 
     public bool IsReadOnly { get; }
     public string ReadOnlyBanner => ReadOnlyMessage;
@@ -58,7 +96,8 @@ public partial class AdminViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(BackCommand), nameof(AddPackageCommand), nameof(UpdatePackageCommand),
         nameof(RemovePackageCommand), nameof(AddUserCommand), nameof(RemoveUserCommand),
-        nameof(ResetPasswordCommand), nameof(SaveSettingsCommand))]
+        nameof(ResetPasswordCommand), nameof(SaveSettingsCommand), nameof(SaveBundleCommand), nameof(RemoveBundleCommand),
+        nameof(OpenScanCommand))]
     [NotifyPropertyChangedFor(nameof(BusyMessage))]
     private bool _isBusy;
 
@@ -67,6 +106,7 @@ public partial class AdminViewModel : ObservableObject
     private bool CanMutate() => !IsReadOnly && !IsBusy;
     private bool CanMutatePackage() => CanMutate() && SelectedPackage != null;
     private bool CanMutateUser() => CanMutate() && SelectedUser != null;
+    private bool CanMutateBundle() => CanMutate() && SelectedBundle != null;
 
     private VaultAdmin Admin => _admin ??= new VaultAdmin(_session, _iconFromExe);
 
@@ -145,6 +185,93 @@ public partial class AdminViewModel : ObservableObject
         if (!_confirm($"Xóa gói {sel.Name} {sel.Version}?")) return;
         await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa gói {sel.Name} {sel.Version}");
         RefreshPackages();
+    }
+
+    // ---------- Bundles ----------
+    public List<AdminBundleRow> Bundles { get; private set; } = new();
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(RemoveBundleCommand))]
+    private AdminBundleRow? _selectedBundle;
+    [ObservableProperty] private string _editId = "";
+    [ObservableProperty] private string _editName = "";
+    [ObservableProperty] private string _editDescription = "";
+    [ObservableProperty] private string _editItems = "";
+
+    internal static string FormatItem(BundleItem i) => i.Version is null ? i.PackageId : $"{i.PackageId}@{i.Version}";
+
+    private void RefreshBundles()
+    {
+        Bundles = (_session.Catalog.Bundles ?? new())
+            .OrderBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(b => new AdminBundleRow(b)).ToList();
+        SelectedBundle = null;
+        OnPropertyChanged(nameof(Bundles));
+    }
+
+    partial void OnSelectedBundleChanged(AdminBundleRow? value)
+    {
+        if (value is null) return; // deselecting keeps whatever is in the editor
+        EditId = value.Id;
+        EditName = value.Name;
+        EditDescription = value.Description;
+        EditItems = string.Join("\n", (value.Bundle.Items ?? new()).Select(FormatItem));
+    }
+
+    [RelayCommand]
+    private void NewBundle()
+    {
+        SelectedBundle = null;
+        EditId = EditName = EditDescription = EditItems = "";
+        Error = null; Status = null;
+    }
+
+    /// <summary>Parses one item per line, "id" or "id@version"; blank lines are skipped. Returns the 1-based bad line, or 0.</summary>
+    internal static int ParseItems(string text, out List<BundleItem> items)
+    {
+        items = new();
+        var lines = SplitLines(text);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (line.Length == 0) continue;
+            var parts = line.Split('@');
+            var id = parts[0].Trim();
+            var version = parts.Length == 2 ? parts[1].Trim() : null;
+            if (parts.Length > 2 || id.Length == 0 || id.Any(char.IsWhiteSpace) || version is { Length: 0 })
+                return i + 1;
+            items.Add(new BundleItem(id, version));
+        }
+        return 0;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMutate))]
+    private async Task SaveBundle()
+    {
+        Error = null; Status = null;
+        var bad = ParseItems(EditItems ?? "", out var items);
+        if (bad > 0) { Error = $"Dòng {bad} không hợp lệ"; return; }
+        var bundle = new Bundle((EditId ?? "").Trim(), (EditName ?? "").Trim(), (EditDescription ?? "").Trim(), items);
+        var ok = await Run(() =>
+        {
+            if (Admin.HasBundle(bundle.Id)) Admin.UpdateBundle(bundle);
+            else Admin.AddBundle(bundle);
+        }, $"Đã lưu bộ gói {bundle.Name}");
+        if (!ok) return;
+        RefreshBundles();
+        // Keep the saved bundle selected so further edits update it.
+        var saved = Bundles.FirstOrDefault(b => string.Equals(b.Id, bundle.Id, StringComparison.OrdinalIgnoreCase));
+        if (saved != null) SelectedBundle = saved;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMutateBundle))]
+    private async Task RemoveBundle()
+    {
+        if (SelectedBundle is not { } sel) return;
+        if (!_confirm($"Xóa bộ gói {sel.Name}?")) return;
+        if (await Run(() => Admin.RemoveBundle(sel.Id), $"Đã xóa bộ gói {sel.Name}"))
+        {
+            RefreshBundles();
+            EditId = EditName = EditDescription = EditItems = "";
+        }
     }
 
     // ---------- Users ----------
@@ -259,39 +386,141 @@ public partial class AdminViewModel : ObservableObject
     [ObservableProperty] private string _userFilter = "";
     [ObservableProperty] private string _machineFilter = "";
 
-    partial void OnFromDateChanged(DateTime? value) => ApplyLogFilter();
-    partial void OnToDateChanged(DateTime? value) => ApplyLogFilter();
-    partial void OnUserFilterChanged(string value) => ApplyLogFilter();
-    partial void OnMachineFilterChanged(string value) => ApplyLogFilter();
+    [ObservableProperty] private bool _isLoadingLogs;
 
+    partial void OnFromDateChanged(DateTime? value) => ApplyFilters();
+    partial void OnToDateChanged(DateTime? value) => ApplyFilters();
+    partial void OnUserFilterChanged(string value) => ApplyLogFilter();
+    partial void OnMachineFilterChanged(string value) => ApplyFilters();
+
+    private int _loadSeq;
+
+    /// <summary>
+    /// Reads and decrypts the logs (vault + fallback) and rebuilds the scan history on a worker thread, so a large
+    /// log folder never freezes the window. Feeds both the Log and the Lịch sử quét tab; a successful load clears Error.
+    /// </summary>
     [RelayCommand]
-    private void LoadLogs()
+    private async Task LoadLogsAsync()
     {
+        var seq = ++_loadSeq;
+        IsLoadingLogs = true;
+        List<LogEntry> logs;
+        List<ScanHistoryItem> history;
+        string? error = null;
         try
         {
             var id = _session.Store.Meta.VaultId;
-            _allLogs = EncryptedLog.ReadAll(_logsDir, id, _session.VaultKey)
-                .Concat(EncryptedLog.ReadAll(_fallbackDir, id, _session.VaultKey))
-                .OrderByDescending(e => e.Ts).ToList();
+            var vk = _session.VaultKey;
+            (logs, history) = await Task.Run(() =>
+            {
+                var all = EncryptedLog.ReadAll(_logsDir, id, vk)
+                    .Concat(EncryptedLog.ReadAll(_fallbackDir, id, vk))
+                    .OrderByDescending(e => e.Ts).ToList();
+                return (all, ScanHistory.From(all));
+            });
         }
-        catch (Exception ex) { Error = ErrorText.ForUser(ex); _allLogs = new(); }
-        ApplyLogFilter();
+        catch (Exception ex) { error = ErrorText.ForUser(ex); logs = new(); history = new(); }
+        if (seq != _loadSeq) return; // a newer load superseded this one
+        _allLogs = logs;
+        _history = history;
+        Error = error;
+        IsLoadingLogs = false;
+        ApplyFilters();
     }
+
+    /// <summary>Date and machine filters are shared by the Log and Lịch sử quét tabs; the user filter applies to the log only.</summary>
+    private void ApplyFilters()
+    {
+        ApplyLogFilter();
+        HistoryPageIndex = 0;
+        ApplyHistoryFilter();
+    }
+
+    private bool InDateRange(DateTimeOffset ts)
+    {
+        var d = ts.ToLocalTime().Date;
+        if (FromDate is { } f && d < f.Date) return false;
+        if (ToDate is { } t && d > t.Date) return false;
+        return true;
+    }
+
+    private static bool Matches(string? value, string filter) =>
+        filter.Length == 0 || (value ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase);
 
     private void ApplyLogFilter()
     {
         var u = UserFilter?.Trim() ?? "";
         var m = MachineFilter?.Trim() ?? "";
-        FilteredLogs = _allLogs.Where(e =>
-        {
-            var d = e.Ts.ToLocalTime().Date;
-            if (FromDate is { } f && d < f.Date) return false;
-            if (ToDate is { } t && d > t.Date) return false;
-            if (u.Length > 0 && !(e.Username ?? "").Contains(u, StringComparison.OrdinalIgnoreCase)) return false;
-            if (m.Length > 0 && !(e.Hostname ?? "").Contains(m, StringComparison.OrdinalIgnoreCase)) return false;
-            return true;
-        }).ToList();
+        FilteredLogs = _allLogs.Where(e => InDateRange(e.Ts) && Matches(e.Username, u) && Matches(e.Hostname, m)).ToList();
         OnPropertyChanged(nameof(FilteredLogs));
+    }
+
+    // ---------- Scan history ----------
+    private List<ScanHistoryItem> _history = new();
+    private List<ScanHistoryItem> _filteredHistory = new();
+    public List<ScanHistoryRow> HistoryPage { get; private set; } = new();
+
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(NextPageCommand), nameof(PrevPageCommand))]
+    private int _historyPageIndex;
+
+    public int HistoryCount => _filteredHistory.Count;
+    public int HistoryPageCount => Math.Max(1, (_filteredHistory.Count + HistoryPageSize - 1) / HistoryPageSize);
+    public string PageText => $"Trang {HistoryPageIndex + 1}/{HistoryPageCount}";
+
+    private void ApplyHistoryFilter()
+    {
+        var m = MachineFilter?.Trim() ?? "";
+        _filteredHistory = _history.Where(h => InDateRange(h.Ts) && Matches(h.Hostname, m)).ToList();
+        ShowHistoryPage();
+    }
+
+    private void ShowHistoryPage()
+    {
+        if (HistoryPageIndex >= HistoryPageCount) HistoryPageIndex = HistoryPageCount - 1;
+        HistoryPage = _filteredHistory.Skip(HistoryPageIndex * HistoryPageSize).Take(HistoryPageSize)
+            .Select(h => new ScanHistoryRow(h)).ToList();
+        OnPropertyChanged(nameof(HistoryPage));
+        OnPropertyChanged(nameof(HistoryCount));
+        OnPropertyChanged(nameof(HistoryPageCount));
+        OnPropertyChanged(nameof(PageText));
+        NextPageCommand.NotifyCanExecuteChanged();
+        PrevPageCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanNextPage() => HistoryPageIndex + 1 < HistoryPageCount;
+    private bool CanPrevPage() => HistoryPageIndex > 0;
+
+    [RelayCommand(CanExecute = nameof(CanNextPage))]
+    private void NextPage()
+    {
+        if (!CanNextPage()) return;
+        HistoryPageIndex++;
+        ShowHistoryPage();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPrevPage))]
+    private void PrevPage()
+    {
+        if (!CanPrevPage()) return;
+        HistoryPageIndex--;
+        ShowHistoryPage();
+    }
+
+    private bool CanOpenScan(ScanHistoryItem? item) => _navigate != null && !IsBusy;
+
+    /// <summary>Opens a past scan read-only in the normal report view; Back returns to this instance on the history tab.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenScan))]
+    private void OpenScan(ScanHistoryItem? item)
+    {
+        if (item is null || _navigate is null) return;
+        Error = null;
+        var title = string.Create(CultureInfo.InvariantCulture,
+            $"Lịch sử quét — {item.Hostname} — {item.Ts.ToLocalTime():dd/MM/yyyy HH:mm}");
+        ScanReportViewModel report;
+        try { report = ScanReportViewModel.ForReport(item.Report, title, () => _navigate(this)); }
+        catch (Exception ex) { Error = ErrorText.ForUser(ex); return; }
+        SelectedTabIndex = HistoryTabIndex;
+        _navigate(report);
     }
 
     [RelayCommand]

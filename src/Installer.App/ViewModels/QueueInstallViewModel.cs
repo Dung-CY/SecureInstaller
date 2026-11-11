@@ -39,6 +39,7 @@ public partial class QueueInstallViewModel : ObservableObject
 {
     public const string RebootLine = "Hãy khởi động lại máy để hoàn tất.";
     public const string UninstallRunningText = "Đang gỡ";
+    public const string CancellingText = "Đang hủy…";
 
     private readonly CancellationTokenSource _cts = new();
     private readonly Action _onBack;
@@ -104,10 +105,18 @@ public partial class QueueInstallViewModel : ObservableObject
             var active = true;
             try
             {
-                var progress = progressFactory(p => { if (active && !IsDone) { Percent = p.Percent; Step = p.Step; } });
+                // After Cancel the step keeps showing "Đang hủy…" until the item actually stops.
+                var progress = progressFactory(p =>
+                {
+                    if (active && !IsDone && !_cts.IsCancellationRequested) { Percent = p.Percent; Step = p.Step; }
+                });
                 outcome = await run(item.Package, progress, _cts.Token);
             }
-            catch (OperationCanceledException) { outcome = new(InstallStatus.Failed, null, ErrorText.Cancelled); }
+            catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+            {
+                outcome = new(InstallStatus.Failed, null, ErrorText.Cancelled);
+            }
+            // Includes an OperationCanceledException the user did not ask for (e.g. an internal timeout): that is a failure.
             catch (Exception ex) { outcome = new(InstallStatus.Failed, null, ErrorText.ForUser(ex)); }
             active = false;
 
@@ -135,6 +144,7 @@ public partial class QueueInstallViewModel : ObservableObject
         Step = _cts.IsCancellationRequested ? "Đã dừng" : "Hoàn tất";
         Result = $"{ok}/{Items.Count} gói thành công." + (anyReboot ? "\n" + RebootLine : "");
         IsDone = true;
+        _cts.Dispose(); // IsCancellationRequested stays readable after Dispose; Cancel is a no-op once done
     }
 
     private static void Set(QueueItem item, string status, string tone)
@@ -148,8 +158,9 @@ public partial class QueueInstallViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        if (IsDone || _cts.IsCancellationRequested) return;
         _cts.Cancel();
-        Step = "Đang dừng…";
+        Step = CancellingText;
         CancelCommand.NotifyCanExecuteChanged();
     }
 

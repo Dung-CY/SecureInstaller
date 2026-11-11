@@ -7,6 +7,7 @@ using Installer.App.ViewModels;
 using Installer.Core.Install;
 using Installer.Core.Logging;
 using Installer.Core.Model;
+using Installer.Core.Scanning;
 using Installer.Core.Vault;
 
 namespace Installer.App.Tests;
@@ -65,8 +66,10 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     VaultSession Login() => VaultStore.Open(_root).Unlock("admin", "pw-1234", T0);
 
     AdminViewModel Make(VaultSession s, Func<string?>? folder = null, Func<string?>? save = null,
-        Func<string, bool>? confirm = null, Action? back = null) =>
-        new(s, _logs, _fallback, folder ?? (() => null), save ?? (() => null), confirm ?? (_ => true), back ?? (() => { }));
+        Func<string, bool>? confirm = null, Action? back = null, Func<string, byte[]?>? iconFromExe = null,
+        Action<object>? navigate = null) =>
+        new(s, _logs, _fallback, folder ?? (() => null), save ?? (() => null), confirm ?? (_ => true), back ?? (() => { }),
+            iconFromExe, navigate);
 
     void DenyWrites()
     {
@@ -183,13 +186,14 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
-    public void Export_csv_writes_file()
+    public async Task Export_csv_writes_file()
     {
         var s = Login();
         var log = new EncryptedLog(_root, s.Store.Meta.VaultId, s.VaultKey, false);
         log.Append(new LogEntry(DateTimeOffset.Now, "an", "MAY-01", null, "install", "demo", "1.0", "ok", 0, null));
         log.Append(new LogEntry(DateTimeOffset.Now, "binh", "MAY-02", null, "scan", null, null, "ok", null, null));
         var vm = Make(s, save: () => Path.Combine(_tmp, "out.csv"));
+        await vm.InitialLoad;
         Assert.Equal(2, vm.FilteredLogs.Count);
         vm.UserFilter = "AN";
         Assert.Single(vm.FilteredLogs);
@@ -280,26 +284,207 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     {
         var s = Login();
         var src = MakePackage(_tmp);
-        var vm = Make(s, () => src);
-        var seen = new List<bool>();
-        vm.PropertyChanged += (_, a) =>
-        {
-            if (a.PropertyName == nameof(AdminViewModel.IsBusy) && vm.IsBusy)
-            {
-                seen.Add(vm.AddPackageCommand.CanExecute(null));
-                seen.Add(vm.BackCommand.CanExecute(null));
-                seen.Add(vm.SaveSettingsCommand.CanExecute(null));
-                var main = new MainViewModel();
-                main.NavigateTo(vm);
-                Assert.Equal("Đang xử lý. Vui lòng đợi trước khi thoát.", main.CloseBlockedMessage);
-                Assert.Equal(AdminViewModel.BusyText, vm.BusyMessage);
-            }
-        };
-        await vm.AddPackageCommand.ExecuteAsync(null);
-        Assert.Equal(new[] { false, false, false }, seen);
+        var gate = new TaskCompletionSource();
+        var entered = new TaskCompletionSource();
+        // The exe-icon extractor runs inside the operation (on the worker), so it holds the operation open.
+        var vm = Make(s, () => src, iconFromExe: _ => { entered.TrySetResult(); gate.Task.Wait(); return null; });
+        await vm.InitialLoad;
+
+        var op = vm.AddPackageCommand.ExecuteAsync(null);
+        await entered.Task;
+        Assert.False(op.IsCompleted);
+        Assert.True(vm.IsBusy);
+        Assert.Equal(AdminViewModel.BusyText, vm.BusyMessage);
+        Assert.False(vm.AddPackageCommand.CanExecute(null));
+        Assert.False(vm.BackCommand.CanExecute(null));
+        Assert.False(vm.SaveSettingsCommand.CanExecute(null));
+        Assert.False(vm.SaveBundleCommand.CanExecute(null));
+        var main = new MainViewModel();
+        main.NavigateTo(vm);
+        Assert.Equal("Đang xử lý. Vui lòng đợi trước khi thoát.", main.CloseBlockedMessage);
+
+        gate.SetResult();
+        await op;
+        Assert.Null(vm.Error);
         Assert.False(vm.IsBusy);
+        Assert.Null(vm.BusyMessage);
         Assert.True(vm.AddPackageCommand.CanExecute(null));
         Assert.True(vm.BackCommand.CanExecute(null));
+        Assert.Null(main.CloseBlockedMessage);
+    }
+
+    // ---------- Bundles ----------
+
+    void AddPackages(VaultSession s, params (string Id, string Version)[] pkgs)
+    {
+        var admin = new VaultAdmin(s);
+        foreach (var (id, v) in pkgs) admin.AddPackage(MakePackage(_tmp, id, v));
+    }
+
+    [Fact]
+    public async Task Admin_save_bundle_parses_lines_and_persists()
+    {
+        var s = Login();
+        AddPackages(s, ("demo", "1.0"), ("b", "1.0"), ("b", "2.0"));
+        string? asked = null;
+        var vm = Make(s, confirm: m => { asked = m; return true; });
+        Assert.Empty(vm.Bundles);
+        Assert.False(vm.RemoveBundleCommand.CanExecute(null));
+
+        vm.EditId = "office";
+        vm.EditName = "Văn phòng";
+        vm.EditDescription = "Cho kế toán";
+        vm.EditItems = "demo\r\n\r\n   \n  b@1.0  \n";
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+        Assert.Equal("Đã lưu bộ gói Văn phòng", vm.Status);
+        var row = Assert.Single(vm.Bundles);
+        Assert.Equal("office", row.Id);
+        Assert.Equal(2, row.ItemCount);
+
+        var saved = Assert.Single(Login().Catalog.Bundles!);
+        Assert.Equal(("office", "Văn phòng", "Cho kế toán"), (saved.Id, saved.Name, saved.Description));
+        Assert.Equal(new[] { new BundleItem("demo"), new BundleItem("b", "1.0") }, saved.Items);
+
+        // Selecting a row loads it into the editor; saving the same id updates it in place.
+        vm.NewBundleCommand.Execute(null);
+        Assert.Equal("", vm.EditId);
+        Assert.Equal("", vm.EditItems);
+        vm.SelectedBundle = vm.Bundles.Single();
+        Assert.Equal("office", vm.EditId);
+        Assert.Equal("Văn phòng", vm.EditName);
+        Assert.Equal("Cho kế toán", vm.EditDescription);
+        Assert.Equal("demo\nb@1.0", vm.EditItems);
+        vm.EditName = "Văn phòng 2";
+        vm.EditItems = "b";
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+        var updated = Assert.Single(Login().Catalog.Bundles!);
+        Assert.Equal("Văn phòng 2", updated.Name);
+        Assert.Equal(new[] { new BundleItem("b") }, updated.Items);
+
+        vm.SelectedBundle = vm.Bundles.Single();
+        Assert.True(vm.RemoveBundleCommand.CanExecute(null));
+        await vm.RemoveBundleCommand.ExecuteAsync(null);
+        Assert.Equal("Xóa bộ gói Văn phòng 2?", asked);
+        Assert.Null(vm.Error);
+        Assert.Equal("Đã xóa bộ gói Văn phòng 2", vm.Status);
+        Assert.Empty(vm.Bundles);
+        Assert.Empty(Login().Catalog.Bundles ?? new());
+    }
+
+    [Fact]
+    public async Task Admin_invalid_bundle_line_shows_error()
+    {
+        var s = Login();
+        AddPackages(s, ("demo", "1.0"));
+        var v0 = s.Catalog.Version;
+        var vm = Make(s);
+        vm.EditId = "office";
+        vm.EditName = "Văn phòng";
+        foreach (var (text, line) in new[] { ("demo\n@1.0", 2), ("a@b@c", 1), ("demo@", 1), ("\n\nbad id", 3) })
+        {
+            vm.EditItems = text;
+            await vm.SaveBundleCommand.ExecuteAsync(null);
+            Assert.Equal($"Dòng {line} không hợp lệ", vm.Error);
+        }
+        // Validation inside VaultAdmin is shown through ErrorText.ForUser.
+        vm.EditItems = "ghost";
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Equal("Bộ gói tham chiếu gói không có trong kho: ghost", vm.Error);
+        vm.EditItems = "";
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Equal("Bộ gói không có gói nào", vm.Error);
+        Assert.Equal(v0, s.Catalog.Version);
+        Assert.Empty(vm.Bundles);
+    }
+
+    // ---------- Scan history / logs ----------
+
+    static ScanReport ScanOf(string host, DateTimeOffset at) => new(at,
+        new HardwareInfo(host, "Dell", "Opti", "SN-" + host, new(), new(), new(), new()),
+        new NetworkHistory(new(), true),
+        new Installer.Core.Licensing.LicenseInfo("Windows", "Pro", Installer.Core.Licensing.LicenseChannel.Retail, true, null, null,
+            Installer.Core.Licensing.LicenseVerdict.Genuine, new()),
+        new Installer.Core.Licensing.LicenseInfo("Office", null, Installer.Core.Licensing.LicenseChannel.Unknown, null, null, null,
+            Installer.Core.Licensing.LicenseVerdict.NotInstalled, new()),
+        new KeywordScanResult(new(), false, false));
+
+    static LogEntry ScanLog(string host, DateTimeOffset at) =>
+        new(at, "an", host, "SN-" + host, "scan", null, null, "ok", null, "x",
+            JsonSerializer.Serialize(ScanOf(host, at), Json.Options));
+
+    [Fact]
+    public async Task Scan_history_lists_filters_pages_and_opens_report()
+    {
+        var s = Login();
+        var log = new EncryptedLog(_root, s.Store.Meta.VaultId, s.VaultKey, false);
+        var day = new DateTimeOffset(new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Local));
+        for (var i = 0; i < 203; i++) log.Append(ScanLog("MAY-01", day.AddMinutes(i)));
+        var may2a = day.AddDays(4); // 05/11 local
+        log.Append(ScanLog("MAY-02", may2a));
+        log.Append(ScanLog("MAY-02", day.AddDays(6)));
+        log.Append(new LogEntry(day, "an", "MAY-03", null, "install", "demo", "1.0", "ok", 0, null));
+
+        var nav = new List<object>();
+        var vm = Make(s, navigate: nav.Add);
+        await vm.InitialLoad;
+        Assert.Equal(205, vm.HistoryCount);
+        Assert.Equal(200, vm.HistoryPage.Count);
+        Assert.Equal("Trang 1/2", vm.PageText);
+        Assert.Equal("MAY-02", vm.HistoryPage[0].Item.Hostname); // newest first
+        Assert.False(vm.PrevPageCommand.CanExecute(null));
+        Assert.True(vm.NextPageCommand.CanExecute(null));
+        vm.NextPageCommand.Execute(null);
+        Assert.Equal("Trang 2/2", vm.PageText);
+        Assert.Equal(5, vm.HistoryPage.Count);
+        Assert.False(vm.NextPageCommand.CanExecute(null));
+        Assert.True(vm.PrevPageCommand.CanExecute(null));
+
+        vm.MachineFilter = "may-02";
+        Assert.Equal("Trang 1/1", vm.PageText);
+        Assert.Equal(2, vm.HistoryPage.Count);
+        vm.FromDate = new DateTime(2026, 11, 5);
+        vm.ToDate = new DateTime(2026, 11, 5);
+        var row = Assert.Single(vm.HistoryPage);
+        Assert.Equal(may2a, row.Item.Ts);
+        vm.MachineFilter = "không có";
+        Assert.Empty(vm.HistoryPage);
+        Assert.Equal("Trang 1/1", vm.PageText);
+        Assert.False(vm.NextPageCommand.CanExecute(null));
+        vm.MachineFilter = "MAY-02";
+
+        vm.SelectedTabIndex = AdminViewModel.HistoryTabIndex;
+        vm.OpenScanCommand.Execute(row.Item);
+        var report = Assert.IsType<ScanReportViewModel>(Assert.Single(nav));
+        Assert.True(report.IsReadOnly);
+        Assert.Same(row.Item.Report, report.Report);
+        Assert.Equal("Lịch sử quét — MAY-02 — " + may2a.ToLocalTime().ToString("dd/MM/yyyy HH:mm",
+            System.Globalization.CultureInfo.InvariantCulture), report.Title);
+        report.ContinueCommand.Execute(null);
+        Assert.Same(vm, nav[1]);
+        Assert.Equal(AdminViewModel.HistoryTabIndex, vm.SelectedTabIndex);
+    }
+
+    [Fact]
+    public async Task Logs_load_async_and_clear_error_on_success()
+    {
+        var s = Login();
+        var vm = Make(s);
+        await vm.InitialLoad;
+        Assert.Empty(vm.FilteredLogs);
+        Assert.Empty(vm.HistoryPage);
+        Assert.Equal("Trang 1/1", vm.PageText);
+
+        var log = new EncryptedLog(_root, s.Store.Meta.VaultId, s.VaultKey, false);
+        log.Append(new LogEntry(DateTimeOffset.Now, "an", "MAY-01", null, "install", "demo", "1.0", "ok", 0, null));
+        log.Append(ScanLog("MAY-01", DateTimeOffset.Now));
+        vm.Error = "lỗi cũ";
+        await vm.LoadLogsCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+        Assert.False(vm.IsLoadingLogs);
+        Assert.Equal(2, vm.FilteredLogs.Count);
+        Assert.Single(vm.HistoryPage);
     }
 
     [Fact]

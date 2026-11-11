@@ -1,4 +1,5 @@
 using Installer.App.ViewModels;
+using Installer.Core.Errors;
 using Installer.Core.Install;
 using Installer.Core.Model;
 
@@ -128,6 +129,40 @@ public class QueueInstallViewModelTests
         vm.CancelCommand.Execute(null);
         await vm.Completion;
         Assert.Equal(new[] { "Đã hủy", "Đã bỏ qua" }, vm.Items.Select(i => i.Status));
+    }
+
+    [Fact]
+    public async Task Cancel_shows_dang_huy_immediately()
+    {
+        var gate = new TaskCompletionSource<InstallOutcome>();
+        IProgress<InstallProgress>? progress = null;
+        var vm = Make(new[] { Pkg("A"), Pkg("B") }, (p, pr, ct) => { progress = pr; return gate.Task; });
+        vm.CancelCommand.Execute(null);
+        Assert.Equal("Đang hủy…", vm.Step);
+        progress!.Report(new InstallProgress(50, "Đang chép tệp")); // late progress must not hide the feedback
+        Assert.Equal("Đang hủy…", vm.Step);
+        gate.SetResult(Out(InstallStatus.Failed, ErrorText.Cancelled));
+        await vm.Completion;
+        Assert.Equal(new[] { "Đã hủy", "Đã bỏ qua" }, vm.Items.Select(i => i.Status));
+        Assert.False(vm.CancelCommand.CanExecute(null));
+        vm.CancelCommand.Execute(null); // after the run (token source disposed) this must be a no-op
+    }
+
+    [Fact]
+    public async Task Cancellation_not_from_user_is_an_error()
+    {
+        var ran = new List<string>();
+        var vm = Make(new[] { Pkg("A"), Pkg("B") }, (p, pr, ct) =>
+        {
+            ran.Add(p.Name);
+            if (p.Name == "A") throw new TaskCanceledException("timeout");
+            return Task.FromResult(Out(InstallStatus.Success));
+        });
+        await vm.Completion;
+        Assert.Equal(new[] { "A", "B" }, ran);
+        Assert.Equal(new[] { "Lỗi", "Thành công" }, vm.Items.Select(i => i.Status));
+        Assert.Equal(ErrorText.ForUser(new TaskCanceledException()), vm.Items[0].Message);
+        Assert.Equal("Hoàn tất", vm.Step);
     }
 
     [Fact]

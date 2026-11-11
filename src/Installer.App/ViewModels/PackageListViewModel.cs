@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Installer.Core;
 using Installer.Core.Errors;
 using Installer.Core.Install;
 using Installer.Core.Model;
@@ -13,6 +15,7 @@ public partial class PackageListViewModel : ObservableObject
     public const string InstallQueueTitle = "Cài đặt";
     public const string UninstallQueueTitle = "Gỡ cài đặt";
 
+    private readonly Catalog _catalog;
     private readonly ScanReport _scan;
     private readonly Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _install;
     private readonly Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _uninstall;
@@ -34,13 +37,14 @@ public partial class PackageListViewModel : ObservableObject
     {
         CanOpenAdmin = openAdmin != null;
         OpenAdminCommand = new RelayCommand(() => openAdmin?.Invoke());
-        _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
+        _catalog = catalog; _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
         _openFile = openFile; _navigate = navigate; _extractIcon = extractIcon;
         var byVersionDesc = Comparer<string>.Create((a, b) => VersionComparer.Compare(b, a) ?? string.CompareOrdinal(b, a));
         var sorted = catalog.Packages
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(p => p.Version, byVersionDesc);
         foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, canUninstall, this));
+        Bundles = catalog.Bundles ?? new();
     }
 
     public bool CanOpenAdmin { get; }
@@ -59,10 +63,67 @@ public partial class PackageListViewModel : ObservableObject
 
     partial void OnIsInstallingChanged(bool value)
     {
+        ApplyBundleCommand.NotifyCanExecuteChanged();
         foreach (var r in Rows) r.NotifyInstallingChanged();
     }
 
-    internal void OnSelectionChanged() => SelectedCount = Rows.Count(r => r.IsSelected);
+    internal void OnSelectionChanged()
+    {
+        // A tick changed by hand drops the bundle's install order; the queue falls back to display order.
+        if (!_applyingBundle) _bundleOrder = null;
+        SelectedCount = Rows.Count(r => r.IsSelected);
+    }
+
+    // ---------- Bundles ----------
+
+    /// <summary>The catalog's bundles; the picker is hidden when there are none.</summary>
+    public IReadOnlyList<Bundle> Bundles { get; }
+    public bool HasBundles => Bundles.Count > 0;
+
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(ApplyBundleCommand))]
+    private Bundle? _selectedBundle;
+
+    /// <summary>One line per bundle item that was not ticked: "{name}: {reason}" when blocked, "{id}: Không có trong kho" when missing.</summary>
+    public ObservableCollection<string> BundleNotices { get; } = new();
+    public bool HasBundleNotices => BundleNotices.Count > 0;
+
+    private List<PackageRowViewModel>? _bundleOrder;
+    private bool _applyingBundle;
+
+    private bool CanApplyBundle() => SelectedBundle != null && !IsInstalling;
+
+    /// <summary>Clears the ticks, then ticks the bundle's resolvable and allowed packages, remembering the bundle's order.</summary>
+    [RelayCommand(CanExecute = nameof(CanApplyBundle))]
+    private void ApplyBundle()
+    {
+        if (SelectedBundle is not { } bundle) return;
+        var order = new List<PackageRowViewModel>();
+        var notices = new List<string>();
+        _applyingBundle = true;
+        try
+        {
+            foreach (var r in Rows) r.IsSelected = false;
+            foreach (var (item, pkg) in BundleResolver.Resolve(_catalog, bundle))
+            {
+                var row = pkg is null ? null : Rows.FirstOrDefault(r => ReferenceEquals(r.Package, pkg));
+                if (row is null) { notices.Add($"{item.PackageId}: {Strings.NotInVault}"); continue; }
+                if (!row.Allowed) { notices.Add($"{row.Name}: {row.ReasonsText}"); continue; }
+                if (order.Contains(row)) continue; // "id" and "id@ver" can resolve to the same package
+                row.IsSelected = true;
+                order.Add(row);
+            }
+        }
+        finally { _applyingBundle = false; }
+        _bundleOrder = order;
+        SetNotices(notices);
+    }
+
+    private void SetNotices(IEnumerable<string> notices)
+    {
+        BundleNotices.Clear();
+        foreach (var n in notices) BundleNotices.Add(n);
+        OnPropertyChanged(nameof(HasBundleNotices));
+    }
 
     internal QueueInstallViewModel? Current { get; private set; }
 
@@ -73,9 +134,10 @@ public partial class PackageListViewModel : ObservableObject
 
     private bool CanInstallSelected() => SelectedCount > 0 && !IsInstalling;
 
-    /// <summary>Installs the ticked rows in display order (Task 13 will substitute bundle order when a bundle was applied).</summary>
+    /// <summary>Installs the ticked rows: in bundle order right after a bundle was applied, otherwise in display order.</summary>
     [RelayCommand(CanExecute = nameof(CanInstallSelected))]
-    private void InstallSelected() => StartInstall(Rows.Where(r => r.IsSelected && r.Allowed).ToList());
+    private void InstallSelected() =>
+        StartInstall((_bundleOrder ?? Rows).Where(r => r.IsSelected && r.Allowed).ToList());
 
     internal void StartInstall(IReadOnlyList<PackageRowViewModel> rows)
     {
@@ -121,6 +183,8 @@ public partial class PackageListViewModel : ObservableObject
         var vm = CreateQueueVm(title, items, run, () =>
         {
             foreach (var r in Rows) { r.IsSelected = false; r.Refresh(); }
+            _bundleOrder = null;
+            SetNotices(Array.Empty<string>());
             IsInstalling = false;
             Current = null;
             _navigate(this);

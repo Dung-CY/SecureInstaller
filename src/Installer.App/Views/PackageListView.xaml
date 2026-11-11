@@ -6,6 +6,7 @@
     <Grid Margin="24,18,24,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -26,8 +27,6 @@
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Xem lại báo cáo quét" Command="{Binding ViewScanCommand}" Style="{StaticResource SecondaryButton}"
                         Padding="14,8" Margin="0,0,8,0"/>
-                <!-- Bundle picker goes here (Task 13) -->
-                <ContentControl x:Name="BundleSlot" Focusable="False" VerticalAlignment="Center"/>
                 <Button Content="Quản trị" Command="{Binding OpenAdminCommand}" Style="{StaticResource SecondaryButton}"
                         Padding="14,8" Margin="0,0,8,0"
                         Visibility="{Binding CanOpenAdmin, Converter={StaticResource BoolToVisibility}}"/>
@@ -36,7 +35,48 @@
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+        <!-- Bundle bar: pick a bundle to pre-tick its packages in install order; hidden when the catalog has none -->
+        <Border Grid.Row="1" Margin="0,0,0,12" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1" CornerRadius="8" Padding="14,10"
+                Visibility="{Binding HasBundles, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="240"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Bộ gói" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Bundles}" SelectedItem="{Binding SelectedBundle}"
+                              DisplayMemberPath="Name" FontSize="14" Padding="8,5" VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Chọn bộ gói"/>
+                    <Button Grid.Column="2" Content="Tick các gói trong bộ" Command="{Binding ApplyBundleCommand}"
+                            Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="8,0,14,0"/>
+                    <TextBlock Grid.Column="3" Text="{Binding SelectedBundle.Description}" Style="{StaticResource Muted}"
+                               VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding SelectedBundle.Description}"/>
+                </Grid>
+                <!-- Packages of the bundle that were not ticked, with the reason -->
+                <Border Background="{StaticResource WarnBgBrush}" CornerRadius="6" Padding="12,8" Margin="0,10,0,0"
+                        Visibility="{Binding HasBundleNotices, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="Các gói sau trong bộ không được tick:" Foreground="{StaticResource WarnBrush}"
+                                   FontSize="13" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding BundleNotices}" Focusable="False" Margin="0,3,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StringFormat='• {0}'}" Foreground="{StaticResource WarnBrush}" FontSize="13"
+                                               Margin="0,1,0,0"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
                 BorderThickness="1" CornerRadius="8" Grid.IsSharedSizeScope="True">
             <Grid>
                 <Grid.RowDefinitions>
