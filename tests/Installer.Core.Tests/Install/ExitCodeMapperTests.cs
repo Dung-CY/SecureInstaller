@@ -57,6 +57,23 @@ public class MsiProgressParserTests
     }
 
     [Fact]
+    public void Second_reset_phase_reports_again()
+    {
+        var p = new MsiProgressParser();
+        p.Handle("1: 0 2: 100 3: 0 4: 1");
+        Assert.Equal(90, p.Handle("1: 2 2: 90 3: 0 4: 0"));
+        Assert.Null(p.Handle("1: 0 2: 100 3: 0 4: 1"));
+        Assert.Equal(10, p.Handle("1: 2 2: 10 3: 0 4: 0"));
+    }
+
+    [Fact]
+    public void LogMode_constants_match_message_types()
+    {
+        Assert.Equal(1u << (int)(MsiNative.MSG_PROGRESS >> 24), MsiNative.INSTALLLOGMODE_PROGRESS);
+        Assert.Equal(1u << (int)(MsiNative.MSG_ACTIONSTART >> 24), MsiNative.INSTALLLOGMODE_ACTIONSTART);
+    }
+
+    [Fact]
     public void Garbage_ignored()
     {
         var p = new MsiProgressParser();

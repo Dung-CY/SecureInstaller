@@ -63,6 +63,27 @@ public class ZipInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Zip_precancelled_returns_failed_cancel()
+    {
+        var z = MakeZip("a.txt");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", Path.Combine(_root, "t"), TimeSpan.FromMinutes(1)), new Collect(), cts.Token);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal("Người dùng hủy cài đặt", o.Message);
+    }
+
+    [Fact]
+    public async Task Zip_entry_with_colon_fails()
+    {
+        var z = MakeZip("a.txt:evil");
+        var target = Path.Combine(_root, "t");
+        var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", target, TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal("Gói zip không hợp lệ", o.Message);
+    }
+
+    [Fact]
     public async Task Zip_missing_target_fails()
     {
         var z = MakeZip("a.txt");

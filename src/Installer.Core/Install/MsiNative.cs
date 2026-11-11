@@ -5,8 +5,9 @@ namespace Installer.Core.Install;
 internal static class MsiNative
 {
     public const int INSTALLUILEVEL_NONE = 2;
-    public const uint INSTALLLOGMODE_ACTIONSTART = 0x00000400;
-    public const uint INSTALLLOGMODE_PROGRESS = 0x00010000;
+    // msi.h: INSTALLLOGMODE_x = 1 << (INSTALLMESSAGE_x >> 24)
+    public const uint INSTALLLOGMODE_ACTIONSTART = 0x00000100;
+    public const uint INSTALLLOGMODE_PROGRESS = 0x00000400;
     public const uint MSG_ACTIONSTART = 0x08000000;
     public const uint MSG_PROGRESS = 0x0A000000;
 

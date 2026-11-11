@@ -6,6 +6,8 @@ public sealed class ExeInstaller : IInstallerRunner
 {
     public async Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
     {
+        if (req.Timeout <= TimeSpan.Zero)
+            return new InstallOutcome(InstallStatus.Failed, null, "Lỗi cài đặt (thời gian chờ không hợp lệ)");
         progress.Report(new InstallProgress(null, "Đang khởi động bộ cài"));
         var psi = new ProcessStartInfo(req.InstallerPath)
         {
@@ -31,7 +33,12 @@ public sealed class ExeInstaller : IInstallerRunner
             catch (OperationCanceledException)
             {
                 try { proc.Kill(entireProcessTree: true); } catch { }
-                try { await proc.WaitForExitAsync().ConfigureAwait(false); } catch { }
+                try
+                {
+                    using var killWait = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    await proc.WaitForExitAsync(killWait.Token).ConfigureAwait(false);
+                }
+                catch { }
                 return timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
                     ? new InstallOutcome(InstallStatus.Timeout, null, "Quá thời gian cài đặt")
                     : new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt");

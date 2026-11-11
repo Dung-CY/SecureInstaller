@@ -24,6 +24,7 @@ internal sealed class MsiProgressParser
         {
             case 0:
                 _total = b;
+                _last = 0; // each MSI phase reports from 0 again
                 _forward = c == 0;
                 _position = _forward ? 0 : _total;
                 break;

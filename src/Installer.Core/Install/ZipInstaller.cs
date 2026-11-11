@@ -5,7 +5,7 @@ namespace Installer.Core.Install;
 public sealed class ZipInstaller : IInstallerRunner
 {
     public Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
-        => Task.Run(() => Run(req, progress, ct), ct);
+        => Task.Run(() => Run(req, progress, ct));
 
     private static InstallOutcome Run(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
     {
@@ -13,6 +13,7 @@ public sealed class ZipInstaller : IInstallerRunner
             return new InstallOutcome(InstallStatus.Failed, null, "Thiếu thư mục đích");
         try
         {
+            ct.ThrowIfCancellationRequested();
             var target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(req.TargetDir));
             Directory.CreateDirectory(target);
             var prefix = Path.TrimEndingDirectorySeparator(target) + Path.DirectorySeparatorChar;
@@ -22,6 +23,8 @@ public sealed class ZipInstaller : IInstallerRunner
             var dests = new string[entries.Count];
             for (int i = 0; i < entries.Count; i++)
             {
+                if (entries[i].FullName.Contains(':'))
+                    return new InstallOutcome(InstallStatus.Failed, null, "Gói zip không hợp lệ");
                 var full = Path.GetFullPath(Path.Combine(target, entries[i].FullName));
                 if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     return new InstallOutcome(InstallStatus.Failed, null, "Gói zip không hợp lệ");
