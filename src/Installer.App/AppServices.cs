@@ -34,6 +34,7 @@ public sealed class AppServices
         _log = new EncryptedLog(_root, session.Store.Meta.VaultId, session.VaultKey, session.Store.IsReadOnly);
         _log.SyncFallbackIntoVault();
         _repo = new PortableRepositorySource(session, _log);
+        Main.SetVault(session.Catalog, session.Store.IsReadOnly);
 
         var wmi = new Wmi();
         var reg = new RegistryReader();
@@ -56,6 +57,7 @@ public sealed class AppServices
 
     private void ShowPackages(VaultSession session, ScanReport report)
     {
+        Main.SetVault(session.Catalog, session.Store.IsReadOnly);
         var installService = new InstallService(_repo!, new InstallerRunnerFactory());
         var apps = new InstalledAppsScanner(new RegistryReader());
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,

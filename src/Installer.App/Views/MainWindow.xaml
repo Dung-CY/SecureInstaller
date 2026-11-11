@@ -23,5 +23,24 @@
             <v:AdminView/>
         </DataTemplate>
     </Window.Resources>
-    <ContentControl Content="{Binding Current}"/>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="0,0,0,1" Padding="16,6">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding VaultInfo}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ReadOnlyNotice}" Foreground="{StaticResource DangerBrush}"/>
+                <TextBlock Text="{Binding VaultInfo}" Style="{StaticResource Muted}"/>
+            </DockPanel>
+        </Border>
+        <ContentControl Content="{Binding Current}"/>
+    </DockPanel>
 </Window>

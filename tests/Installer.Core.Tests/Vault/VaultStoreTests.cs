@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Installer.Core.Crypto;
 using Installer.Core.Model;
+using Installer.Core.Tests.TestData;
 using Installer.Core.Vault;
 
 namespace Installer.Core.Tests.Vault;
@@ -174,6 +175,42 @@ public class VaultStoreTests : IDisposable
         File.WriteAllBytes(Path.Combine(root, "vault", "catalog.json.enc"),
             PackageCrypto.EncryptBytes(JsonSerializer.SerializeToUtf8Bytes(modified, Json.Options), user.VaultKey));
         Assert.Throws<VaultTamperedException>(() => VaultStore.Open(root).Unlock("user1", "pw-u", T0));
+    }
+
+    (string root, PackageEntry entry, VaultSession session) VaultWithPackage()
+    {
+        var root = NewRoot();
+        VaultStore.Create(root, "admin", "pw-1");
+        var s = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        var e = new VaultAdmin(s).AddPackage(SamplePackage.Create(_tmp));
+        return (root, e, s);
+    }
+
+    [Fact]
+    public void Replaced_blob_with_different_size_throws_VaultTampered_on_unlock()
+    {
+        var (root, e, _) = VaultWithPackage();
+        File.WriteAllBytes(Path.Combine(root, "vault", "packages", e.BlobFile), new byte[] { 1, 2, 3 });
+        Assert.Throws<VaultTamperedException>(() => VaultStore.Open(root).Unlock("admin", "pw-1", T0));
+    }
+
+    [Fact]
+    public void Missing_blob_throws_VaultTampered_on_unlock()
+    {
+        var (root, e, _) = VaultWithPackage();
+        File.Delete(Path.Combine(root, "vault", "packages", e.BlobFile));
+        Assert.Throws<VaultTamperedException>(() => VaultStore.Open(root).Unlock("admin", "pw-1", T0));
+    }
+
+    [Fact]
+    public void Legacy_entry_with_BlobSize_0_skips_size_check()
+    {
+        var (root, e, s) = VaultWithPackage();
+        var legacy = s.Catalog with { Packages = s.Catalog.Packages.Select(p => p with { BlobSize = 0 }).ToList() };
+        s.Store.WriteCatalog(legacy, s.VaultKey, s.SigningPrivateKey!);
+        File.WriteAllBytes(Path.Combine(root, "vault", "packages", e.BlobFile), new byte[] { 1, 2, 3 });
+        var reopened = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
+        Assert.Single(reopened.Catalog.Packages);
     }
 
     [Fact]
