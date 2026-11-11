@@ -195,11 +195,15 @@ public sealed class VaultStore
         return new VaultSession(user.Username, signingKey != null, vk, signingKey, catalog, this);
     }
 
-    void VerifyBlobs(Catalog catalog)
+    internal static bool IsSafeFileName(string? name) =>
+        !string.IsNullOrEmpty(name) && name == Path.GetFileName(name) && name is not ("." or "..");
+
+    internal void VerifyBlobs(Catalog catalog)
     {
         var dir = Path.Combine(VaultDir, "packages");
         foreach (var p in catalog.Packages)
         {
+            if (!IsSafeFileName(p.BlobFile)) throw new VaultTamperedException(Strings.VaultTampered);
             long len;
             try
             {

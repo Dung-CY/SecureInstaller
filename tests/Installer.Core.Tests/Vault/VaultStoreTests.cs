@@ -202,6 +202,17 @@ public class VaultStoreTests : IDisposable
         Assert.Throws<VaultTamperedException>(() => VaultStore.Open(root).Unlock("admin", "pw-1", T0));
     }
 
+    [Theory]
+    [InlineData("../x.pkg.enc")]
+    [InlineData("..")]
+    [InlineData("")]
+    public void Unsafe_blob_name_throws_VaultTampered_on_unlock(string bad)
+    {
+        var (_, _, s) = VaultWithPackage();
+        var cat = s.Catalog with { Packages = s.Catalog.Packages.Select(p => p with { BlobFile = bad }).ToList() };
+        Assert.Throws<VaultTamperedException>(() => s.Store.VerifyBlobs(cat));
+    }
+
     [Fact]
     public void Legacy_entry_with_BlobSize_0_skips_size_check()
     {

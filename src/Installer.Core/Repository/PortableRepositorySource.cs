@@ -15,8 +15,7 @@ public sealed class PortableRepositorySource : IRepositorySource
 
     public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(pkg.BlobFile) || pkg.BlobFile != Path.GetFileName(pkg.BlobFile)
-            || pkg.BlobFile is "." or "..")
+        if (!VaultStore.IsSafeFileName(pkg.BlobFile))
             throw new PackageCorruptException(Strings.PackageCorrupt);
         var path = Path.Combine(_session.Store.Root, "vault", "packages", pkg.BlobFile);
         return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true));

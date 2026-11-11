@@ -23,4 +23,18 @@ public class MainViewModelTests
         vm.SetVault(Cat(), readOnly: false);
         Assert.Null(vm.ReadOnlyNotice);
     }
+
+    [Fact]
+    public void VaultInfo_is_culture_invariant()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+            var vm = new MainViewModel();
+            vm.SetVault(Cat(), false);
+            Assert.Equal("Kho phiên bản 7 · cập nhật 11/11/2026", vm.VaultInfo);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
+    }
 }

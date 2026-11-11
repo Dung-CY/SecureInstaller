@@ -13,7 +13,7 @@ public partial class MainViewModel : ObservableObject
 
     public void SetVault(Catalog catalog, bool readOnly)
     {
-        VaultInfo = string.Format(Strings.VaultInfo, catalog.Version, catalog.UpdatedAt.ToLocalTime());
+        VaultInfo = string.Format(System.Globalization.CultureInfo.InvariantCulture, Strings.VaultInfo, catalog.Version, catalog.UpdatedAt.ToLocalTime());
         ReadOnlyNotice = readOnly ? Strings.ReadOnlyNotice : null;
     }
 
