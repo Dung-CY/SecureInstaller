@@ -30,4 +30,25 @@ public static class SamplePackage
         File.WriteAllText(Path.Combine(dir, "extras", "a.ini"), "[a]\nb=1");
         return dir;
     }
+
+    /// <summary>Zip-type package: installer/app.zip holds one file; postActionsJson is a raw JSON array.</summary>
+    public static string CreateZip(string parent, string targetDir, string postActionsJson = "[]", string id = "ziptest", string version = "1.0")
+    {
+        var manifest = $$"""
+        {
+          "id": "{{id}}", "name": "Zip {{id}}", "version": "{{version}}",
+          "installer_type": "zip", "installer_file": "app.zip", "target_dir": {{System.Text.Json.JsonSerializer.Serialize(targetDir)}},
+          "post_actions": {{postActionsJson}}
+        }
+        """;
+        var dir = Create(parent, id, version, manifestOverride: manifest, withInstaller: false);
+        Directory.CreateDirectory(Path.Combine(dir, "installer"));
+        using (var za = System.IO.Compression.ZipFile.Open(Path.Combine(dir, "installer", "app.zip"), System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var e = za.CreateEntry("hello.txt");
+            using var w = new StreamWriter(e.Open());
+            w.Write("hi");
+        }
+        return dir;
+    }
 }
