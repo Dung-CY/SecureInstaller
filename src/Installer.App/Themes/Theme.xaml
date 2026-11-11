@@ -407,4 +407,162 @@
             </Setter.Value>
         </Setter>
     </Style>
+
+    <!-- ===== Package list & install queue ===== -->
+
+    <!-- Status tones: green = done/up to date, amber = needs attention but not an error, red = blocked/failed -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#1E7A4C"/>
+    <SolidColorBrush x:Key="SuccessBgBrush" Color="#E6F4EC"/>
+    <SolidColorBrush x:Key="WarnBrush" Color="#9A5B00"/>
+    <SolidColorBrush x:Key="WarnBgBrush" Color="#FFF3DD"/>
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#EAF1FB"/>
+    <!-- Stronger than AccentSoftBrush so the "Cũ hơn" pill stays visible on a ticked (tinted) row -->
+    <SolidColorBrush x:Key="AccentPillBrush" Color="#D6E4F8"/>
+
+    <!-- Fallback package icon: a neutral parcel on a soft tile -->
+    <DrawingImage x:Key="DefaultPackageIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#EEF1F5" Geometry="M 8,0 H 40 A 8,8 0 0 1 48,8 V 40 A 8,8 0 0 1 40,48 H 8 A 8,8 0 0 1 0,40 V 8 A 8,8 0 0 1 8,0 Z"/>
+                <GeometryDrawing Brush="#D9DEE6" Geometry="M 24,10 L 37,16.5 L 24,23 L 11,16.5 Z"/>
+                <GeometryDrawing Brush="#B4BCC8" Geometry="M 11,18.5 L 23,24.5 V 38 L 11,32 Z"/>
+                <GeometryDrawing Brush="#98A2B3" Geometry="M 37,18.5 L 25,24.5 V 38 L 37,32 Z"/>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Secondary action: outlined, takes its text colour from Foreground -->
+    <Style x:Key="SecondaryButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+        <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                    <Setter Property="TextWrapping" Value="NoWrap"/>
+                                </Style>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource WindowBrush}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#B9C1CD"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Compact primary button for table rows -->
+    <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="14,6"/>
+    </Style>
+
+    <!-- Row checkbox: 18 px rounded box, accent fill when ticked -->
+    <Style x:Key="RowCheck" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent" Width="28" Height="28">
+                        <Border x:Name="Box" Width="18" Height="18" CornerRadius="4" BorderThickness="1.5"
+                                BorderBrush="#A3ACBA" Background="{StaticResource CardBrush}">
+                            <Path x:Name="Tick" Data="M 3.5 8.5 L 7 12 L 13.5 4.5" Stroke="White" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+                            <Setter TargetName="Box" Property="BorderThickness" Value="2"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource SubtleBrush}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ColumnHeader" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="Pill" TargetType="Border">
+        <Setter Property="CornerRadius" Value="11"/>
+        <Setter Property="Padding" Value="10,2,10,3"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Background" Value="{StaticResource SubtleBrush}"/>
+    </Style>
+
+    <!-- Rows are not "selected" by clicking: the checkbox carries selection, so the container is inert -->
+    <Style x:Key="PackageRowItem" TargetType="ListBoxItem">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource SubtleBrush}"
+                            BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Blocked rows carry a red edge so they read as "not available" at a glance -->
+                            <Border x:Name="Edge" Background="Transparent"/>
+                            <ContentPresenter Grid.Column="1"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#F8F9FB"/>
+                        </Trigger>
+                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+                            <Setter TargetName="Edge" Property="Background" Value="{StaticResource AccentBrush}"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Allowed}" Value="False">
+                            <Setter TargetName="Edge" Property="Background" Value="{StaticResource DangerBrush}"/>
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>

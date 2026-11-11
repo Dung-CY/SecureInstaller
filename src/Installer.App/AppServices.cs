@@ -58,16 +58,24 @@ public sealed class AppServices
     private void ShowPackages(VaultSession session, ScanReport report)
     {
         Main.SetVault(session.Catalog, session.Store.IsReadOnly);
-        var installService = new InstallService(_repo!, new InstallerRunnerFactory());
-        var apps = new InstalledAppsScanner(new RegistryReader());
+        // One marker over the real HKLM registry: InstallService writes it, the scanner reads it as a fallback,
+        // UninstallService removes it.
+        var marker = new InstallMarker(new RegistryReader(), new RegistryWriter());
+        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker);
+        var uninstallService = new UninstallService(_repo!, marker, _ => new ExeInstaller());
+        var apps = new InstalledAppsScanner(new RegistryReader(), marker);
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
-            rule => apps.Find(rule),
+            pkg => apps.FindForPackage(pkg),
             (pkg, progress, ct) => installService.InstallAsync(pkg, session.Username, report.Hardware, progress, ct),
             (pkg, doc, ct) => installService.ExtractDocAsync(pkg, doc, ct),
             ConfirmYesNo,
             path => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }),
             Main.NavigateTo,
-            session.IsAdmin ? () => ShowAdmin(session, report) : null));
+            // `matches` is FindForPackage(pkg) for this package only (captured by the row).
+            (pkg, matches, progress, ct) => uninstallService.UninstallAsync(pkg, matches, session.Username, report.Hardware, progress, ct),
+            uninstallService.CanUninstall,
+            session.IsAdmin ? () => ShowAdmin(session, report) : null,
+            (path, index) => IconExtractor.ExtractPng(path, index)));
     }
 
     private void ShowAdmin(VaultSession session, ScanReport report)

@@ -10,26 +10,37 @@ namespace Installer.App.ViewModels;
 
 public partial class PackageListViewModel : ObservableObject
 {
+    public const string InstallQueueTitle = "Cài đặt";
+    public const string UninstallQueueTitle = "Gỡ cài đặt";
+
+    private readonly ScanReport _scan;
     private readonly Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _install;
+    private readonly Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _uninstall;
     private readonly Func<PackageEntry, string, CancellationToken, Task<string>> _extractDoc;
     private readonly Func<string, bool> _confirm;
     private readonly Action<string> _openFile;
     private readonly Action<object> _navigate;
+    private readonly Func<string, int, byte[]?>? _extractIcon;
+    private readonly Dictionary<(string, int), byte[]?> _iconCache = new();
 
     public PackageListViewModel(Catalog catalog, ScanReport scan,
-        Func<DetectRule, IReadOnlyList<InstalledApp>> findInstalled,
+        Func<PackageEntry, IReadOnlyList<InstalledApp>> findInstalled,
         Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> install,
         Func<PackageEntry, string, CancellationToken, Task<string>> extractDoc,
-        Func<string, bool> confirm, Action<string> openFile, Action<object> navigate, Action? openAdmin = null)
+        Func<string, bool> confirm, Action<string> openFile, Action<object> navigate,
+        Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> uninstall,
+        Func<PackageEntry, IReadOnlyList<InstalledApp>, bool> canUninstall,
+        Action? openAdmin = null, Func<string, int, byte[]?>? extractIcon = null)
     {
         CanOpenAdmin = openAdmin != null;
         OpenAdminCommand = new RelayCommand(() => openAdmin?.Invoke());
-        _install = install; _extractDoc = extractDoc; _confirm = confirm; _openFile = openFile; _navigate = navigate;
+        _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
+        _openFile = openFile; _navigate = navigate; _extractIcon = extractIcon;
         var byVersionDesc = Comparer<string>.Create((a, b) => VersionComparer.Compare(b, a) ?? string.CompareOrdinal(b, a));
         var sorted = catalog.Packages
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(p => p.Version, byVersionDesc);
-        foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, this));
+        foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, canUninstall, this));
     }
 
     public bool CanOpenAdmin { get; }
@@ -38,38 +49,107 @@ public partial class PackageListViewModel : ObservableObject
     public List<PackageRowViewModel> Rows { get; } = new();
 
     [ObservableProperty] private string? _error;
-    [ObservableProperty] private bool _isInstalling;
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(InstallSelectedCommand)), NotifyCanExecuteChangedFor(nameof(ViewScanCommand))]
+    private bool _isInstalling;
+
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallSelectedLabel)), NotifyCanExecuteChangedFor(nameof(InstallSelectedCommand))]
+    private int _selectedCount;
+
+    public string InstallSelectedLabel => $"Cài các mục đã chọn ({SelectedCount})";
 
     partial void OnIsInstallingChanged(bool value)
     {
         foreach (var r in Rows) r.NotifyInstallingChanged();
     }
 
-    internal InstallViewModel? Current { get; private set; }
+    internal void OnSelectionChanged() => SelectedCount = Rows.Count(r => r.IsSelected);
 
-    internal void StartInstall(PackageRowViewModel row)
+    internal QueueInstallViewModel? Current { get; private set; }
+
+    /// <summary>Tests replace this to inject a synchronous progress factory. Args: title, items, run, onBack, runningText.</summary>
+    internal Func<string, IReadOnlyList<PackageEntry>, Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>>,
+        Action, string, QueueInstallViewModel> CreateQueueVm { get; set; } =
+        (t, items, run, back, running) => new QueueInstallViewModel(t, items, run, back, running);
+
+    private bool CanInstallSelected() => SelectedCount > 0 && !IsInstalling;
+
+    /// <summary>Installs the ticked rows in display order (Task 13 will substitute bundle order when a bundle was applied).</summary>
+    [RelayCommand(CanExecute = nameof(CanInstallSelected))]
+    private void InstallSelected() => StartInstall(Rows.Where(r => r.IsSelected && r.Allowed).ToList());
+
+    internal void StartInstall(IReadOnlyList<PackageRowViewModel> rows)
     {
-        if (IsInstalling) return;
-        var pkg = row.Package;
-        if (row.NeedsDowngradeConfirm &&
-            !_confirm($"Máy đang có phiên bản mới hơn ({row.InstalledVersionRaw}). Vẫn cài {pkg.Name} {pkg.Version}?"))
-            return;
+        if (IsInstalling || rows.Count == 0) return;
 
+        // Downgrades are confirmed once, up front; a "no" drops those rows from the queue.
+        var downgrades = rows.Where(r => r.NeedsDowngradeConfirm).ToList();
+        if (downgrades.Count > 0 && !_confirm(DowngradeText(downgrades)))
+            rows = rows.Except(downgrades).ToList();
+        if (rows.Count == 0) return;
+
+        RunQueue(InstallQueueTitle, rows.Select(r => r.Package).ToList(), (pkg, pr, ct) => _install(pkg, pr, ct), "Đang cài");
+    }
+
+    private static string DowngradeText(IReadOnlyList<PackageRowViewModel> rows)
+    {
+        if (rows.Count == 1)
+        {
+            var r = rows[0];
+            return $"Máy đang có phiên bản mới hơn ({r.InstalledVersionRaw}). Vẫn cài {r.Name} {r.PackageVersion}?";
+        }
+        var lines = rows.Select(r => $"• {r.Name} {r.PackageVersion} (trên máy: {r.InstalledVersionRaw})");
+        return "Máy đang có phiên bản mới hơn của các gói sau:\n" + string.Join("\n", lines) +
+               "\n\nVẫn cài các gói này? Nếu không đồng ý, các gói trên sẽ được bỏ khỏi hàng đợi.";
+    }
+
+    internal void StartUninstall(PackageRowViewModel row)
+    {
+        if (IsInstalling || !row.CanUninstall) return;
+        var pkg = row.Package;
+        if (!_confirm($"Gỡ {pkg.Name} {row.InstalledVersionRaw ?? pkg.Version} khỏi máy?")) return;
+        // Only this package's own matches are handed to the uninstaller.
+        var matches = row.Matches;
+        RunQueue(UninstallQueueTitle, new[] { pkg }, (p, pr, ct) => _uninstall(p, matches, pr, ct),
+            QueueInstallViewModel.UninstallRunningText);
+    }
+
+    private void RunQueue(string title, IReadOnlyList<PackageEntry> items,
+        Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> run, string runningText)
+    {
         Error = null;
         IsInstalling = true;
-        var vm = CreateInstallVm($"{pkg.Name} {pkg.Version}", (progress, ct) => _install(pkg, progress, ct), () =>
+        var vm = CreateQueueVm(title, items, run, () =>
         {
-            row.Refresh();
+            foreach (var r in Rows) { r.IsSelected = false; r.Refresh(); }
             IsInstalling = false;
+            Current = null;
             _navigate(this);
-        });
+        }, runningText);
         Current = vm;
         _navigate(vm);
     }
 
-    /// <summary>Tests replace this to inject a synchronous progress factory.</summary>
-    internal Func<string, Func<IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>>, Action, InstallViewModel>
-        CreateInstallVm { get; set; } = (t, run, back) => new InstallViewModel(t, run, back);
+    private bool CanViewScan() => !IsInstalling;
+
+    /// <summary>Re-opens this session's scan read-only; Back returns to this same instance, so ticks are kept.</summary>
+    [RelayCommand(CanExecute = nameof(CanViewScan))]
+    private void ViewScan() =>
+        _navigate(ScanReportViewModel.ForReport(_scan, ScanReportViewModel.DefaultTitle, () => _navigate(this)));
+
+    internal byte[]? ExtractIconCached(string path, int index)
+    {
+        if (_extractIcon is null) return null;
+        var key = (path.ToUpperInvariant(), index);
+        lock (_iconCache)
+        {
+            if (_iconCache.TryGetValue(key, out var hit)) return hit;
+        }
+        byte[]? png;
+        try { png = _extractIcon(path, index); }
+        catch (Exception) { png = null; }
+        lock (_iconCache) _iconCache[key] = png;
+        return png;
+    }
 
     internal async Task OpenDocAsync(PackageRowViewModel row, string doc)
     {

@@ -10,6 +10,8 @@
             </ResourceDictionary.MergedDictionaries>
             <conv:NullToCollapsed x:Key="NullToCollapsed"/>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+            <conv:IconConverter x:Key="PackageIcon" Fallback="{StaticResource DefaultPackageIcon}"/>
+            <conv:IconConverter x:Key="InstalledIcon" DecodeSize="40"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

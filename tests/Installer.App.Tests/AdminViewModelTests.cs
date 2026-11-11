@@ -256,7 +256,9 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         var main = new MainViewModel();
         Assert.Null(main.CloseBlockedMessage);
         var tcs = new TaskCompletionSource<InstallOutcome>();
-        var inst = new InstallViewModel("x", (_, _) => tcs.Task, () => { });
+        var pkg = new Installer.Core.Model.PackageEntry("x", "x", "1.0", Installer.Core.Model.InstallerType.Zip, "a.zip", "", null, 60,
+            new Installer.Core.Model.DetectRule(null, "x"), new(), new(), new(), "b.enc", "00", "AA==");
+        var inst = new QueueInstallViewModel("x", new[] { pkg }, (_, _, _) => tcs.Task, () => { });
         main.NavigateTo(inst);
         Assert.Equal("Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.", main.CloseBlockedMessage);
         tcs.SetResult(new(InstallStatus.Success, 0, "ok"));

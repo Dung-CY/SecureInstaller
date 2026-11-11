@@ -16,8 +16,8 @@
         <DataTemplate DataType="{x:Type vm:PackageListViewModel}">
             <v:PackageListView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:InstallViewModel}">
-            <v:InstallView/>
+        <DataTemplate DataType="{x:Type vm:QueueInstallViewModel}">
+            <v:QueueInstallView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:AdminViewModel}">
             <v:AdminView/>

@@ -20,7 +20,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Message to show when the user tries to close the window mid-operation; null when closing is safe.</summary>
     public string? CloseBlockedMessage => Current switch
     {
-        InstallViewModel { IsDone: false } => "Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.",
+        QueueInstallViewModel { IsDone: false, IsUninstall: true } => "Đang gỡ cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.",
+        QueueInstallViewModel { IsDone: false } => "Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.",
         AdminViewModel { IsBusy: true } => "Đang xử lý. Vui lòng đợi trước khi thoát.",
         _ => null
     };

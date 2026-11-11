@@ -37,4 +37,29 @@ public class MainViewModelTests
         }
         finally { System.Globalization.CultureInfo.CurrentCulture = old; }
     }
+
+    static PackageEntry Pkg() => new("x", "x", "1.0", InstallerType.Zip, "a.zip", "", null, 60,
+        new DetectRule(null, "x"), new(), new(), new(), "b.enc", "00", "AA==");
+
+    [Fact]
+    public async Task Close_blocked_while_queue_running()
+    {
+        var main = new MainViewModel();
+        Assert.Null(main.CloseBlockedMessage);
+        var tcs = new TaskCompletionSource<Installer.Core.Install.InstallOutcome>();
+        var q = new QueueInstallViewModel("Cài đặt", new[] { Pkg(), Pkg() }, (_, _, _) => tcs.Task, () => { });
+        main.NavigateTo(q);
+        Assert.Equal("Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.", main.CloseBlockedMessage);
+        tcs.SetResult(new(Installer.Core.Install.InstallStatus.Success, 0, "ok"));
+        await q.Completion;
+        Assert.Null(main.CloseBlockedMessage);
+
+        var gate = new TaskCompletionSource<Installer.Core.Install.InstallOutcome>();
+        var u = new QueueInstallViewModel("Gỡ cài đặt", new[] { Pkg() }, (_, _, _) => gate.Task, () => { }, "Đang gỡ");
+        main.NavigateTo(u);
+        Assert.Equal("Đang gỡ cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.", main.CloseBlockedMessage);
+        gate.SetResult(new(Installer.Core.Install.InstallStatus.Success, 0, "ok"));
+        await u.Completion;
+        Assert.Null(main.CloseBlockedMessage);
+    }
 }
