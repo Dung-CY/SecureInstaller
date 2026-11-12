@@ -268,3 +268,61 @@ Tiêu chí chấp nhận chi tiết của từng task nằm trong plan, sinh b�
 5. Gói MSI không tự lấy icon (dùng icon.png hoặc icon mặc định). — **LOW**
 6. Thư mục làm việc chuyển sang `%ProgramData%\SecureInstaller\work` (khác spec Plan 1 là `%TEMP%`). — **LOW** (bắt buộc vì lý do bảo mật)
 7. Lịch sử quét phân trang 200 bản ghi mỗi trang. — **LOW**
+
+---
+
+## Bổ sung 2026-11-12 (góp ý sau khi chạy thử bản demo 1.1 — người dùng đã đồng ý toàn bộ)
+
+### Yêu cầu bổ sung
+26. **Form "Thêm/Sửa phần mềm"** trong Quản trị, không cần tự viết manifest:
+    - Chọn file cài (.msi/.exe/.zip), điền tên, mã gói, phiên bản, tham số cài ngầm, thời gian chờ.
+    - Ô **phiên bản tự nhập**; app điền sẵn nếu đọc được từ file (MSI: ProductVersion/ProductName/ProductCode; EXE: thông tin phiên bản của file).
+    - Tùy chọn: file đi kèm (nhiều file, đặt cạnh file cài), icon, tài liệu hướng dẫn, script trước/sau khi cài, điều kiện chặn, cách gỡ.
+27. **File đi kèm** được giải nén cùng thư mục với file cài trước khi chạy.
+28. **Script cấu hình** (.ps1, .cmd, .bat) chạy **trước** và/hoặc **sau** khi cài, với quyền admin:
+    - Script trước lỗi → không cài, gói báo "Lỗi".
+    - Script sau lỗi → gói vẫn tính là đã cài, kèm cảnh báo "Cấu hình sau cài lỗi".
+    - Có giới hạn thời gian; kết quả in ra được ghi vào log.
+29. **Gói chỉ có script** (không cài phần mềm): loại gói "script", nhận diện "đã cài" bằng dấu cài đặt.
+30. **Từ ngữ trạng thái**: Chưa cài · Cần cập nhật · Đã cài · Máy có bản mới hơn · Đã cài (không rõ phiên bản).
+31. **Chọn bộ gói** → tự tick ngay (bỏ nút "Tick các gói trong bộ"), **không tick** phần mềm đã cài / máy có bản mới hơn / đã cài không rõ phiên bản; vẫn tick/bỏ tick từng phần mềm được. Có nút **"Bỏ chọn tất cả"**.
+32. **Lịch sử thiết bị lưu trữ USB**: mọi USB/ổ cứng ngoài từng cắm vào máy — tên, số serial, lần kết nối đầu, lần kết nối gần nhất (nếu Windows còn lưu).
+33. **Bằng chứng kết nối internet**:
+    - Mỗi mạng có thêm cột **Internet**: Có / Chỉ nội bộ / Không rõ.
+    - Dòng kết luận: "Máy đã từng kết nối internet: Có — lần gần nhất …" / "Có dấu hiệu gián tiếp — …" / "Chưa thấy bằng chứng (nhật ký có thể đã bị xóa hoặc ghi đè)".
+    - App chỉ khẳng định được chiều "Có"; không chứng minh được "chưa từng".
+
+### Tiêu chí chấp nhận bổ sung
+```
+Given admin mở "Thêm phần mềm" và chọn một file .msi
+When form hiện ra
+Then tên, phiên bản, ProductCode được điền sẵn; admin sửa được phiên bản rồi Lưu → gói xuất hiện trong danh sách
+
+Given gói có file đi kèm config.xml
+When cài
+Then config.xml nằm cạnh setup.exe lúc bộ cài chạy
+
+Given gói có script trước khi cài trả về mã lỗi 1
+When cài
+Then bộ cài không chạy, gói báo "Lỗi", log có phần in ra của script
+
+Given gói có script sau khi cài bị lỗi
+When cài
+Then gói báo "Thành công" kèm "Cấu hình sau cài lỗi"
+
+Given phần mềm đã cài đúng phiên bản gói
+When xem danh sách
+Then cột trạng thái ghi "Đã cài"
+
+Given bộ gói A, B, C và máy đã cài B
+When chọn bộ gói
+Then A và C được tick ngay, B không tick và có ghi chú "đã cài trên máy"
+
+Given máy từng cắm USB Kingston ngày 10/11/2026
+When quét
+Then mục Lịch sử thiết bị lưu trữ có Kingston kèm serial và lần kết nối đầu 10/11/2026
+
+Given nhật ký Windows ghi mạng "Wifi-Nha" có internet
+When quét
+Then cột Internet của "Wifi-Nha" là "Có" và dòng kết luận là "Máy đã từng kết nối internet: Có — lần gần nhất …"
+```

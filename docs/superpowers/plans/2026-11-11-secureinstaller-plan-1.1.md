@@ -630,3 +630,234 @@ build/build-portable.ps1, docs/e2e-checklist.md, samples/7zip/README.md
   Edge-case table: covered across T1, T2, T7, T11, T13 and T3/T5 (legacy vault).
 - **Type consistency:** `FindForPackage`, `UninstallService.CanUninstall/UninstallAsync`, `QueueInstallViewModel`, `ScanReportViewModel.ForReport`, `BundleResolver.Resolve`, `IRepositorySource.GetPackageKeyAsync/GetDocsKeyAsync` and `ScanHistoryItem` are used with the same signatures everywhere.
 - **Review Focus:** each of the 5 lines has a test in its owning task. Line 1 → T3/T5, line 2 → T1, line 3 → T11, line 4 → T2, line 5 → T7/T8.
+
+---
+
+## Addendum 2026-11-12: Tasks 15–19 (spec-1.1 requirements 26–33)
+
+Execution order: 15, 16, 17, 18, 19, then Task 14 last.
+
+### Addendum Global Constraints
+- **VersionStatus labels.** These replace the Plan 1 labels:
+
+  | VersionStatus | Label |
+  |---|---|
+  | NotInstalled | "Chưa cài" |
+  | Older | "Cần cập nhật" |
+  | Equal | "Đã cài" |
+  | Newer | "Máy có bản mới hơn" |
+  | Incomparable | "Đã cài (không rõ phiên bản)" |
+
+- **New strings (verbatim):**
+  - "Cấu hình sau cài lỗi"
+  - "Script trước khi cài lỗi"
+  - "Bỏ chọn tất cả"
+  - "đã cài trên máy"
+  - "Lịch sử thiết bị lưu trữ"
+  - Internet column values: "Có" / "Chỉ nội bộ" / "Không rõ"
+  - Conclusion texts:
+    - "Máy đã từng kết nối internet: Có — lần gần nhất {0:dd/MM/yyyy HH:mm}"
+    - "Có dấu hiệu gián tiếp — lần gần nhất {0:dd/MM/yyyy HH:mm}"
+    - "Chưa thấy bằng chứng (nhật ký có thể đã bị xóa hoặc ghi đè)"
+  - Format dates with InvariantCulture.
+- **New allowed package:** `System.Diagnostics.EventLog` 8.0.1 (Microsoft), for EventLogReader. Add it to Installer.Core only.
+- **Script interpreters never resolve through PATH.** Use these exact command lines:
+  - PowerShell: `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "<path>"`
+  - cmd: `%SystemRoot%\System32\cmd.exe /c "<path>"`, with the path quoted.
+- **Log parsing.** When parsing the event log and the setupapi log, read structured properties or fixed English log markers. Never parse localized message text.
+
+### Task 15: Package editor form (add and edit software without hand-written manifests)
+
+**Files:**
+- Create:
+  - `src/Installer.Core/Vault/PackageDraft.cs` (the record plus `PackageSource.Create(PackageDraft, string tempDir) → string folder`)
+  - `src/Installer.Core/Platform/InstallerInfoReader.cs`
+  - `src/Installer.App/ViewModels/PackageEditorViewModel.cs`
+  - `src/Installer.App/Views/PackageEditorView.xaml`
+- Modify: `AdminViewModel.cs`, `AdminView.xaml`, `AppServices.cs`.
+- Tests: `tests/Installer.Core.Tests/Vault/PackageSourceTests.cs`, `Platform/InstallerInfoReaderTests.cs`, `tests/Installer.App.Tests/PackageEditorViewModelTests.cs`.
+
+**Interfaces:**
+- `record PackageDraft(string Id, string Name, string Version, InstallerType Type, string InstallerPath, string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> ExtraFiles, List<string> DocFiles, string? IconPath, string? PreScriptPath, string? PostScriptPath, int ScriptTimeoutSec, List<RuleSpec> Rules, UninstallSpec? Uninstall)`.
+- `PackageSource.Create` writes the existing manifest format into `tempDir`:
+  - The installer and every ExtraFile go into `installer\`, file name only. Duplicate names throw InvalidDataException.
+  - Docs go into `docs\`.
+  - The icon is written as `icon.png`.
+  - Scripts go into `scripts\`, with manifest fields `pre_script` / `post_script`. Task 16 consumes these fields; this task only writes them.
+  - It returns the folder. The editor then calls the existing `VaultAdmin.AddPackage(folder)` or `UpdatePackage(id, folder, keepOld)`, and deletes the temp folder in `finally`.
+- `InstallerInfoReader.Read(string path) → (string? Name, string? Version, string? ProductCode)`:
+  - `.msi`: use P/Invoke `MsiOpenPackageExW(path, 1 /*IGNOREMACHINESTATE*/)`, then `MsiGetProductPropertyW` for ProductName, ProductVersion and ProductCode, then `MsiCloseHandle`.
+  - `.exe`: use `FileVersionInfo` (ProductName, ProductVersion).
+  - Any other file type, or any failure, returns nulls.
+  - It never executes the file.
+- `PackageEditorViewModel(PackageEntry? existing, Func<string?> pickFile, Func<IReadOnlyList<string>> pickFiles, Func<PackageDraft, Task> save, Action onCancel)`. Also inject `Func<string, (string?, string?, string?)> readInfo` for tests.
+  - Fields bind to the draft.
+  - Picking the installer pre-fills Name, Version and Id when they are empty. Id is Name lower-cased, with every character outside `[a-z0-9._-]` replaced by '-'. For an MSI it also pre-fills Detect.ProductCode.
+  - Type is inferred from the file extension.
+  - Save validates the following and shows errors in `Error`:
+    - Name is set.
+    - Id matches the regex `^[A-Za-z0-9._-]+\z`.
+    - Version is non-blank.
+    - An installer has been chosen.
+  - Editing an existing package pre-fills from the PackageEntry. The installer must be re-picked, and the form says so.
+- Admin "Gói" tab:
+  - Buttons "Thêm phần mềm" and "Sửa" open the editor (navigate).
+  - The old folder-based add stays, renamed "Thêm từ thư mục", for advanced use.
+
+**Tests:**
+- PackageSource writes a manifest that `PackageBuilder.Build` accepts, and the extra file lands in `installer\`.
+- Duplicate extra file names are rejected.
+- InstallerInfoReader returns a non-null ProductVersion for `%SystemRoot%\System32\notepad.exe` and nulls for a text file.
+- Editor: pre-fill from a fake reader, validation errors, and Save calls `save` with the draft.
+
+Load `frontend-design` before writing XAML. Render the screenshot `admin-3-editor.png` to scratchpad/ui-preview with a temporary test; do not commit the screenshot.
+
+**Commit:** `feat: package editor form with version prefill and extra files`
+
+### Task 16: Pre/post configuration scripts and script-only packages
+
+**Files:**
+- Create: `src/Installer.Core/Install/ScriptRunner.cs`.
+- Modify:
+  - `Model/Catalog.cs`: add trailing `string? PreScript = null, string? PostScript = null, int ScriptTimeoutSec = 600` to PackageEntry, and add `InstallerType.Script`.
+  - `Vault/PackageBuilder.cs`:
+    - add the manifest fields;
+    - zip `scripts\`;
+    - for the Script type, require installer_file to be a script in `scripts\`;
+    - validate script extensions: .ps1, .cmd, .bat.
+  - `Install/InstallService.cs`.
+  - `Install/InstallTypes.cs`: the factory maps Script → ScriptRunner.
+  - `Install/UninstallService.cs`: the Script type gets no plan unless it has an explicit command.
+- Tests: `ScriptRunnerTests.cs`, plus additions to `InstallServiceTests` and `VaultAdminTests`.
+
+**Interfaces:**
+- `ScriptRunner : IInstallerRunner`:
+  - Runs `.ps1`, `.cmd` and `.bat` with the exact command lines from the Global Constraints.
+  - WorkingDirectory = the script's folder; CreateNoWindow.
+  - Captures stdout and stderr, keeping the last 4000 characters.
+  - Exit code 0 → Success; any other code → Failed with "Lỗi cài đặt (mã {code})".
+  - On timeout, kill the process tree and return Timeout.
+  - `InstallOutcome.Detail` = the captured output.
+- InstallService runs the steps in this order:
+  1. pre_script. If it fails, the outcome is Failed with "Script trước khi cài lỗi", and the installer does not run.
+  2. The installer. For the Script type there is no separate installer: the installer_file is the script itself and runs via ScriptRunner.
+  3. post_actions.
+  4. post_script. If it fails, keep Success/RebootRequired, append " (Cấu hình sau cài lỗi)" to Message, and put the output into Detail.
+  5. The marker.
+  6. The log.
+- Scripts run from the extracted package workspace (`pkg\scripts\`).
+
+**Tests:**
+- Real `.cmd` scripts in a temp dir:
+  - exit 0
+  - exit 3
+  - output is captured
+  - timeout, using `ping -n 30 127.0.0.1`
+- A `.ps1` script that writes a file.
+- A pre-script failure stops the runner (the FakeRunner is not called).
+- A post-script failure keeps Success, with the warning.
+- A Script-type package installs and writes the marker.
+- The manifest rejects `.exe` as a script.
+
+**Commit:** `feat(core): pre/post configuration scripts and script-only packages`
+
+### Task 17: Status wording, auto-apply bundles, clear selection
+
+**Files:**
+- Modify: `src/Installer.App/Converters/DisplayText.cs`, `ViewModels/PackageListViewModel.cs`, `Views/PackageListView.xaml`, and the affected App tests.
+- Update the Plan 1 label tests deliberately to the new labels.
+
+**Interfaces:**
+- Use the new labels from the Addendum Global Constraints.
+- Changing `SelectedBundle` applies the bundle immediately. Remove `ApplyBundleCommand` and its button.
+- Applying a bundle ticks only rows that are Allowed and have VersionStatus NotInstalled or Older.
+- A row skipped because it is already installed gets the notice `"{name}: đã cài trên máy"`.
+- `ClearSelectionCommand` ("Bỏ chọn tất cả") unticks every row and clears the bundle notices.
+- Choosing an empty or null bundle clears bundle-order mode only.
+
+**Tests:**
+- The new labels.
+- Selecting a bundle ticks only NotInstalled/Older rows and lists the installed ones.
+- A manual tick is still allowed after a bundle is applied.
+- ClearSelection.
+
+Re-render `pkg-4-bundle.png`.
+
+**Commit:** `feat(app): clearer status wording; bundles apply on selection; clear selection`
+
+### Task 18: USB storage history
+
+**Files:**
+- Create, in Core:
+  - `Platform/IEventLogReader.cs` and `Platform/EventLogReader.cs` (using System.Diagnostics.EventLog)
+  - `Platform/IFileTextReader.cs` (reads text files with FileShare.ReadWrite)
+  - `Scanning/UsbStorageHistoryScanner.cs`
+- Modify:
+  - `Scanning/ScanReport.cs`: trailing `List<UsbStorageRecord>? UsbHistory = null`.
+  - `MachineScanner.cs`: add a new phase, isolated like the others.
+  - App `ScanReportViewModel` and its view: add a section "Lịch sử thiết bị lưu trữ" in the Thiết bị ngoại vi tab.
+  - `AppServices.cs`.
+- Tests: `UsbStorageHistoryScannerTests.cs`.
+
+**Interfaces:**
+- `record EventRecordInfo(int Id, DateTime TimeCreated, IReadOnlyList<object?> Properties)`.
+- `interface IEventLogReader { IReadOnlyList<EventRecordInfo> Read(string logName, int[] ids, int max = 2000); }`. A missing or disabled log returns an empty list. It never throws.
+- `record UsbStorageRecord(string FriendlyName, string Serial, string DeviceId, DateTime? FirstConnected, DateTime? LastConnected)`.
+- Data sources:
+  - **Device list:** `HKLM\SYSTEM\CurrentControlSet\Enum\USBSTOR\<Disk&Ven..>\<serial>`. Read FriendlyName. The serial is the subkey name without its trailing `&0`.
+  - **FirstConnected:** in `%SystemRoot%\INF\setupapi.dev*.log`, find the `>>>  [Device Install` lines that contain that `USBSTOR\...\<serial>`. Take the earliest `>>>  Section start yyyy/MM/dd HH:mm:ss.fff` that follows one of them.
+  - **LastConnected:** the latest of these:
+    - `Microsoft-Windows-Partition/Diagnostic` event 1006 matching the serial;
+    - `Microsoft-Windows-Kernel-PnP/Configuration` events 400/410 whose device-instance property matches.
+  - A missing value is null, and the UI shows "—".
+- Before coding the parser, the implementer must dump one real event of each kind on this machine (read-only) to confirm the property positions, and record them in the report.
+
+**Tests:**
+- A fake registry, fake setupapi text and fake events produce the expected records.
+- Malformed log lines are skipped.
+- No events → LastConnected is null.
+- A Partition event without a serial match is ignored.
+
+Screenshot: `scan-7-usb.png`.
+
+**Commit:** `feat: USB storage connection history in the scan report`
+
+### Task 19: Internet connection evidence
+
+**Files:**
+- Create: `src/Installer.Core/Scanning/InternetEvidenceScanner.cs`.
+- Modify:
+  - `NetworkProfile`: trailing `bool? HadInternet = null`, set in a post-pass.
+  - `ScanReport`: trailing `InternetEvidence? Internet = null`.
+  - `MachineScanner`.
+  - App `ScanReportViewModel` and the Mạng tab: add an "Internet" column and a conclusion line at the top.
+  - `AppServices.cs`.
+- Tests: `InternetEvidenceScannerTests.cs`.
+
+**Interfaces:**
+- `record EvidenceItem(string Source, DateTime Time, string Text)`.
+- `enum InternetVerdict { Yes, Indirect, NoEvidence }`.
+- `record InternetEvidence(InternetVerdict Verdict, DateTime? LastSeen, List<EvidenceItem> Items)`.
+- **Strong evidence (→ Yes):**
+  - A `Microsoft-Windows-NetworkProfile/Operational` event 10000 whose connectivity property has an internet flag: NLM_CONNECTIVITY IPV4_INTERNET 0x40 or IPV6_INTERNET 0x400.
+  - It also sets HadInternet on the profile with that name:
+    - flag seen → `true`;
+    - profile seen only without the flag → `false`, shown as "Chỉ nội bộ";
+    - profile never seen → null, shown as "Không rõ".
+  - A `Microsoft-Windows-NCSI/Operational` capability event that reports Internet capability.
+- **Indirect evidence (→ Indirect, used only when there is no strong evidence):**
+  - System log `Microsoft-Windows-WindowsUpdateClient` events 19/43/44.
+  - `Microsoft-Windows-Time-Service` sync events whose peer is not a private or LAN address.
+- Before coding, the implementer dumps one real event per source on this machine to confirm the property positions, and records them.
+- The conclusion texts are listed in the Addendum Global Constraints.
+
+**Tests:**
+- A strong internet flag → Yes, and HadInternet is set per profile name.
+- Only Windows Update events → Indirect.
+- Nothing → NoEvidence.
+- A local-only profile → false.
+- A Time-Service peer with a private IP is ignored.
+
+Screenshot: re-render `scan-3-mang.png`.
+
+**Commit:** `feat: internet connection evidence per network and overall verdict`
