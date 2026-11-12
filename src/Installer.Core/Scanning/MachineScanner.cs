@@ -9,10 +9,11 @@ public sealed class MachineScanner
     private readonly NetworkHistoryScanner _net;
     private readonly LicenseScanner _lic;
     private readonly KeywordFileScanner _kw;
+    private readonly UsbStorageHistoryScanner? _usb;
 
-    public MachineScanner(HardwareScanner hw, NetworkHistoryScanner net, LicenseScanner lic, KeywordFileScanner kw)
+    public MachineScanner(HardwareScanner hw, NetworkHistoryScanner net, LicenseScanner lic, KeywordFileScanner kw, UsbStorageHistoryScanner? usb = null)
     {
-        _hw = hw; _net = net; _lic = lic; _kw = kw;
+        _hw = hw; _net = net; _lic = lic; _kw = kw; _usb = usb;
     }
 
     public async Task<ScanReport> ScanAsync(Catalog catalog, IProgress<string>? step, CancellationToken ct)
@@ -40,7 +41,15 @@ public sealed class MachineScanner
         try { keywords = await Task.Run(() => _kw.Scan(catalog.KeywordScan, ct), ct).ConfigureAwait(false); }
         catch (Exception ex) when (ex is not OperationCanceledException) { keywords = new KeywordScanResult(new(), false, false); }
 
-        return new ScanReport(DateTimeOffset.Now, hardware, network, win, office, keywords);
+        step?.Report("Đang đọc lịch sử USB");
+        var usbHistory = new List<UsbStorageRecord>();
+        if (_usb is not null)
+        {
+            try { usbHistory = await Task.Run(() => _usb.Scan(), ct).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
+        }
+
+        return new ScanReport(DateTimeOffset.Now, hardware, network, win, office, keywords, usbHistory);
     }
 
     private static LicenseInfo SafeLicense(string product, Func<LicenseInfo> scan)

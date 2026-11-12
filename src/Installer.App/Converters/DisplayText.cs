@@ -36,5 +36,5 @@ public static class DisplayText
         _ => "Khác"
     };
 
-    public static string Of(DateTime? d) => d?.ToString(DateFormat) ?? "—";
+    public static string Of(DateTime? d) => d?.ToString(DateFormat, System.Globalization.CultureInfo.InvariantCulture) ?? "—";
 }

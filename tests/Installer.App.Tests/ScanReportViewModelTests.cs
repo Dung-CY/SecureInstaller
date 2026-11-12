@@ -208,6 +208,32 @@ public class ScanReportViewModelTests
     }
 
     [Fact]
+    public void Usb_history_rows_are_sorted_formatted_and_dash_for_null()
+    {
+        var r = Report(LicenseVerdict.Genuine) with { UsbHistory = new()
+        {
+            new("Old", "S1", "id1", new DateTime(2025, 1, 2, 3, 4, 0), new DateTime(2025, 6, 1, 8, 5, 0)),
+            new("OnlyFirst", "S2", "id2", new DateTime(2026, 2, 3, 4, 5, 0), null),
+            new("Newest", "S3", "id3", null, new DateTime(2026, 7, 8, 9, 10, 0)),
+        } };
+        var vm = ScanReportViewModel.ForReport(r, "t", () => { });
+        Assert.Equal(new[] { "Newest", "OnlyFirst", "Old" }, vm.UsbRows.Select(x => x.Name));
+        Assert.Equal(new UsbRow("Newest", "S3", "—", "08/07/2026 09:10"), vm.UsbRows[0]);
+        Assert.Equal("02/01/2025 03:04", vm.UsbRows[2].First);
+        Assert.False(vm.NoUsbHistory);
+    }
+
+    [Fact]
+    public void Usb_history_null_or_empty_shows_no_data()
+    {
+        var vm = ScanReportViewModel.ForReport(Report(LicenseVerdict.Genuine), "t", () => { });
+        Assert.Empty(vm.UsbRows);
+        Assert.True(vm.NoUsbHistory);
+        var vm2 = ScanReportViewModel.ForReport(Report(LicenseVerdict.Genuine) with { UsbHistory = new() }, "t", () => { });
+        Assert.True(vm2.NoUsbHistory);
+    }
+
+    [Fact]
     public async Task ForReport_never_calls_scan()
     {
         var r = ReportWithDevices();

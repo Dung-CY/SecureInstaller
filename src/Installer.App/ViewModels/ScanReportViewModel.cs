@@ -11,6 +11,7 @@ namespace Installer.App.ViewModels;
 public record HardwareRow(string Label, string Value);
 public record NetworkRow(string Name, string Kind, string First, string Last);
 public record OverviewItem(string Label, string Value, bool IsWarning);
+public record UsbRow(string Name, string Serial, string First, string Last);
 
 /// <summary>One peripheral category. Items holds the devices matching the current search.</summary>
 public partial class PeripheralGroup : ObservableObject
@@ -90,6 +91,8 @@ public partial class ScanReportViewModel : ObservableObject
 
     public ObservableCollection<HardwareRow> HardwareRows { get; } = new();
     public ObservableCollection<NetworkRow> NetworkRows { get; } = new();
+    public ObservableCollection<UsbRow> UsbRows { get; } = new();
+    [ObservableProperty] private bool _noUsbHistory = true;
     public ObservableCollection<string> KeywordFiles { get; } = new();
     public ObservableCollection<OverviewItem> Overview { get; } = new();
     public ObservableCollection<PeripheralGroup> PeripheralGroups { get; } = new();
@@ -179,6 +182,11 @@ public partial class ScanReportViewModel : ObservableObject
         NetworkRows.Clear();
         foreach (var p in (r.Network?.Profiles ?? new()).Where(p => p is not null))
             NetworkRows.Add(new(p.Name ?? "—", DisplayText.Of(p.Kind), DisplayText.Of(p.FirstConnected), DisplayText.Of(p.LastConnected)));
+        UsbRows.Clear();
+        foreach (var u in (r.UsbHistory ?? new()).Where(u => u is not null)
+                     .OrderByDescending(u => u.LastConnected ?? u.FirstConnected ?? DateTime.MinValue))
+            UsbRows.Add(new(u.FriendlyName ?? "—", u.Serial ?? "—", DisplayText.Of(u.FirstConnected), DisplayText.Of(u.LastConnected)));
+        NoUsbHistory = UsbRows.Count == 0;
         var internet = r.Network?.InternetNow ?? false;
         InternetText = "Đang có internet: " + (internet ? "Có" : "Không");
 

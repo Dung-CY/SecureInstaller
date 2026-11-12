@@ -41,7 +41,8 @@ public sealed class AppServices
         var sys = new SystemInfo();
         var scanner = new MachineScanner(new HardwareScanner(wmi, sys),
             new NetworkHistoryScanner(reg, new ConnectivityProbe()),
-            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
+            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner(),
+            new UsbStorageHistoryScanner(reg, new EventLogReader(), new FileTextReader()));
 
         var vm = new ScanReportViewModel(
             async (progress, ct) =>
