@@ -173,6 +173,6 @@ if (-not $InitVault) {
     Write-Host '  2. Chưa có kho: chạy lại với -InitVault, hoặc tools\SecureInstaller.Packager.exe init . --user <admin>'
 }
 else {
-    Write-Host '  2. Thêm gói: tools\SecureInstaller.Packager.exe add-package . <thư mục gói> --user <admin>'
+    Write-Host '  2. Thêm phần mềm: tools\SecureInstaller.Packager.exe add-package . <thư mục phần mềm> --user <admin>'
 }
 Write-Host '  3. Làm theo docs\e2e-checklist.md để kiểm thử trên máy ảo.'
