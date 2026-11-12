@@ -68,4 +68,15 @@ public class InstallMarkerTests
         Assert.True(DateTimeOffset.TryParseExact(raw, "o", CultureInfo.InvariantCulture, DateTimeStyles.None, out var back));
         Assert.Equal(at, back);
     }
+
+    [Fact]
+    public void Uninstall_key_is_optional_and_read_back()
+    {
+        var reg = new FakeRegistry();
+        var m = new InstallMarker(reg, reg);
+        m.Write("p1", "1", DateTimeOffset.UtcNow);
+        m.Write("p2", "1", DateTimeOffset.UtcNow, "32|{G}");
+        Assert.Null(m.ReadUninstallKey("p1"));
+        Assert.Equal("32|{G}", m.ReadUninstallKey("p2"));
+    }
 }

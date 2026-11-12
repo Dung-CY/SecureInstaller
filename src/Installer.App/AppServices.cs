@@ -63,9 +63,9 @@ public sealed class AppServices
         // One marker over the real HKLM registry: InstallService writes it, the scanner reads it as a fallback,
         // UninstallService removes it.
         var marker = new InstallMarker(new RegistryReader(), new RegistryWriter());
-        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker);
-        var uninstallService = new UninstallService(_repo!, marker, _ => new ExeInstaller());
         var apps = new InstalledAppsScanner(new RegistryReader(), marker);
+        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker, scanner: apps);
+        var uninstallService = new UninstallService(_repo!, marker, _ => new ExeInstaller(), apps.KeyExists);
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
             pkg => apps.FindForPackage(pkg),
             (pkg, progress, ct) => installService.InstallAsync(pkg, session.Username, report.Hardware, progress, ct),

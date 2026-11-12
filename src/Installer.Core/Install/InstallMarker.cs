@@ -21,12 +21,20 @@ public sealed class InstallMarker(IRegistryReader reg, IRegistryWriter writer)
         if (!IsValid(id)) throw new ArgumentException("Invalid package id for install marker.", nameof(id));
     }
 
-    public void Write(string packageId, string version, DateTimeOffset at)
+    public void Write(string packageId, string version, DateTimeOffset at, string? uninstallKey = null)
     {
         Check(packageId);
         var path = Root + "\\" + packageId;
         writer.SetString(Hive, View, path, "Version", version);
         writer.SetString(Hive, View, path, "InstalledAt", at.ToString("o", CultureInfo.InvariantCulture));
+        if (uninstallKey != null) writer.SetString(Hive, View, path, "UninstallKey", uninstallKey);
+    }
+
+    /// <summary>"64|subkey" or "32|subkey" of the package's HKLM Uninstall entry, when one was recorded.</summary>
+    public string? ReadUninstallKey(string packageId)
+    {
+        Check(packageId);
+        return reg.GetValue(Hive, View, Root + "\\" + packageId, "UninstallKey") as string;
     }
 
     public void Remove(string packageId)

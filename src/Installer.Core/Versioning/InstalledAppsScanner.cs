@@ -30,7 +30,14 @@ public sealed class InstalledAppsScanner
     /// </summary>
     public IReadOnlyList<InstalledApp> FindForPackage(PackageEntry pkg)
     {
-        var result = Find(pkg.Detect).ToList();
+        var result = new List<InstalledApp>();
+        try
+        {
+            if (_marker?.ReadUninstallKey(pkg.Id) is { } k && FindByKey(k) is { } byKey) result.Add(byKey);
+        }
+        catch (Exception) { }
+        foreach (var a in Find(pkg.Detect))
+            if (!result.Any(r => r.KeyName == a.KeyName && r.Is64Bit == a.Is64Bit)) result.Add(a);
         if (result.Count > 0) return result;
         try
         {
@@ -39,6 +46,59 @@ public sealed class InstalledAppsScanner
         }
         catch (Exception) { }
         return result;
+    }
+
+    private static string KeyOf(bool is64, string sub) => (is64 ? "64|" : "32|") + sub;
+
+    /// <summary>HKLM Uninstall subkeys of both views as "64|name" / "32|name" (never HKCU).</summary>
+    public HashSet<string> SnapshotMachineKeys()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (hive, view, is64, perUser) in Sources)
+            if (!perUser)
+                foreach (var sub in _reg.GetSubKeyNames(hive, view, UninstallPath)) set.Add(KeyOf(is64, sub));
+        return set;
+    }
+
+    /// <summary>The HKLM row for a "64|name" / "32|name" key, or null when it is malformed or gone.</summary>
+    public InstalledApp? FindByKey(string key)
+    {
+        var bar = key.IndexOf('|');
+        if (bar < 0 || key[..bar] is not ("64" or "32")) return null;
+        var sub = key[(bar + 1)..];
+        if (sub.Length == 0 || sub.Contains('\\')) return null;
+        var is64 = key[..bar] == "64";
+        var view = is64 ? RegistryView.Registry64 : RegistryView.Registry32;
+        var path = UninstallPath + "\\" + sub;
+        if (_reg.GetValue(RegistryHive.LocalMachine, view, path, "DisplayName") is not string name || name.Length == 0) return null;
+        var raw = _reg.GetValue(RegistryHive.LocalMachine, view, path, "DisplayVersion");
+        var ver = raw is string s ? s : raw?.ToString();
+        return new InstalledApp(name, string.IsNullOrEmpty(ver) ? null : ver, sub, is64, false,
+            Str(RegistryHive.LocalMachine, view, path, "UninstallString"),
+            Str(RegistryHive.LocalMachine, view, path, "QuietUninstallString"),
+            Str(RegistryHive.LocalMachine, view, path, "DisplayIcon"));
+    }
+
+    public bool KeyExists(InstalledApp app) => !app.PerUser && !app.IsMarker && FindByKey(KeyOf(app.Is64Bit, app.KeyName)) != null;
+
+    /// <summary>Picks the Uninstall key an install created: after minus <paramref name="before"/>, else the Find(Detect) HKLM row.</summary>
+    public string? PickNewKey(IReadOnlySet<string> before, DetectRule detect)
+    {
+        var added = SnapshotMachineKeys().Where(k => !before.Contains(k)).ToList();
+        if (added.Count == 1) return added[0];
+        if (added.Count > 1)
+        {
+            var rows = added.Select(k => (Key: k, App: FindByKey(k))).Where(x => x.App != null).ToList();
+            Regex? rx = null;
+            try { if (detect.DisplayNameRegex is not null) rx = new Regex(detect.DisplayNameRegex, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
+            catch (ArgumentException) { }
+            if (rx != null)
+                foreach (var r in rows)
+                    try { if (rx.IsMatch(r.App!.DisplayName)) return r.Key; } catch (RegexMatchTimeoutException) { }
+            return rows.FirstOrDefault(r => r.App!.UninstallString != null).Key;
+        }
+        var found = Find(detect).FirstOrDefault(a => !a.PerUser);
+        return found == null ? null : KeyOf(found.Is64Bit, found.KeyName);
     }
 
     private string? Str(RegistryHive hive, RegistryView view, string path, string name) =>

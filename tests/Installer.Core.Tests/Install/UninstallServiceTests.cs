@@ -240,4 +240,70 @@ public class UninstallServiceTests : IDisposable
         Assert.Equal("bob", l.Username);
         Assert.Equal("Success", l.Status);
     }
+
+    static PackageEntry KPkg(InstallerKind k) => Pkg(InstallerType.Exe) with { Kind = k };
+
+    static InstalledApp Row(string uninstall, string key = "K") =>
+        new("App", "1.0", key, true, false, uninstall);
+
+    static UninstallService Mk(FakeRunner runner, Func<InstalledApp, bool>? exists = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
+    {
+        var reg = new FakeRegistry();
+        return new UninstallService(new Repo(), new InstallMarker(reg, reg), _ => runner, exists, delay);
+    }
+
+    [Theory]
+    [InlineData(InstallerKind.Inno, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART")]
+    [InlineData(InstallerKind.Nsis, "/S")]
+    [InlineData(InstallerKind.Burn, "/uninstall /quiet /norestart")]
+    public async Task Derives_silent_arguments_from_the_uninstall_string(InstallerKind kind, string expected)
+    {
+        var runner = new FakeRunner();
+        var rows = new List<InstalledApp> { Row("\"C:\\Program Files\\App\\u.exe\"") };
+        var svc = Mk(runner);
+        Assert.True(svc.CanUninstall(KPkg(kind), rows));
+        await svc.UninstallAsync(KPkg(kind), rows, "u", Hw, NoProgress, CancellationToken.None);
+        var req = Assert.Single(runner.Requests);
+        Assert.Equal(@"C:\Program Files\App\u.exe", req.InstallerPath);
+        Assert.Equal(expected, req.SilentArgs);
+    }
+
+    [Fact]
+    public async Task Burn_does_not_duplicate_uninstall_and_unins000_is_inno_whatever_the_kind()
+    {
+        var runner = new FakeRunner();
+        var svc = Mk(runner);
+        await svc.UninstallAsync(KPkg(InstallerKind.Burn), new List<InstalledApp> { Row("\"C:\\a\\b.exe\" /uninstall") }, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal("/uninstall /quiet /norestart", runner.Requests[0].SilentArgs);
+        await svc.UninstallAsync(KPkg(InstallerKind.Unknown), new List<InstalledApp> { Row("\"C:\\a\\unins000.exe\"") }, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", runner.Requests[1].SilentArgs);
+    }
+
+    [Fact]
+    public void InstallShield_unknown_and_hkcu_have_no_derived_plan_but_msiexec_guid_does()
+    {
+        var svc = Mk(new FakeRunner());
+        var row = new List<InstalledApp> { Row("\"C:\\a\\setup.exe\" -runfromtemp") };
+        Assert.False(svc.CanUninstall(KPkg(InstallerKind.InstallShield), row));
+        Assert.False(svc.CanUninstall(KPkg(InstallerKind.Unknown), row));
+        Assert.False(svc.CanUninstall(KPkg(InstallerKind.Nsis), new List<InstalledApp> { row[0] with { PerUser = true } }));
+        Assert.True(svc.CanUninstall(KPkg(InstallerKind.Unknown), new List<InstalledApp> { Row("MsiExec.exe /X" + G) }));
+    }
+
+    [Fact]
+    public async Task Poll_times_out_when_the_key_stays_and_succeeds_when_it_disappears()
+    {
+        var rows = new List<InstalledApp> { Row("\"C:\\a\\u.exe\"") };
+        var slept = new List<TimeSpan>();
+        var stay = Mk(new FakeRunner(), _ => true, (t, _) => { slept.Add(t); return Task.CompletedTask; });
+        var o = await stay.UninstallAsync(KPkg(InstallerKind.Nsis), rows, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal("Gỡ chưa hoàn tất", o.Message);
+        Assert.Equal(30, slept.Count); // 60 s budget, 2 s steps
+
+        var polls = 0;
+        var gone = Mk(new FakeRunner(), _ => ++polls < 3, (_, _) => Task.CompletedTask);
+        var ok = await gone.UninstallAsync(KPkg(InstallerKind.Nsis), rows, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, ok.Status);
+    }
 }

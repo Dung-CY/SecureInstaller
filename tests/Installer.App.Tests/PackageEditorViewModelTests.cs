@@ -32,7 +32,18 @@ public class PackageEditorViewModelTests
         Assert.Equal("7-Zip 24.08 (x64 edition)", vm.Name);
         Assert.Equal("24.08.00.0", vm.Version);
         Assert.Equal("7-zip-24.08-x64-edition", vm.Id);
-        Assert.Equal("{23170F69-40C1-2702-2408-000001000000}", vm.ProductCode);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("{23170F69-40C1-2702-2408-000001000000}", _saved!.Detect.ProductCode);
+        Assert.Null(_saved.Detect.DisplayNameRegex);
+    }
+
+    [Fact]
+    public void Picking_an_exe_sets_a_name_regex_without_the_version_token()
+    {
+        var vm = Make(readInfo: _ => ("7-Zip 24.08", "24.08", null));
+        _nextFile = @"D:\setup.exe";
+        vm.PickInstallerCommand.Execute(null);
+        Assert.Equal("^7-Zip(?![A-Za-z])", vm.DisplayNameRegex);
     }
 
     [Fact]
@@ -45,7 +56,9 @@ public class PackageEditorViewModelTests
 
         Assert.Equal(("Trình nén", "1.0", "nen"), (vm.Name, vm.Version, vm.Id));
         Assert.Equal(InstallerType.Exe, vm.Type);
-        Assert.True(string.IsNullOrEmpty(vm.ProductCode));
+        Assert.False(string.IsNullOrEmpty(vm.DisplayNameRegex));
+        vm.SaveCommand.Execute(null);
+        Assert.Null(_saved!.Detect.ProductCode);
     }
 
     [Fact]
@@ -85,7 +98,6 @@ public class PackageEditorViewModelTests
         vm.SilentArgs = "ALLUSERS=1";
         vm.TimeoutText = "600";
         vm.BlockIfWindowsCracked = true;
-        vm.SelectedUninstall = vm.UninstallOptions.Single(o => o.Type == "msi");
 
         await vm.SaveCommand.ExecuteAsync(null);
 
@@ -96,7 +108,7 @@ public class PackageEditorViewModelTests
         Assert.Equal(("ALLUSERS=1", 600, InstallerType.Msi), (d.SilentArgs, d.TimeoutSec, d.Type));
         Assert.Equal("{23170F69-40C1-2702-2408-000001000000}", d.Detect.ProductCode);
         Assert.Equal("block_if_windows_cracked", Assert.Single(d.Rules).Type);
-        Assert.Equal("msi", d.Uninstall!.Type);
+        Assert.Null(d.Uninstall);
     }
 
     [Fact]
@@ -129,11 +141,23 @@ public class PackageEditorViewModelTests
         Assert.True(vm.IsEdit);
         Assert.Equal(("7zip", "7-Zip", "24.08", "ALLUSERS=1", @"C:\Tools", "900"),
             (vm.Id, vm.Name, vm.Version, vm.SilentArgs, vm.TargetDir, vm.TimeoutText));
-        Assert.Equal(("{X}", "^7-Zip"), (vm.ProductCode, vm.DisplayNameRegex));
+        Assert.Equal("^7-Zip", vm.DisplayNameRegex);
         Assert.True(vm.RequireInternet);
-        Assert.Equal(("command", "uninst.exe", "/S"), (vm.SelectedUninstall.Type, vm.UninstallCommand, vm.UninstallArgs));
         Assert.Null(vm.InstallerPath);
         Assert.Contains("chọn lại file cài", vm.EditHint);
+    }
+
+    [Fact]
+    public async Task Edit_round_trip_keeps_product_code_and_uninstall_spec()
+    {
+        var spec = new UninstallSpec("command", "uninst.exe", "/S");
+        var e = new PackageEntry("7zip", "7-Zip", "24.08", InstallerType.Msi, "7z.msi", "", null, 900,
+            new DetectRule("{X}", "^7-Zip"), new(), new(), new(), "b", "s", "k", Uninstall: spec);
+        var vm = Make(e);
+        vm.InstallerPath = @"D:z.msi";
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal("{X}", _saved!.Detect.ProductCode);
+        Assert.Equal(spec, _saved.Uninstall);
     }
 
     [Fact]

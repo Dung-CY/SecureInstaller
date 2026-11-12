@@ -7,6 +7,7 @@ using Installer.Core.Repository;
 using Installer.Core.Model;
 using Installer.Core.Scanning;
 using Installer.Core.Vault;
+using Installer.Core.Versioning;
 
 namespace Installer.Core.Install;
 
@@ -17,11 +18,12 @@ public sealed class InstallService
     private readonly Func<TempWorkspace> _workspaceFactory;
 
     private readonly InstallMarker? _marker;
+    private readonly InstalledAppsScanner? _scanner;
 
     public InstallService(IRepositorySource repo, InstallerRunnerFactory runners, Func<TempWorkspace>? workspaceFactory = null,
-        InstallMarker? marker = null)
+        InstallMarker? marker = null, InstalledAppsScanner? scanner = null)
     {
-        _marker = marker;
+        _marker = marker; _scanner = scanner;
         _repo = repo; _runners = runners; _workspaceFactory = workspaceFactory ?? (() => TempWorkspace.Create());
     }
 
@@ -33,6 +35,9 @@ public sealed class InstallService
         InstallOutcome outcome;
         string? detail = null;
         TempWorkspace? ws = null;
+        HashSet<string>? before = null;
+        if (_scanner != null && pkg.InstallerType is InstallerType.Exe or InstallerType.Msi)
+            try { before = _scanner.SnapshotMachineKeys(); } catch (Exception) { }
         try
         {
             ws = _workspaceFactory();
@@ -49,7 +54,9 @@ public sealed class InstallService
         string? markerError = null;
         if (_marker != null && outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
         {
-            try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now); }
+            string? uninstallKey = null;
+            if (before != null) try { uninstallKey = _scanner!.PickNewKey(before, pkg.Detect); } catch (Exception) { }
+            try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now, uninstallKey); }
             catch (Exception ex) { markerError = "Không ghi được dấu cài đặt: " + ex.Message; }
         }
 

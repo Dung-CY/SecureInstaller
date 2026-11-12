@@ -17,6 +17,7 @@ public static class Strings
     public const string NoUninstall = "Gói này không hỗ trợ gỡ tự động";
     public const string Uninstalled = "Đã gỡ cài đặt";
     public const string UninstallTimeout = "Quá thời gian gỡ cài đặt";
+    public const string UninstallIncomplete = "Gỡ chưa hoàn tất";
     public const string UninstallFolderFailed = "Không xóa được thư mục cài đặt";
     public const string NotInVault = "Không có trong kho";
     public const string ReasonWindowsCracked = "Windows có dấu hiệu crack";

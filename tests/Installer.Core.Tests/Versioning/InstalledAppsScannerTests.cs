@@ -102,4 +102,41 @@ public class InstalledAppsScannerTests
         Assert.False(a.IsMarker);
         Assert.Equal("5.0", a.DisplayVersion);
     }
+
+    [Fact]
+    public void FindForPackage_returns_marker_key_row_first_without_duplicates()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Real", V("Foo Pro", "2.0"));
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Other", V("Foo Other", "1.0"));
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("foo", "2.0", DateTimeOffset.UtcNow, "32|Real");
+        var pkg = new PackageEntry("foo", "Foo", "2.0", InstallerType.Exe, "a.exe", "", null, 60, new DetectRule(null, "^Foo"),
+            new(), new(), new(), "b", "s", "k");
+        var r = new InstalledAppsScanner(reg, marker).FindForPackage(pkg);
+        Assert.Equal(new[] { "Real", "Other" }, r.Select(a => a.KeyName));
+        Assert.All(r, a => Assert.False(a.IsMarker));
+    }
+
+    [Fact]
+    public void Snapshot_is_hklm_only_and_PickNewKey_follows_the_rules()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Old", V("Old", "1"));
+        reg.AddKey(RegistryHive.CurrentUser, RegistryView.Registry64, U + @"\User", V("User", "1"));
+        var s = new InstalledAppsScanner(reg);
+        var before = s.SnapshotMachineKeys();
+        Assert.Equal(new[] { "64|Old" }, before);
+
+        // none new: falls back to the Find(Detect) row
+        Assert.Equal("64|Old", s.PickNewKey(before, new DetectRule(null, "^Old")));
+        // one new: that key
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\A", new() { ["DisplayName"] = "Zed Helper", ["UninstallString"] = "x" });
+        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule(null, "^Foo")));
+        // several: regex match wins over the first
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\B", V("Foo App", "1"));
+        Assert.Equal("64|B", s.PickNewKey(before, new DetectRule(null, "^Foo")));
+        // several, no regex match: first with an UninstallString
+        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule(null, "^Nope")));
+    }
 }

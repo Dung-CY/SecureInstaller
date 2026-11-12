@@ -1,3 +1,6 @@
+using Installer.Core.Platform;
+using Installer.Core.Versioning;
+using Microsoft.Win32;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -417,5 +420,57 @@ public class InstallServiceTests : IDisposable
         var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal(InstallStatus.RebootRequired, res.Status);
         Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+    }
+
+    sealed class HookRunner(Action onRun) : IInstallerRunner
+    {
+        public Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
+        {
+            onRun();
+            return Task.FromResult(new InstallOutcome(InstallStatus.Success, 0, "OK"));
+        }
+    }
+
+    const string UKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+
+    [Fact]
+    public async Task Exe_install_records_the_new_uninstall_key_in_the_marker()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp)) with { Detect = new DetectRule(null, "^Demo") };
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, UKey + @"\Pre", new() { ["DisplayName"] = "Demo old" });
+        var marker = new InstallMarker(reg, reg);
+        var runner = new HookRunner(() => reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, UKey + @"\Demo_is1",
+            new() { ["DisplayName"] = "Demo 1.0" }));
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker, new InstalledAppsScanner(reg, marker));
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.Equal("32|Demo_is1", marker.ReadUninstallKey(pkg.Id));
+    }
+
+    [Fact]
+    public async Task Reinstall_without_new_key_uses_the_find_row_and_snapshot_failure_does_not_fail_install()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp)) with { Detect = new DetectRule(null, "^Demo") };
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, UKey + @"\Demo", new() { ["DisplayName"] = "Demo 0.9" });
+        var marker = new InstallMarker(reg, reg);
+        InstallService Mk(InstalledAppsScanner sc) => new(new PortableRepositorySource(e.Session, e.Log),
+            new InstallerRunnerFactory(_ => new FakeRunner()), () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker, sc);
+        var res = await Mk(new InstalledAppsScanner(reg, marker)).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.Equal("64|Demo", marker.ReadUninstallKey(pkg.Id));
+
+        var res2 = await Mk(new InstalledAppsScanner(new ThrowingReader(), marker)).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res2.Status);
+    }
+
+    sealed class ThrowingReader : IRegistryReader
+    {
+        public IReadOnlyList<string> GetSubKeyNames(RegistryHive hive, RegistryView view, string path) => throw new IOException("boom");
+        public object? GetValue(RegistryHive hive, RegistryView view, string path, string name) => throw new IOException("boom");
     }
 }

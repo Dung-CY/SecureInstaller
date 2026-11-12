@@ -9,8 +9,12 @@ using Installer.Core.Versioning;
 
 namespace Installer.Core.Install;
 
-public sealed class UninstallService(IRepositorySource repo, InstallMarker marker, Func<InstallerType, IInstallerRunner> exeRunner)
+public sealed class UninstallService(IRepositorySource repo, InstallMarker marker, Func<InstallerType, IInstallerRunner> exeRunner,
+    Func<InstalledApp, bool>? keyExists = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
 {
+    private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(2);
+    private static readonly Regex InnoUninstaller = new(@"^unins\d{3}\.exe\z", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex GuidRx = new(@"^\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}\z", RegexOptions.Compiled);
 
     private abstract record Plan;
@@ -52,18 +56,35 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
         if (pkg.InstallerType == InstallerType.Zip) return ZipFor(pkg);
         if (pkg.InstallerType == InstallerType.Msi && MsiFor(pkg, installed) is { } m2) return m2;
 
-        var q = installed.FirstOrDefault(a => !a.PerUser && !a.IsMarker && !string.IsNullOrWhiteSpace(a.QuietUninstallString));
-        if (q == null) return null;
+        var rows = installed.Where(a => !a.PerUser && !a.IsMarker).ToList();
+        var q = rows.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.QuietUninstallString));
+        if (q != null) return FromCommandLine(q.QuietUninstallString!, null);
+        var u = rows.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.UninstallString));
+        return u == null ? null : FromCommandLine(u.UninstallString!, pkg.Kind);
+    }
+
+    /// <summary>kind == null: use the command as is (QuietUninstallString); otherwise add the silent switches of that installer kind.</summary>
+    private static Plan? FromCommandLine(string commandLine, InstallerKind? kind)
+    {
         try
         {
-            var (exe, args) = CommandLineSplitter.Split(q.QuietUninstallString!);
+            var (exe, args) = CommandLineSplitter.Split(commandLine);
             var name = Path.GetFileName(exe.Replace('/', '\\'));
             if (name.Equals("msiexec", StringComparison.OrdinalIgnoreCase) || name.Equals("msiexec.exe", StringComparison.OrdinalIgnoreCase))
             {
                 var g = MsiexecGuid.Match(args);
                 return g.Success ? new MsiPlan(g.Groups[1].Value) : null; // never run msiexec by name / PATH
             }
-            return ValidExe(exe, args);
+            if (kind is not { } k) return ValidExe(exe, args);
+            if (InnoUninstaller.IsMatch(name)) k = InstallerKind.Inno;
+            string? extra = k switch
+            {
+                InstallerKind.Inno => "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
+                InstallerKind.Nsis => "/S",
+                InstallerKind.Burn => (Regex.IsMatch(args, @"(?:^|\s)[/-]uninstall(?:\s|\z)", RegexOptions.IgnoreCase) ? "" : "/uninstall ") + "/quiet /norestart",
+                _ => null, // InstallShield, Msi without a GUID, Unknown, Zip, Script: no derived plan
+            };
+            return extra == null ? null : ValidExe(exe, (args + " " + extra).Trim());
         }
         catch (InvalidDataException) { return null; }
     }
@@ -89,6 +110,17 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
         try { SafePath.EnsureNoReparseAncestors(Path.GetFullPath(exe)); }
         catch (Exception) { return null; }
         return new CmdPlan(exe, args);
+    }
+
+    private async Task<bool> WaitGoneAsync(IReadOnlyList<InstalledApp> installed, TimeSpan budget, CancellationToken ct)
+    {
+        var rows = installed.Where(a => !a.PerUser && !a.IsMarker).ToList();
+        for (var waited = TimeSpan.Zero; ; waited += PollEvery)
+        {
+            if (!rows.Any(keyExists!)) return true;
+            if (waited >= budget) return false;
+            await (delay ?? Task.Delay)(PollEvery, ct).ConfigureAwait(false);
+        }
     }
 
     public async Task<InstallOutcome> UninstallAsync(PackageEntry pkg, IReadOnlyList<InstalledApp> installed, string username,
@@ -125,6 +157,10 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
                 case CmdPlan c:
                     outcome = await exeRunner(InstallerType.Exe).RunAsync(
                         new InstallRequest(InstallerType.Exe, c.Exe, c.Args, null, timeout), progress, ct).ConfigureAwait(false);
+                    // Inno/NSIS uninstallers relaunch from %TEMP% and return at once: wait for the Uninstall key to go.
+                    if (outcome.Status == InstallStatus.Success && keyExists != null
+                        && !await WaitGoneAsync(installed, TimeSpan.FromSeconds(Math.Min(pkg.TimeoutSec, 120)), ct).ConfigureAwait(false))
+                        outcome = new InstallOutcome(InstallStatus.Failed, outcome.ExitCode, Strings.UninstallIncomplete);
                     break;
                 default:
                     throw new InvalidOperationException();

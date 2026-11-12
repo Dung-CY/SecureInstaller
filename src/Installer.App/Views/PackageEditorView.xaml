@@ -241,18 +241,13 @@
                                              AutomationProperties.Name="Thư mục cài"/>
                                 </StackPanel>
                             </Grid>
-                                </StackPanel>
-                            </Expander>
-                            <StackPanel Style="{StaticResource Field}">
-                                <TextBlock Text="Mã sản phẩm MSI (để nhận biết đã cài)" Style="{StaticResource Label}"/>
-                                <TextBox Text="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                         AutomationProperties.Name="Mã sản phẩm MSI"/>
-                            </StackPanel>
                             <StackPanel Style="{StaticResource Field}">
                                 <TextBlock Text="Nhận biết theo tên hiển thị (biểu thức chính quy)" Style="{StaticResource Label}"/>
                                 <TextBox Text="{Binding DisplayNameRegex, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
                                          AutomationProperties.Name="Nhận biết theo tên hiển thị"/>
                             </StackPanel>
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
                     </Border>
 
@@ -352,14 +347,9 @@
                     </Border>
                 </Grid>
 
-                <!-- Rules and uninstall -->
+                <!-- Rules -->
                 <Border Style="{StaticResource FormCard}" Margin="0,16,0,0">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.1*"/>
-                            <ColumnDefinition Width="32"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="Không cho cài khi" Style="{StaticResource CardHeading}"/>
                             <WrapPanel>
@@ -369,29 +359,6 @@
                                 <CheckBox Content="Tìm thấy file từ khóa" IsChecked="{Binding BlockIfKeywordFile}"/>
                                 <CheckBox Content="Máy không có internet" IsChecked="{Binding RequireInternet}"/>
                             </WrapPanel>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Cách gỡ cài đặt" Style="{StaticResource CardHeading}"/>
-                            <ComboBox Style="{StaticResource AppComboBox}" ItemsSource="{Binding UninstallOptions}"
-                                      SelectedItem="{Binding SelectedUninstall}" DisplayMemberPath="Label" Margin="0,0,0,12"
-                                      AutomationProperties.Name="Cách gỡ cài đặt"/>
-                            <Grid Visibility="{Binding IsUninstallCommand, Converter={StaticResource BoolToVisibility}}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="12"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Style="{StaticResource Field}">
-                                    <TextBlock Text="Lệnh gỡ" Style="{StaticResource Label}"/>
-                                    <TextBox Text="{Binding UninstallCommand, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                             AutomationProperties.Name="Lệnh gỡ"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Style="{StaticResource Field}">
-                                    <TextBlock Text="Tham số" Style="{StaticResource Label}"/>
-                                    <TextBox Text="{Binding UninstallArgs, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                             AutomationProperties.Name="Tham số gỡ"/>
-                                </StackPanel>
-                            </Grid>
                         </StackPanel>
                     </Grid>
                 </Border>

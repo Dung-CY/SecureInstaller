@@ -12,8 +12,6 @@ using Installer.Core.Vault;
 
 namespace Installer.App.ViewModels;
 
-public sealed record UninstallOption(string? Type, string Label);
-
 /// <summary>Add/edit form for one package; produces a <see cref="PackageDraft"/> so admins never hand-write manifest.json.</summary>
 public partial class PackageEditorViewModel : ObservableObject
 {
@@ -31,6 +29,10 @@ public partial class PackageEditorViewModel : ObservableObject
     private readonly Func<string, (string? Name, string? Version, string? ProductCode)> _readInfo;
     private readonly Func<string, InstallerKind> _detectKind;
     private bool _pickedUnknown;
+    // Not editable: the MSI code is filled in on pick, and an existing uninstall spec is carried over untouched.
+    private string? _productCode;
+    private readonly UninstallSpec? _uninstall;
+    static readonly Regex TrailingVersion = new(@"\s+v?\d+(\.\d+)*\z", RegexOptions.IgnoreCase);
 
     public PackageEditorViewModel(PackageEntry? existing, Func<string?> pickFile, Func<IReadOnlyList<string>> pickFiles,
         Func<PackageDraft, Task> save, Action onCancel,
@@ -39,7 +41,6 @@ public partial class PackageEditorViewModel : ObservableObject
         _pickFile = pickFile; _pickFiles = pickFiles; _save = save; _onCancel = onCancel;
         _readInfo = readInfo ?? (p => Installer.Core.Platform.InstallerInfoReader.Read(p));
         _detectKind = detectKind ?? InstallerKindDetector.Detect;
-        _selectedUninstall = UninstallOptions[0];
         if (existing is null) return;
 
         IsEdit = true;
@@ -55,11 +56,7 @@ public partial class PackageEditorViewModel : ObservableObject
         _blockIfInstalledVersionGte = rules.Contains("block_if_installed_version_gte");
         _blockIfKeywordFile = rules.Contains("block_if_keyword_file");
         _requireInternet = rules.Contains("require_internet");
-        if (existing.Uninstall is { } u)
-        {
-            _selectedUninstall = UninstallOptions.FirstOrDefault(o => o.Type == u.Type) ?? UninstallOptions[0];
-            _uninstallCommand = u.Command; _uninstallArgs = u.Args;
-        }
+        _uninstall = existing.Uninstall;
     }
 
     public bool IsEdit { get; }
@@ -90,7 +87,6 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string _silentArgs = "";
     [ObservableProperty] private string? _targetDir;
     [ObservableProperty] private string _timeoutText = "1800";
-    [ObservableProperty] private string? _productCode;
     [ObservableProperty] private string? _displayNameRegex;
     [ObservableProperty] private bool _keepOld;
 
@@ -127,19 +123,6 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private bool _blockIfInstalledVersionGte;
     [ObservableProperty] private bool _blockIfKeywordFile;
     [ObservableProperty] private bool _requireInternet;
-
-    public IReadOnlyList<UninstallOption> UninstallOptions { get; } = new[]
-    {
-        new UninstallOption(null, "Không hỗ trợ gỡ"),
-        new UninstallOption("msi", "Gỡ bằng MSI"),
-        new UninstallOption("command", "Chạy lệnh gỡ"),
-        new UninstallOption("zip", "Xóa thư mục đã giải nén"),
-    };
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsUninstallCommand))]
-    private UninstallOption _selectedUninstall;
-    [ObservableProperty] private string? _uninstallCommand;
-    [ObservableProperty] private string? _uninstallArgs;
-    public bool IsUninstallCommand => SelectedUninstall.Type == "command";
 
     [ObservableProperty] private string? _error;
 
@@ -183,7 +166,10 @@ public partial class PackageEditorViewModel : ObservableObject
         // File versions like "10.0.1 (build 5)" would fail the vault's version rule, so only the numeric part is used.
         if (string.IsNullOrWhiteSpace(Version) && version is not null) Version = LeadingVersion.Match(version).Value;
         if (string.IsNullOrWhiteSpace(Id) && !string.IsNullOrWhiteSpace(Name)) Id = Slug(Name);
-        if (Type == InstallerType.Msi && string.IsNullOrWhiteSpace(ProductCode) && code is not null) ProductCode = code;
+        if (Type == InstallerType.Msi && string.IsNullOrWhiteSpace(_productCode) && code is not null) _productCode = code;
+        if (Type == InstallerType.Exe && string.IsNullOrWhiteSpace(DisplayNameRegex) && name is not null
+            && TrailingVersion.Replace(name.Trim(), "") is { Length: > 0 } baseName)
+            DisplayNameRegex = "^" + Regex.Escape(baseName) + "(?![A-Za-z])";
     }
 
     private static void AddDistinct(ObservableCollection<string> list, IEnumerable<string> files)
@@ -221,7 +207,6 @@ public partial class PackageEditorViewModel : ObservableObject
         var scriptTimeout = 0;
         if ((PreScriptPath ?? PostScriptPath) is not null && !TryParseSeconds(ScriptTimeoutText, out scriptTimeout))
             return "Thời gian chờ của script phải từ 1 đến 86400 giây";
-        if (IsUninstallCommand && string.IsNullOrWhiteSpace(UninstallCommand)) return "Nhập lệnh gỡ";
 
         var rules = new (bool On, string Type)[]
         {
@@ -229,12 +214,9 @@ public partial class PackageEditorViewModel : ObservableObject
             (BlockIfInstalledVersionGte, "block_if_installed_version_gte"), (BlockIfKeywordFile, "block_if_keyword_file"),
             (RequireInternet, "require_internet"),
         }.Where(r => r.On).Select(r => new RuleSpec(r.Type)).ToList();
-        var uninstall = SelectedUninstall.Type is { } t
-            ? new UninstallSpec(t, IsUninstallCommand ? Opt(UninstallCommand) : null, IsUninstallCommand ? Opt(UninstallArgs) : null)
-            : null;
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",
-            Opt(TargetDir), timeout, new DetectRule(Opt(ProductCode), Opt(DisplayNameRegex)), ExtraFiles.ToList(),
-            DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, uninstall,
+            Opt(TargetDir), timeout, new DetectRule(Opt(_productCode), Opt(DisplayNameRegex)), ExtraFiles.ToList(),
+            DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, _uninstall,
             _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind);
         return null;
     }
