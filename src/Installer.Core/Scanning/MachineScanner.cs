@@ -10,10 +10,12 @@ public sealed class MachineScanner
     private readonly LicenseScanner _lic;
     private readonly KeywordFileScanner _kw;
     private readonly UsbStorageHistoryScanner? _usb;
+    private readonly InternetEvidenceScanner? _internet;
 
-    public MachineScanner(HardwareScanner hw, NetworkHistoryScanner net, LicenseScanner lic, KeywordFileScanner kw, UsbStorageHistoryScanner? usb = null)
+    public MachineScanner(HardwareScanner hw, NetworkHistoryScanner net, LicenseScanner lic, KeywordFileScanner kw, UsbStorageHistoryScanner? usb = null,
+        InternetEvidenceScanner? internet = null)
     {
-        _hw = hw; _net = net; _lic = lic; _kw = kw; _usb = usb;
+        _hw = hw; _net = net; _lic = lic; _kw = kw; _usb = usb; _internet = internet;
     }
 
     public async Task<ScanReport> ScanAsync(Catalog catalog, IProgress<string>? step, CancellationToken ct)
@@ -49,7 +51,25 @@ public sealed class MachineScanner
             catch (Exception ex) when (ex is not OperationCanceledException) { }
         }
 
-        return new ScanReport(DateTimeOffset.Now, hardware, network, win, office, keywords, usbHistory);
+        step?.Report("Đang tìm bằng chứng kết nối internet");
+        InternetEvidence? evidence = null;
+        if (_internet is not null)
+        {
+            try
+            {
+                var r = await Task.Run(() => _internet.Scan(), ct).ConfigureAwait(false);
+                evidence = r.Evidence;
+                network = network with
+                {
+                    Profiles = network.Profiles
+                        .Select(p => p with { HadInternet = r.ByProfile.TryGetValue(p.Name, out var h) ? h : null })
+                        .ToList()
+                };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
+        }
+
+        return new ScanReport(DateTimeOffset.Now, hardware, network, win, office, keywords, usbHistory, evidence);
     }
 
     private static LicenseInfo SafeLicense(string product, Func<LicenseInfo> scan)

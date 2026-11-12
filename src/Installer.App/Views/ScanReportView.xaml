@@ -175,7 +175,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="{Binding InternetText}" Margin="0,0,0,10"/>
+                    <TextBlock Grid.Row="0" Text="{Binding InternetConclusion}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/>
                     <DataGrid Grid.Row="1" ItemsSource="{Binding NetworkRows}"
                               EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling">
                         <DataGrid.Columns>
@@ -183,6 +183,7 @@
                             <DataGridTextColumn Header="Loại" Binding="{Binding Kind}" Width="100"/>
                             <DataGridTextColumn Header="Lần đầu" Binding="{Binding First}" Width="140"/>
                             <DataGridTextColumn Header="Lần cuối" Binding="{Binding Last}" Width="140"/>
+                            <DataGridTextColumn Header="Internet" Binding="{Binding Internet}" Width="100"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

@@ -1,6 +1,6 @@
 namespace Installer.Core.Platform;
 
-public record EventRecordInfo(int Id, DateTime TimeCreated, IReadOnlyList<object?> Properties);
+public record EventRecordInfo(int Id, DateTime TimeCreated, IReadOnlyList<object?> Properties, string? Provider = null);
 
 public interface IEventLogReader
 {

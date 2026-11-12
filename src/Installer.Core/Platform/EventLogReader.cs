@@ -20,7 +20,7 @@ public sealed class EventLogReader : IEventLogReader
                     {
                         if (rec.TimeCreated is not { } t) continue;
                         result.Add(new EventRecordInfo(rec.Id, t.ToLocalTime(),
-                            rec.Properties.Select(p => p.Value).ToList()));
+                            rec.Properties.Select(p => p.Value).ToList(), rec.ProviderName));
                     }
                     catch (EventLogException) { }
                 }

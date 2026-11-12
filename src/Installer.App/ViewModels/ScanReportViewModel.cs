@@ -9,7 +9,7 @@ using Installer.Core.Scanning;
 namespace Installer.App.ViewModels;
 
 public record HardwareRow(string Label, string Value);
-public record NetworkRow(string Name, string Kind, string First, string Last);
+public record NetworkRow(string Name, string Kind, string First, string Last, string Internet);
 public record OverviewItem(string Label, string Value, bool IsWarning);
 public record UsbRow(string Name, string Serial, string First, string Last);
 
@@ -82,7 +82,7 @@ public partial class ScanReportViewModel : ObservableObject
     [ObservableProperty] private string? _error;
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(ContinueCommand))] private bool _isScanning;
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(ContinueCommand))] private ScanReport? _report;
-    [ObservableProperty] private string _internetText = "";
+    [ObservableProperty] private string _internetConclusion = "";
     [ObservableProperty] private string _windowsLicenseText = "";
     [ObservableProperty] private string _officeLicenseText = "";
     [ObservableProperty] private bool _windowsIsCracked;
@@ -181,14 +181,15 @@ public partial class ScanReportViewModel : ObservableObject
 
         NetworkRows.Clear();
         foreach (var p in (r.Network?.Profiles ?? new()).Where(p => p is not null))
-            NetworkRows.Add(new(p.Name ?? "—", DisplayText.Of(p.Kind), DisplayText.Of(p.FirstConnected), DisplayText.Of(p.LastConnected)));
+            NetworkRows.Add(new(p.Name ?? "—", DisplayText.Of(p.Kind), DisplayText.Of(p.FirstConnected), DisplayText.Of(p.LastConnected),
+                p.HadInternet switch { true => "Có", false => "Chỉ nội bộ", _ => "Không rõ" }));
         UsbRows.Clear();
         foreach (var u in (r.UsbHistory ?? new()).Where(u => u is not null)
                      .OrderByDescending(u => u.LastConnected ?? u.FirstConnected ?? DateTime.MinValue))
             UsbRows.Add(new(u.FriendlyName ?? "—", u.Serial ?? "—", DisplayText.Of(u.FirstConnected), DisplayText.Of(u.LastConnected)));
         NoUsbHistory = UsbRows.Count == 0;
         var internet = r.Network?.InternetNow ?? false;
-        InternetText = "Đang có internet: " + (internet ? "Có" : "Không");
+        InternetConclusion = ConclusionOf(r.Internet);
 
         var winVerdict = r.Windows?.Verdict ?? LicenseVerdict.Unknown;
         var officeVerdict = r.Office?.Verdict ?? LicenseVerdict.Unknown;
@@ -221,6 +222,17 @@ public partial class ScanReportViewModel : ObservableObject
 
     private static bool IsLicenseWarning(LicenseVerdict v) =>
         v is LicenseVerdict.CrackSuspected or LicenseVerdict.Suspicious;
+
+    internal static string ConclusionOf(InternetEvidence? e)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return e switch
+        {
+            { Verdict: InternetVerdict.Yes, LastSeen: { } t } => string.Format(inv, "Máy đã từng kết nối internet: Có — lần gần nhất {0:dd/MM/yyyy HH:mm}", t),
+            { Verdict: InternetVerdict.Indirect, LastSeen: { } t } => string.Format(inv, "Có dấu hiệu gián tiếp — lần gần nhất {0:dd/MM/yyyy HH:mm}", t),
+            _ => "Chưa thấy bằng chứng (nhật ký có thể đã bị xóa hoặc ghi đè)"
+        };
+    }
 
     private static string Format(LicenseInfo? l)
     {

@@ -285,4 +285,35 @@ public class ScanReportViewModelTests
         Assert.Equal(0, resets);
         Assert.Equal(2, km.Count);
     }
+
+    [Fact]
+    public async Task Internet_column_and_conclusion_follow_the_evidence()
+    {
+        var r = Report(LicenseVerdict.Genuine);
+        r = r with
+        {
+            Network = new NetworkHistory(new()
+            {
+                new("A", NetworkKind.Wired, null, null, true),
+                new("B", NetworkKind.Wired, null, null, false),
+                new("C", NetworkKind.Wired, null, null)
+            }, false),
+            Internet = new InternetEvidence(InternetVerdict.Yes, new DateTime(2026, 3, 4, 5, 6, 0), new())
+        };
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(r), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "Có", "Chỉ nội bộ", "Không rõ" }, vm.NetworkRows.Select(n => n.Internet));
+        Assert.Equal("Máy đã từng kết nối internet: Có — lần gần nhất 04/03/2026 05:06", vm.InternetConclusion);
+    }
+
+    [Fact]
+    public async Task Old_report_without_internet_evidence_shows_no_evidence_text()
+    {
+        var vm = new ScanReportViewModel((_, _) => Task.FromResult(Report(LicenseVerdict.Genuine)), _ => { });
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal("Chưa thấy bằng chứng (nhật ký có thể đã bị xóa hoặc ghi đè)", vm.InternetConclusion);
+        Assert.Equal("Không rõ", vm.NetworkRows[0].Internet);
+        Assert.Equal("Có dấu hiệu gián tiếp — lần gần nhất 01/02/2026 03:04",
+            ScanReportViewModel.ConclusionOf(new(InternetVerdict.Indirect, new DateTime(2026, 2, 1, 3, 4, 0), new())));
+    }
 }
