@@ -1050,3 +1050,123 @@ Load `frontend-design` before writing XAML, and render `admin-4-bundle.png`.
 - Do not install anything on this machine.
 
 **Commit:** `feat: demo vault with real MSI/Inno/NSIS/Burn installers and a demo bundle`
+
+
+## Addendum 3 (2026-11-12): Tasks 24–27 (spec-1.1 requirements 40–44)
+
+Execution order: 24, 25, 26, 27, then a demo build, then Task 14 last.
+
+### Addendum 3 Global Constraints
+- New strings (verbatim):
+  - "Script gỡ"
+  - "Thêm thư mục"
+  - "Giữ"
+  - "Thay"
+  - "Desktop của mọi người dùng"
+  - "Downloads của mọi người dùng"
+  - "Tất cả ổ dữ liệu (trừ ổ Windows)"
+  - "Tất cả phần mềm"
+  - "Bộ cài đặt"
+  - "Cài bộ này"
+  - "Đã chọn {0} phần mềm"
+  - "Hủy chọn"
+  - "Cài các mục đã chọn ({0})"
+- Scan path tokens are stored in `KeywordScanConfig.Paths`: `{desktop}`, `{downloads}` and `{data-drives}`. Older builds treat them as folders that do not exist, which is harmless.
+
+### Task 24: Accurate detection and uninstall (bugs seen on demo 1.3)
+
+**Observed on the user's machine:**
+- **.NET Desktop Runtime (Burn):**
+  - The install created 5 HKLM keys.
+  - The marker stored the hidden child MSI `64|{5F1E…}` (SystemComponent=1). It should have stored the visible bundle `32|{de6c…}`, whose QuietUninstallString is `/uninstall /quiet`.
+  - Uninstall therefore removed only the child, and the poll reported "Gỡ chưa hoàn tất".
+- **Bit4id Universal MW:**
+  - It was already installed before the app installed it, so no new key appeared.
+  - The auto regex `^<ProductName>` did not match the DisplayName "Bit4id - Universal MW 1.4.10.839". The key is the WOW6432Node key "Bit4id - Universal MW (x)", with UninstallString `...\uninst.exe` (NSIS).
+  - The result was no row, so the app showed "không hỗ trợ gỡ".
+- **demo-script (Script):** has no uninstall plan, by design.
+
+**Changes:**
+- `InstalledApp`: add a trailing `bool SystemComponent = false`, read from the `SystemComponent` DWORD (1 = hidden).
+- `InstalledAppsScanner`:
+  - `Find` skips hidden rows for regex matches. An exact ProductCode match still counts.
+  - `PickNewKey` ignores hidden keys.
+  - `FindForPackage`: when the marker key and `Find(Detect)` give nothing usable, fall back to a visible HKLM row that meets both conditions:
+    - its DisplayVersion equals `pkg.Version` (VersionComparer equality);
+    - its DisplayName shares a word of at least 3 letters with `pkg.Name` (case-insensitive).
+  - `PickNewKey` uses the same fallback when no new key appears.
+- `UninstallService`: the poll waits only for the row the plan targets, not for every matched row.
+- The editor's auto regex becomes unanchored: `(?<![A-Za-z0-9])` + Regex.Escape(name) + `(?![A-Za-z])`.
+- **Script-only uninstall:**
+  - `PackageEntry` gets a trailing `string? UninstallScript = null`. The manifest field is `uninstall_script`, and the script is stored in `scripts\`.
+  - The editor gets a "Script gỡ" row, in the same picker style as the pre/post scripts.
+  - For `InstallerType.Script`, Resolve yields a ScriptPlan:
+    1. Decrypt the package to a TempWorkspace.
+    2. If an uninstall script is present, run it via ScriptRunner.
+    3. Remove the marker.
+  - Without a script, it only removes the marker and reports Success.
+- Tests reproduce the three cases with the exact registry data above.
+
+**Commit:** `fix: skip hidden uninstall entries, unanchored name match, version fallback, script uninstall`
+
+### Task 25: Edit software without re-picking files; folder extras
+- **Edit mode:** `PackageEditorViewModel` lists the existing files from the entry and its blob manifest: the installer, the extras (relative paths), the docs, the scripts and the icon.
+  - Each row offers "Giữ" (the default), "Thay" (pick a replacement) or remove.
+  - New files can be added.
+- **Save with no file change:** call `VaultAdmin.UpdatePackageInfo(id, version, PackageEntry updated)`.
+  - It replaces only the metadata fields.
+  - It keeps BlobFile, Sha256, KeyB64, DocsKeyB64 and BlobSize.
+  - It re-signs the catalog.
+- **Save with any file change:**
+  1. Decrypt the existing package and docs into a TempWorkspace, using the existing decrypt and extract code.
+  2. Apply the changes to that folder.
+  3. Write the manifest via PackageSource.
+  4. Call the existing `UpdatePackage(id, folder, keepOld:false)`.
+  5. Delete the workspace in `finally`.
+- **"Giữ cả bản cũ" (keepOld)** requires a newly picked installer. Otherwise it is disabled, with a hint.
+- **Extras:**
+  - "Thêm thư mục" adds a folder. Its files keep their relative paths under `installer\<folder name>\…`.
+  - Duplicates by relative path are rejected.
+  - Extras are never executed.
+- **Tests:**
+  - A metadata-only edit keeps the blob and changes the args.
+  - Replacing one extra re-packs and keeps the others.
+  - Folder extras keep their structure.
+  - keepOld is disabled without a new installer.
+
+**Commit:** `feat: edit software keeping existing files; folder extras`
+
+### Task 26: Machine-independent scan locations
+- `KeywordFileScanner` expands the tokens:
+  - `{desktop}` → every `C:\Users\<profile>\Desktop` and `…\OneDrive*\Desktop`, plus `C:\Users\Public\Desktop`;
+  - `{downloads}` → every profile's `Downloads`;
+  - `{data-drives}` → every ready `DriveType.Fixed` root except the Windows drive.
+- Profiles come from enumerating the Users folder under `%SystemDrive%`. Skip Default, All Users, Default User and reparse points.
+- Admin "Cấu hình quét":
+  - Three CheckBoxes, bound to the tokens.
+  - The paths TextBox shows only the other lines.
+  - Save merges them back.
+- **Tests:**
+  - Token expansion with a fake root folder.
+  - The checkboxes round-trip through Paths.
+
+**Commit:** `feat: scan desktop, downloads and all data drives on any machine`
+
+### Task 27: Main screen tabs, select-all, action bar
+- `PackageListView` gets a TabControl with two tabs.
+  - **"Tất cả phần mềm":**
+    - the existing list, without the bundle combo;
+    - a header CheckBox that ticks every installable row (NotInstalled/Older, not blocked); when all installable rows are already ticked, it clears them.
+  - **"Bộ cài đặt":**
+    - one card per bundle, showing the name, the description, and each item with its status label and skip reason;
+    - a "Cài bộ này" button that queues the installable items, with the same rules and notices as today's bundle selection.
+- **Bottom action bar**, visible only when at least one row is ticked: "Đã chọn {0} phần mềm", "Hủy chọn", and the primary "Cài các mục đã chọn ({0})".
+- **Header, top right:** "Xem lại báo cáo quét" and "Quản trị" (admin only), both as secondary buttons.
+- Remove the old "Bỏ chọn tất cả" button and the top "Cài các mục đã chọn" button.
+- **Tests:**
+  - Header select-all and clear.
+  - "Cài bộ này" queues only installable items.
+  - Action bar visibility.
+- Load `frontend-design`, and render `pkg-1-list.png` and `pkg-4-bundle.png`.
+
+**Commit:** `feat: main screen tabs for software and bundles, select-all, bottom action bar`

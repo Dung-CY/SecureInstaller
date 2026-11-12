@@ -355,3 +355,28 @@ Given kho có 7-Zip và Notepad++
 When admin tạo bộ cài đặt mới
 Then admin tick hai phần mềm trong danh sách, chọn "Bản mới nhất", bấm Lưu
 ```
+
+
+## Bổ sung 2026-11-12 (đợt 3) — sau khi thử demo 1.3
+
+40. **Nhận biết và gỡ chính xác hơn.**
+    - Bỏ qua mục ẩn của Windows (SystemComponent=1) khi chọn mục cần nhớ và khi nhận biết theo tên.
+    - Tên khớp ở bất kỳ vị trí nào trong tên Windows.
+    - Nếu không thấy mục mới sau khi cài, lấy mục cùng phiên bản và có chữ trùng tên.
+    - Gói chỉ có script cũng được "Gỡ": chạy script gỡ (nếu có), rồi xóa dấu đã cài.
+41. **Sửa phần mềm không cần chọn lại file.**
+    - Form sửa liệt kê các file đang có trong kho (file cài, file đi kèm, tài liệu, script). Mặc định là giữ.
+    - Thay, xóa hoặc thêm được từng file.
+    - Chỉ đổi thông tin thì không đụng đến file. Có đổi file thì app tự giải mã gói cũ, ghép thay đổi vào, rồi mã hóa lại.
+42. **Thư mục đi kèm.**
+    - Nút "Thêm thư mục" giữ nguyên cấu trúc thư mục con, đặt cạnh file cài.
+    - File đi kèm không bao giờ được chạy.
+43. **Vị trí quét chung cho mọi máy.** Thêm ô tick cho:
+    - Desktop của mọi người dùng;
+    - Downloads của mọi người dùng;
+    - Tất cả ổ dữ liệu (mọi ổ cứng trừ ổ Windows).
+44. **Màn hình chính.**
+    - Hai tab: "Tất cả phần mềm" và "Bộ cài đặt". Trong tab "Bộ cài đặt", mỗi bộ là một thẻ có nút "Cài bộ này".
+    - Ô tick ở đầu cột để chọn tất cả hoặc hủy. Chỉ chọn những phần mềm cài được.
+    - Nút "Cài các mục đã chọn" nằm ở thanh dưới cùng và chỉ hiện khi đã chọn ít nhất một phần mềm.
+    - "Xem lại báo cáo quét" và "Quản trị" cùng nằm ở góc trên.
