@@ -162,7 +162,7 @@ if (-not $WithDemo -and $sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({
 
 Write-Host ''
 Write-Host "Hoàn tất. Thư mục portable: $appDir"
-if ($fingerprint) { Write-Host "Mã kho (so với màn hình đăng nhập): $fingerprint" }
+if ($fingerprint) { Write-Host "Mã kho (hiện trong trang Quản trị): $fingerprint" }
 if ($WithDemo) {
     Write-Host "Lưu ý: tài khoản 'nguoidung' dùng cùng mật khẩu với '$Admin', CHỈ để thử nghiệm. Hãy xóa trước khi phát hành:"
     Write-Host "  tools\SecureInstaller.Packager.exe remove-user . nguoidung --user $Admin"
