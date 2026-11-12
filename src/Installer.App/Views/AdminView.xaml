@@ -347,6 +347,11 @@
                                  VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
                         <TextBlock Text="Đường dẫn quét (mỗi dòng một đường dẫn)" Style="{StaticResource FieldLabel}" FontSize="13"
                                    Margin="0,0,0,4"/>
+                        <StackPanel Margin="0,0,0,8">
+                            <CheckBox Content="Desktop của mọi người dùng" IsChecked="{Binding ScanDesktops}" Margin="0,0,0,4"/>
+                            <CheckBox Content="Downloads của mọi người dùng" IsChecked="{Binding ScanDownloads}" Margin="0,0,0,4"/>
+                            <CheckBox Content="Tất cả ổ dữ liệu (trừ ổ Windows)" IsChecked="{Binding ScanDataDrives}"/>
+                        </StackPanel>
                         <TextBox Text="{Binding PathsText}" AcceptsReturn="True" Height="90"
                                  VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
                         <TextBlock Text="Số giây tối đa (1 - 3600)" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>

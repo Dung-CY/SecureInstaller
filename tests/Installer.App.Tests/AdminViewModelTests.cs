@@ -153,6 +153,25 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
+    public async Task Scan_token_checkboxes_round_trip_through_paths()
+    {
+        var vm = Make(Login());
+        vm.PathsText = "C:\\Dữ liệu";
+        vm.ScanDesktops = true;
+        vm.ScanDataDrives = true;
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+
+        var s2 = Login();
+        Assert.Equal(new[] { "C:\\Dữ liệu", "{desktop}", "{data-drives}" }, s2.Catalog.KeywordScan.Paths);
+        var vm2 = Make(s2);
+        Assert.True(vm2.ScanDesktops);
+        Assert.False(vm2.ScanDownloads);
+        Assert.True(vm2.ScanDataDrives);
+        Assert.Equal("C:\\Dữ liệu", vm2.PathsText);
+    }
+
+    [Fact]
     public async Task Settings_default_signatures_save_unchanged()
     {
         var vm = Make(Login());

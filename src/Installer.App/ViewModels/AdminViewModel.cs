@@ -451,6 +451,9 @@ public partial class AdminViewModel : ObservableObject
     // ---------- Settings ----------
     [ObservableProperty] private string _keywordsText = "";
     [ObservableProperty] private string _pathsText = "";
+    [ObservableProperty] private bool _scanDesktops;
+    [ObservableProperty] private bool _scanDownloads;
+    [ObservableProperty] private bool _scanDataDrives;
     [ObservableProperty] private string _maxSecondsText = "60";
     [ObservableProperty] private string _signaturesText = "";
 
@@ -464,7 +467,12 @@ public partial class AdminViewModel : ObservableObject
     {
         var c = _session.Catalog;
         KeywordsText = string.Join("\n", c.KeywordScan.Keywords);
-        PathsText = string.Join("\n", c.KeywordScan.Paths);
+        var tokens = new[] { KeywordFileScanner.DesktopToken, KeywordFileScanner.DownloadsToken, KeywordFileScanner.DataDrivesToken };
+        bool IsToken(string p) => tokens.Any(t => p.Trim().Equals(t, StringComparison.OrdinalIgnoreCase));
+        ScanDesktops = c.KeywordScan.Paths.Any(p => p.Trim().Equals(tokens[0], StringComparison.OrdinalIgnoreCase));
+        ScanDownloads = c.KeywordScan.Paths.Any(p => p.Trim().Equals(tokens[1], StringComparison.OrdinalIgnoreCase));
+        ScanDataDrives = c.KeywordScan.Paths.Any(p => p.Trim().Equals(tokens[2], StringComparison.OrdinalIgnoreCase));
+        PathsText = string.Join("\n", c.KeywordScan.Paths.Where(p => !IsToken(p)));
         MaxSecondsText = c.KeywordScan.MaxSeconds.ToString();
         SignaturesText = string.Join("\n", c.CrackSignatures.Select(s => $"{s.Kind}|{s.Pattern}"));
     }
@@ -494,7 +502,11 @@ public partial class AdminViewModel : ObservableObject
             }
             sigs.Add(new CrackSignature(kind, pattern));
         }
-        var kw = new KeywordScanConfig(NonEmptyLines(KeywordsText), NonEmptyLines(PathsText), max);
+        var paths = NonEmptyLines(PathsText);
+        if (ScanDesktops) paths.Add(KeywordFileScanner.DesktopToken);
+        if (ScanDownloads) paths.Add(KeywordFileScanner.DownloadsToken);
+        if (ScanDataDrives) paths.Add(KeywordFileScanner.DataDrivesToken);
+        var kw = new KeywordScanConfig(NonEmptyLines(KeywordsText), paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), max);
         await Run(() => Admin.UpdateSettings(kw, sigs), "Đã lưu cấu hình quét");
     }
 

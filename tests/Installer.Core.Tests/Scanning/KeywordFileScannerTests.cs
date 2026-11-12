@@ -35,6 +35,29 @@ public class KeywordFileScannerTests : IDisposable
     }
 
     [Fact]
+    public void Tokens_expand_over_fake_users_root_and_drives()
+    {
+        var users = Path.Combine(_root, "Users");
+        var drive = Path.Combine(_root, "D");
+        var dirs = new[] { @"An\Desktop", @"An\OneDrive - X\Desktop", @"An\Downloads", @"Bình\Downloads",
+            @"Public\Desktop", @"Default\Desktop", @"All Users\Desktop", @"Default User\Desktop" };
+        foreach (var d in dirs)
+        {
+            Directory.CreateDirectory(Path.Combine(users, d));
+            File.WriteAllText(Path.Combine(users, d, "mat.txt"), "x");
+        }
+        Directory.CreateDirectory(drive);
+        File.WriteAllText(Path.Combine(drive, "mat.txt"), "x");
+        var sc = new KeywordFileScanner(users, () => new[] { drive });
+
+        var desk = sc.Scan(Cfg(new[] { "mat" }, new[] { "{desktop}" }), CancellationToken.None).MatchedFiles;
+        Assert.Equal(3, desk.Count);
+        Assert.DoesNotContain(desk, f => f.Contains("Default") || f.Contains("All Users"));
+        Assert.Equal(2, sc.Scan(Cfg(new[] { "mat" }, new[] { "{downloads}" }), CancellationToken.None).MatchedFiles.Count);
+        Assert.Single(sc.Scan(Cfg(new[] { "mat" }, new[] { "{data-drives}" }), CancellationToken.None).MatchedFiles);
+    }
+
+    [Fact]
     public void Missing_path_is_skipped()
     {
         File.WriteAllText(Path.Combine(_root, "mat.txt"), "x");
