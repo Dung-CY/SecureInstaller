@@ -79,6 +79,79 @@ public sealed class VaultAdmin
         return entry;
     }
 
+    /// <summary>Rewrites only the metadata of one stored package and re-signs the catalog; blob, hash and keys are kept.</summary>
+    public PackageEntry UpdatePackageInfo(string id, string version, PackageEntry updated)
+    {
+        var old = _s.Catalog.Packages.FirstOrDefault(p => Same(p.Id, id) && Same(p.Version, version))
+                  ?? throw new Errors.UserMessageException("Không tìm thấy phần mềm");
+        if (!Same(updated.Id, id)) throw new InvalidDataException("Trường id không khớp với phần mềm cần cập nhật");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(updated.Version ?? "", @"^[A-Za-z0-9._-]+\z"))
+            throw new InvalidDataException("Trường version chứa ký tự không hợp lệ");
+        if (!Same(updated.Version!, version) && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, updated.Version!)))
+            throw new Errors.UserMessageException($"Phần mềm {id} phiên bản {updated.Version} đã tồn tại");
+        if (old.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(updated.SilentArgs) &&
+            updated.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
+            throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
+        var entry = updated with
+        {
+            InstallerType = old.InstallerType, InstallerFile = old.InstallerFile, Docs = old.Docs, PreScript = old.PreScript,
+            PostScript = old.PostScript, UninstallScript = old.UninstallScript, Extras = old.Extras,
+            BlobFile = old.BlobFile, Sha256 = old.Sha256, KeyB64 = old.KeyB64, DocsKeyB64 = old.DocsKeyB64, BlobSize = old.BlobSize
+        };
+        Commit(_s.Catalog.Packages.Select(p => p == old ? entry : p).ToList());
+        return entry;
+    }
+
+    /// <summary>Edit with file changes: unpacks the stored package into a protected workspace, merges the draft over it and re-packs.</summary>
+    public async Task<PackageEntry> UpdatePackageFilesAsync(PackageDraft d, bool keepOld, Func<Install.TempWorkspace> workspaceFactory,
+        CancellationToken ct = default)
+    {
+        var edit = d.Edit ?? throw new ArgumentException("Thiếu thông tin sửa", nameof(d));
+        var ex = _s.Catalog.Packages.FirstOrDefault(p => Same(p.Id, edit.Existing.Id) && Same(p.Version, edit.Existing.Version))
+                 ?? throw new Errors.UserMessageException("Không tìm thấy phần mềm");
+        var k = edit.Kept;
+        using var ws = workspaceFactory();
+        var repo = new Repository.PortableRepositorySource(_s, null!); // WriteLog is never called here
+        if (!await Install.InstallService.ExtractAsync(repo, ex, ws, new Progress<Install.InstallProgress>(), ct).ConfigureAwait(false))
+            throw new InvalidDataException(Strings.PackageCorrupt);
+        var root = Path.GetFullPath(Path.Combine(ws.Path, "pkg"));
+
+        string Under(string sub, string rel)
+        {
+            var dir = Path.GetFullPath(Path.Combine(root, sub)) + Path.DirectorySeparatorChar;
+            var p = Path.GetFullPath(Path.Combine(dir, rel));
+            if (!p.StartsWith(dir, StringComparison.OrdinalIgnoreCase) || !File.Exists(p) || (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Không tìm thấy file trong gói: {sub}\\{rel}");
+            return p;
+        }
+        var oldSub = ex.InstallerType == InstallerType.Script ? "scripts" : "installer";
+        var installer = d.InstallerPath ?? (k.Installer is { } i ? Under(oldSub, i) : throw new InvalidDataException("Chọn file cài"));
+        var entries = (k.Extras ?? PackageBuilder.ExtraNames(root, ex))
+            .Select(r => new ExtraFile(File.Exists(Path.Combine(root, oldSub, r)) ? Under(oldSub, r) : Under("extras", r), r))
+            .Concat(d.ExtraEntries ?? new()).ToList();
+        var docsKey = Convert.FromBase64String(ex.DocsKeyB64 ?? ex.KeyB64);
+        var keptDocs = new List<string>();
+        foreach (var name in k.Docs)
+        {
+            await using var src = await repo.OpenDocBlobAsync(ex, name, ct).ConfigureAwait(false); // validates the name
+            var path = Path.Combine(ws.Path, "docs", name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await using (var dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
+                Crypto.PackageCrypto.Decrypt(src, dst, docsKey);
+            keptDocs.Add(path);
+        }
+        var resolved = d with
+        {
+            InstallerPath = installer, ExtraEntries = entries, DocFiles = keptDocs.Concat(d.DocFiles).ToList(),
+            PreScriptPath = d.PreScriptPath ?? (k.PreScript is { } a ? Under("scripts", a) : null),
+            PostScriptPath = d.PostScriptPath ?? (k.PostScript is { } b ? Under("scripts", b) : null),
+            UninstallScriptPath = d.UninstallScriptPath ?? (k.UninstallScript is { } c ? Under("scripts", c) : null),
+            Edit = null
+        };
+        var dir = PackageSource.Create(resolved, Path.Combine(ws.Path, "src"));
+        return UpdatePackage(ex.Id, dir, keepOld);
+    }
+
     public void RemovePackage(string id, string? version)
     {
         var removed = _s.Catalog.Packages

@@ -243,7 +243,7 @@ public partial class AdminViewModel : ObservableObject
         SelectedTabIndex = 0;
         PackageEditorViewModel? editor = null;
         editor = new PackageEditorViewModel(existing, _pickFile, _pickFiles,
-            draft => SaveDraft(draft, existing?.Id, editor!.KeepOld), () => _navigate(this));
+            draft => SaveDraft(draft, existing?.Id, editor!.KeepOld), () => _navigate(this), pickFolder: _pickFolder);
         _navigate(editor);
     }
 
@@ -254,8 +254,11 @@ public partial class AdminViewModel : ObservableObject
         PackageEntry entry;
         try
         {
-            entry = await Task.Run(() =>
+            entry = await Task.Run(async () =>
             {
+                if (draft.Edit is { } edit)
+                    return edit.FilesChanged ? await Admin.UpdatePackageFilesAsync(draft, keepOld, _workspaceFactory)
+                        : Admin.UpdatePackageInfo(edit.Existing.Id, edit.Existing.Version, PackageSource.ApplyMeta(edit.Existing, draft));
                 // Plain installer copies live only in the ACL-protected workspace, never in %TEMP%.
                 using var ws = _workspaceFactory();
                 var dir = PackageSource.Create(draft, Path.Combine(ws.Path, "src"));

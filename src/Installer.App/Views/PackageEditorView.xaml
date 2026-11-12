@@ -49,6 +49,40 @@
             </Border>
         </DataTemplate>
 
+        <!-- A file already stored in the package: Giữ (default) / Thay / Bỏ; the active choice is filled -->
+        <Style x:Key="ChoiceButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="MinWidth" Value="44"/>
+            <Style.Triggers><DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                <Setter Property="FontWeight" Value="Bold"/><Setter Property="Background" Value="{StaticResource AccentPillBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/></DataTrigger></Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="ExistingRow">
+            <Border BorderBrush="{StaticResource SubtleBrush}" BorderThickness="0,0,0,1" Padding="0,6">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Giữ" Command="{Binding KeepCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsKeep}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Giữ {0}}"/>
+                        <Button Content="Thay" Command="{Binding ReplaceCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsReplace}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Thay {0}}"/>
+                        <Button Content="Bỏ" Command="{Binding RemoveCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsRemoved}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Bỏ {0}}"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}">
+                            <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style.Triggers><DataTrigger Binding="{Binding IsRemoved}" Value="True">
+                                    <Setter Property="TextDecorations" Value="Strikethrough"/><Setter Property="Opacity" Value="0.5"/>
+                                </DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis">
+                            <Run Text="{Binding Kind, Mode=OneWay}"/><Run Text=" "/><Run Text="{Binding ReplacementName, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- Optional single file (icon, scripts): name or "Chưa chọn", pick + clear -->
         <Style x:Key="OptionalFileText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="FontSize" Value="13"/>
@@ -254,9 +288,16 @@
                     <!-- Right: files that travel with the installer -->
                     <Border Grid.Column="2" Style="{StaticResource FormCard}" VerticalAlignment="Top">
                         <StackPanel>
+                            <StackPanel Visibility="{Binding IsEdit, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,16">
+                                <TextBlock Text="File hiện có" Style="{StaticResource SectionHeading}" Margin="0,0,0,4"/>
+                                <ItemsControl ItemsSource="{Binding ExistingFiles}" ItemTemplate="{StaticResource ExistingRow}"
+                                              AutomationProperties.Name="File hiện có"/>
+                            </StackPanel>
                             <DockPanel Margin="0,0,0,4">
                                 <Button DockPanel.Dock="Right" Content="Thêm file…" Command="{Binding AddExtraFilesCommand}"
                                         Style="{StaticResource SmallButton}"/>
+                                <Button DockPanel.Dock="Right" Content="Thêm thư mục" Command="{Binding AddExtraFolderCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="0,0,6,0"/>
                                 <TextBlock Text="File đi kèm" Style="{StaticResource SectionHeading}" VerticalAlignment="Center"/>
                             </DockPanel>
                             <TextBlock Text="Được đặt cùng thư mục với file cài trước khi chạy." Style="{StaticResource Muted}"
@@ -264,6 +305,9 @@
                             <ItemsControl ItemsSource="{Binding ExtraFiles}" ItemTemplate="{StaticResource FileRow}"
                                           Tag="{Binding RemoveExtraFileCommand}" Margin="0,0,0,16"
                                           AutomationProperties.Name="File đi kèm"/>
+                            <ItemsControl ItemsSource="{Binding ExtraFolders}" ItemTemplate="{StaticResource FileRow}"
+                                          Tag="{Binding RemoveExtraFolderCommand}" Margin="0,-12,0,16"
+                                          AutomationProperties.Name="Thư mục đi kèm"/>
 
                             <DockPanel Margin="0,0,0,4">
                                 <Button DockPanel.Dock="Right" Content="Thêm tài liệu…" Command="{Binding AddDocsCommand}"
@@ -393,7 +437,7 @@
                 <Button DockPanel.Dock="Right" Content="Lưu phần mềm" Command="{Binding SaveCommand}" Padding="18,8"/>
                 <Button DockPanel.Dock="Right" Content="Hủy" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryButton}"
                         Padding="14,8" Margin="0,0,8,0"/>
-                <CheckBox DockPanel.Dock="Left" Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" Margin="0,0,16,0" IsEnabled="{Binding IsIdle}"
+                <CheckBox DockPanel.Dock="Left" Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" Margin="0,0,16,0" IsEnabled="{Binding KeepOldEnabled}" ToolTip="{Binding KeepOldHint}"
                           Visibility="{Binding IsEdit, Converter={StaticResource BoolToVisibility}}"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" FontSize="13"

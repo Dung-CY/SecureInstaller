@@ -131,7 +131,7 @@ public class PackageEditorViewModelTests
     }
 
     [Fact]
-    public void Editing_prefills_from_the_entry_and_asks_to_repick_the_installer()
+    public void Editing_prefills_from_the_entry_and_keeps_the_installer()
     {
         var e = new PackageEntry("7zip", "7-Zip", "24.08", InstallerType.Msi, "7z.msi", "ALLUSERS=1", @"C:\Tools", 900,
             new DetectRule("{X}", "^7-Zip"), new(), new(), new() { new RuleSpec("require_internet") }, "b", "s", "k",
@@ -144,7 +144,9 @@ public class PackageEditorViewModelTests
         Assert.Equal("^7-Zip", vm.DisplayNameRegex);
         Assert.True(vm.RequireInternet);
         Assert.Null(vm.InstallerPath);
-        Assert.Contains("chọn lại file cài", vm.EditHint);
+        Assert.Equal("7z.msi", Assert.Single(vm.ExistingFiles).Name);
+        Assert.False(vm.KeepOldEnabled);
+        Assert.Equal("Chọn file cài mới để giữ bản cũ", vm.KeepOldHint);
     }
 
     [Fact]
@@ -206,8 +208,7 @@ public class PackageEditorViewModelTests
             new DetectRule(null, null), new() { "HuongDan.pdf" }, post, new(), "b", "s", "k", IconPngB64: "aWNvbg==");
         var vm = Make(e);
         Assert.Equal("Giữ icon hiện tại", vm.IconText);
-        Assert.Contains("HuongDan.pdf", vm.EditHint);
-        Assert.Contains("thao tác sau cài được giữ", vm.EditHint);
+        Assert.Contains(vm.ExistingFiles, r => r.Name == "HuongDan.pdf");
         _nextFile = @"D:z.msi";
         vm.PickInstallerCommand.Execute(null);
 
@@ -269,5 +270,76 @@ public class PackageEditorViewModelTests
         Assert.Equal("", vm.SilentArgs);
         vm.SaveCommand.Execute(null);
         Assert.Equal(InstallerKind.Unknown, _saved!.Kind);
+    }
+
+    static PackageEntry Stored() => new("p", "P", "1.0", InstallerType.Exe, "setup.exe", "/S", null, 900, new DetectRule(null, null),
+        new() { "d.pdf" }, new(), new(), "b", "s", "k", PreScript: "pre.cmd", Extras: new() { "a.ini", "sub/b.txt" });
+
+    [Fact]
+    public async Task Edit_without_file_changes_keeps_everything_and_flags_metadata_only()
+    {
+        var vm = Make(Stored());
+        vm.SilentArgs = "/VERYSILENT";
+        await vm.SaveCommand.ExecuteAsync(null);
+        var edit = _saved!.Edit!;
+        Assert.False(edit.FilesChanged);
+        Assert.Null(_saved.InstallerPath);
+        Assert.Equal(("setup.exe", "pre.cmd"), (edit.Kept.Installer, edit.Kept.PreScript));
+        Assert.Equal(new[] { "a.ini", "sub/b.txt" }, edit.Kept.Extras);
+        Assert.Equal(new[] { "d.pdf" }, edit.Kept.Docs);
+    }
+
+    [Fact]
+    public async Task Replacing_and_removing_rows_marks_files_changed()
+    {
+        var vm = Make(Stored());
+        var a = vm.ExistingFiles.Single(r => r.Name == "a.ini");
+        _nextFile = @"D:\n\a.ini";
+        a.ReplaceCommand.Execute(null);
+        vm.ExistingFiles.Single(r => r.Name == "d.pdf").RemoveCommand.Execute(null);
+        await vm.SaveCommand.ExecuteAsync(null);
+        var d = _saved!;
+        Assert.True(d.Edit!.FilesChanged);
+        Assert.Equal(new[] { @"D:\n\a.ini" }, d.ExtraFiles);
+        Assert.Equal(new[] { "sub/b.txt" }, d.Edit.Kept.Extras);
+        Assert.Empty(d.Edit.Kept.Docs);
+        Assert.Equal("→ a.ini", a.ReplacementName);
+        a.KeepCommand.Execute(null);
+        Assert.True(a.IsKeep);
+    }
+
+    [Fact]
+    public async Task Keep_old_needs_a_new_installer_and_resets_when_it_is_dropped()
+    {
+        var vm = Make(Stored());
+        _nextFile = @"D:\new.exe";
+        vm.ExistingFiles[0].ReplaceCommand.Execute(null);
+        Assert.True(vm.KeepOldEnabled);
+        vm.KeepOld = true;
+        vm.ExistingFiles[0].KeepCommand.Execute(null);
+        Assert.False(vm.KeepOldEnabled);
+        Assert.False(vm.KeepOld);
+        Assert.Null(vm.InstallerPath);
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(_saved!.Edit!.FilesChanged);
+    }
+
+    [Fact]
+    public async Task Extra_folder_is_listed_with_relative_paths()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SI_vm_" + Guid.NewGuid().ToString("N"), "Cấu hình");
+        Directory.CreateDirectory(Path.Combine(dir, "sub"));
+        File.WriteAllText(Path.Combine(dir, "sub", "y.cfg"), "y");
+        try
+        {
+            var vm = new PackageEditorViewModel(Stored(), () => null, () => _nextFiles, d => Task.FromResult(_saved = d), () => { },
+                pickFolder: () => dir);
+            vm.AddExtraFolderCommand.Execute(null);
+            vm.AddExtraFolderCommand.Execute(null); // same folder twice is ignored
+            await vm.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("Cấu hình/sub/y.cfg", Assert.Single(_saved!.ExtraEntries!).Rel);
+            Assert.True(_saved.Edit!.FilesChanged);
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(dir)!, true); }
     }
 }

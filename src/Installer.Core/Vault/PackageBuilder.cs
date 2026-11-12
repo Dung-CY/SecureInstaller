@@ -112,6 +112,23 @@ public static class PackageBuilder
             throw new InvalidDataException($"{field}: tên file script không được chứa các ký tự & ^ % ! ( ) @ < > | ; , =");
     }
 
+    /// <summary>Relative paths of the extra files: installer\ (scripts\ for a script package) minus the installer and hooks, plus extras\.</summary>
+    internal static List<string> ExtraNames(string root, PackageEntry e)
+    {
+        var isScript = e.InstallerType == InstallerType.Script;
+        var skip = isScript ? new[] { e.InstallerFile, e.PreScript, e.PostScript, e.UninstallScript } : new[] { e.InstallerFile };
+        IEnumerable<string> Rel(string sub)
+        {
+            var dir = Path.Combine(root, sub);
+            return !Directory.Exists(dir) ? Enumerable.Empty<string>()
+                : Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(dir, f).Replace('\\', '/'))
+                    .Where(r => !skip.Contains(r, StringComparer.OrdinalIgnoreCase));
+        }
+        return Rel(isScript ? "scripts" : "installer").Concat(Rel("extras"))
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.Ordinal).ToList();
+    }
+
     const string BlobSuffix = ".pkg.enc";
 
     public static string DocsDirFor(PackageEntry e, string vaultRoot)
@@ -202,7 +219,8 @@ public static class PackageBuilder
             }
             ok = true;
             return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key),
-                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey), IconPngB64 = iconB64 };
+                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey), IconPngB64 = iconB64,
+                Extras = ExtraNames(sourceFolder, entry) };
         }
         finally
         {

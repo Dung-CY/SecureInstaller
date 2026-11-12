@@ -673,4 +673,40 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.Equal(Convert.ToBase64String(png), v2.IconPngB64);
         Assert.Equal("a.ini", Assert.Single(v2.PostActions).Src);
     }
+
+    [Fact]
+    public async Task Editor_metadata_only_edit_keeps_the_blob_and_a_replaced_extra_repacks()
+    {
+        var s = Login();
+        var src = MakePackage(_tmp, "demo", "1.0");
+        File.WriteAllText(Path.Combine(src, "installer", "b.txt"), "old-b");
+        File.WriteAllText(Path.Combine(src, "installer", "a.ini"), "old-a");
+        var before = new VaultAdmin(s).AddPackage(src);
+        var newA = Path.Combine(_tmp, "a.ini");
+        File.WriteAllText(newA, "new-a");
+        string? pick = null;
+        object? current = null;
+        var vm = new AdminViewModel(s, _logs, _fallback, () => null, () => null, _ => true, () => { },
+            null, o => current = o, () => pick, Array.Empty<string>, Ws);
+        vm.SelectedPackage = vm.Packages.Single();
+        vm.EditPackageCommand.Execute(null);
+        var ed = Assert.IsType<PackageEditorViewModel>(current);
+        ed.SilentArgs = "/VERYSILENT";
+        await ed.SaveCommand.ExecuteAsync(null);
+        Assert.Null(ed.Error);
+        var after = Assert.Single(s.Catalog.Packages);
+        Assert.Equal((before.BlobFile, before.Sha256, "/VERYSILENT"), (after.BlobFile, after.Sha256, after.SilentArgs));
+
+        vm.SelectedPackage = vm.Packages.Single();
+        vm.EditPackageCommand.Execute(null);
+        ed = Assert.IsType<PackageEditorViewModel>(current);
+        pick = newA;
+        ed.ExistingFiles.Single(r => r.Name == "a.ini").ReplaceCommand.Execute(null);
+        await ed.SaveCommand.ExecuteAsync(null);
+        Assert.Null(ed.Error);
+        var repacked = Assert.Single(s.Catalog.Packages);
+        Assert.NotEqual(before.BlobFile, repacked.BlobFile);
+        Assert.Equal(new[] { "a.ini", "b.txt" }, repacked.Extras);
+        Assert.Equal("/VERYSILENT", repacked.SilentArgs);
+    }
 }
