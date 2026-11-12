@@ -60,18 +60,21 @@ public sealed class VaultAdmin
         return entry;
     }
 
-    public PackageEntry UpdatePackage(string id, string sourceFolder, bool keepOld)
+    /// <param name="replaceVersion">Edit of one stored version: only that version is replaced, other versions stay.</param>
+    public PackageEntry UpdatePackage(string id, string sourceFolder, bool keepOld, string? replaceVersion = null)
     {
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
         if (!Same(m.Id, id)) throw new InvalidDataException("Trường id trong manifest không khớp với phần mềm cần cập nhật");
         if (!_s.Catalog.Packages.Any(p => Same(p.Id, id)))
             throw new Errors.UserMessageException("Không tìm thấy phần mềm");
 
-        if (keepOld && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)))
+        if ((keepOld || replaceVersion != null) && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)
+                && !(replaceVersion != null && !keepOld && Same(p.Version, replaceVersion))))
             throw new Errors.UserMessageException($"Phần mềm {m.Id} phiên bản {m.Version} đã tồn tại");
 
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
-        var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (!keepOld || Same(p.Version, m.Version))).ToList();
+        var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (keepOld ? Same(p.Version, m.Version)
+            : replaceVersion == null || Same(p.Version, replaceVersion))).ToList();
         var packages = _s.Catalog.Packages.Except(removed).Append(entry).ToList();
         try { Commit(packages); }
         catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
@@ -149,7 +152,7 @@ public sealed class VaultAdmin
             Edit = null
         };
         var dir = PackageSource.Create(resolved, Path.Combine(ws.Path, "src"));
-        return UpdatePackage(ex.Id, dir, keepOld);
+        return UpdatePackage(ex.Id, dir, keepOld, ex.Version);
     }
 
     public void RemovePackage(string id, string? version)

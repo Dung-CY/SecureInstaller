@@ -90,6 +90,21 @@ public class EditPackageTests : IDisposable
     }
 
     [Fact]
+    public async Task Repacking_one_version_keeps_the_other_versions()
+    {
+        var (_, s, a) = NewVault();
+        var e = AddWithExtras(a);
+        var v2 = a.UpdatePackage(e.Id, SamplePackage.Create(_tmp, version: "2.0"), keepOld: true);
+        var kept = new KeptFiles("setup.exe", new() { "a.ini" }, new(), null, null, null);
+
+        var u = await a.UpdatePackageFilesAsync(Draft(e, kept), false, Ws);
+
+        Assert.Equal(new[] { "1.0", "2.0" }, s.Catalog.Packages.Select(p => p.Version).OrderBy(x => x));
+        Assert.Contains(s.Catalog.Packages, p => p.BlobFile == v2.BlobFile);
+        Assert.Contains(s.Catalog.Packages, p => p.BlobFile == u.BlobFile);
+    }
+
+    [Fact]
     public async Task Folder_extras_keep_structure_and_removed_ones_are_dropped()
     {
         var (root, _, a) = NewVault();
