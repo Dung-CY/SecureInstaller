@@ -33,7 +33,8 @@ public sealed class InstalledAppsScanner
         var result = new List<InstalledApp>();
         try
         {
-            if (_marker?.ReadUninstallKey(pkg.Id) is { } k && FindByKey(k) is { } byKey) result.Add(byKey);
+            // Markers written before hidden keys were skipped may point at a bundle's hidden child: ignore those.
+            if (_marker?.ReadUninstallKey(pkg.Id) is { } k && FindByKey(k) is { SystemComponent: false } byKey) result.Add(byKey);
         }
         catch (Exception) { }
         foreach (var a in Find(pkg.Detect))

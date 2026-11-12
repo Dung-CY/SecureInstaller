@@ -162,6 +162,12 @@ public class InstalledAppsScannerTests
         var found = Assert.Single(s.Find(new DetectRule(null, "Desktop Runtime")));
         Assert.Equal("{de6c0000-0000-0000-0000-000000000003}", found.KeyName);
         Assert.True(Assert.Single(s.Find(new DetectRule("{5F1E0000-0000-0000-0000-000000000001}", null))).SystemComponent);
+
+        // An old marker pointing at the hidden child (demo 1.3) is ignored; the visible bundle is used instead.
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("net", "8.0.11", DateTimeOffset.UtcNow, "64|{5F1E0000-0000-0000-0000-000000000001}");
+        var rows = new InstalledAppsScanner(reg, marker).FindForPackage(Pk("net", ".NET Desktop Runtime", "8.0.11", "Desktop Runtime"));
+        Assert.Equal("{de6c0000-0000-0000-0000-000000000003}", Assert.Single(rows).KeyName);
     }
 
     [Fact]
