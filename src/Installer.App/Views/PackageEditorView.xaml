@@ -85,7 +85,7 @@
         </Grid>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Margin="0,0,4,16">
+            <StackPanel Margin="0,0,4,16" IsEnabled="{Binding IsIdle}">
 
                 <!-- The installer: the one thing the form is about, so it leads -->
                 <Grid Margin="0,0,0,16" MinHeight="84">
@@ -266,19 +266,8 @@
 
                                 <TextBlock Grid.Row="0" Text="Icon (PNG ≤ 24 KB)" Style="{StaticResource Label}" VerticalAlignment="Center"
                                            Margin="0,0,12,8" TextWrapping="NoWrap"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding IconPath}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource OptionalFileText}">
-                                            <Setter Property="Text" Value="{Binding IconPath, Converter={StaticResource FileNamePart}}"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IconPath}" Value="{x:Null}">
-                                                    <Setter Property="Text" Value="Mặc định"/>
-                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding IconPath}"
+                                           Text="{Binding IconText}" Style="{StaticResource OptionalFileText}"/>
                                 <Button Grid.Row="0" Grid.Column="2" Content="Chọn…" Command="{Binding PickIconCommand}"
                                         Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn icon"/>
                                 <Button Grid.Row="0" Grid.Column="3" Content="Bỏ" Command="{Binding ClearIconCommand}"
@@ -387,7 +376,7 @@
                 <Button DockPanel.Dock="Right" Content="Lưu phần mềm" Command="{Binding SaveCommand}" Padding="18,8"/>
                 <Button DockPanel.Dock="Right" Content="Hủy" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryButton}"
                         Padding="14,8" Margin="0,0,8,0"/>
-                <CheckBox DockPanel.Dock="Left" Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" Margin="0,0,16,0"
+                <CheckBox DockPanel.Dock="Left" Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" Margin="0,0,16,0" IsEnabled="{Binding IsIdle}"
                           Visibility="{Binding IsEdit, Converter={StaticResource BoolToVisibility}}"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" FontSize="13"

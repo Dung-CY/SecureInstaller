@@ -63,6 +63,9 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         return dir;
     }
 
+    Installer.Core.Install.TempWorkspace Ws() =>
+        Installer.Core.Install.TempWorkspace.Create(Path.Combine(_tmp, "work"), () => false);
+
     VaultSession Login() => VaultStore.Open(_root).Unlock("admin", "pw-1234", T0);
 
     AdminViewModel Make(VaultSession s, Func<string?>? folder = null, Func<string?>? save = null,
@@ -567,7 +570,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         File.WriteAllText(extra, "k=v");
         object? current = null;
         var vm = new AdminViewModel(Login(), _logs, _fallback, () => null, () => null, _ => true, () => { },
-            null, o => current = o, () => setup, () => new[] { extra });
+            null, o => current = o, () => setup, () => new[] { extra }, Ws);
         vm.SelectedTabIndex = 2;
 
         vm.NewPackageCommand.Execute(null);
@@ -608,5 +611,36 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.Equal(("demo", "Demo demo", "1.0", "/S"), (ed.Id, ed.Name, ed.Version, ed.SilentArgs));
         ed.CancelCommand.Execute(null);
         Assert.Same(vm, current);
+    }
+
+    [Fact]
+    public async Task Editor_edit_passes_KeepOld_and_keeps_icon_and_post_actions()
+    {
+        var s = Login();
+        var src = MakePackage(_tmp, "demo", "1.0");
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 9, 9 };
+        File.WriteAllBytes(Path.Combine(src, "icon.png"), png);
+        var mf = Path.Combine(src, "manifest.json");
+        File.WriteAllText(mf, File.ReadAllText(mf).TrimEnd().TrimEnd('}') +
+            ", \"post_actions\": [ { \"type\": \"copy\", \"src\": \"a.ini\", \"dst\": \"C:/a.ini\" } ] }");
+        new VaultAdmin(s).AddPackage(src);
+        var setup = Path.Combine(_tmp, "setup.exe");
+        File.WriteAllBytes(setup, new byte[1500]);
+        object? current = null;
+        var vm = new AdminViewModel(s, _logs, _fallback, () => null, () => null, _ => true, () => { },
+            null, o => current = o, () => setup, Array.Empty<string>, Ws);
+        vm.SelectedPackage = vm.Packages.Single();
+        vm.EditPackageCommand.Execute(null);
+        var ed = Assert.IsType<PackageEditorViewModel>(current);
+        ed.PickInstallerCommand.Execute(null);
+        ed.Version = "2.0";
+        ed.KeepOld = true;
+        await ed.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(ed.Error);
+        Assert.Equal(new[] { "1.0", "2.0" }, vm.Packages.Select(p => p.Version).OrderBy(v => v));
+        var v2 = s.Catalog.Packages.Single(p => p.Version == "2.0");
+        Assert.Equal(Convert.ToBase64String(png), v2.IconPngB64);
+        Assert.Equal("a.ini", Assert.Single(v2.PostActions).Src);
     }
 }

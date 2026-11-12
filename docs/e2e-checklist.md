@@ -74,4 +74,8 @@ Chuẩn bị: chạy `build\build-portable.ps1 -Out <thư mục> -InitVault -Wit
     - [ ] Làm: quét trên máy LTSC/kích hoạt bằng KMS (GVLK) không join domain.
     - Kết quả mong đợi: báo "Nghi vấn" (hành vi dự kiến trên máy lab); không báo "Có dấu hiệu crack" nếu không có thêm bằng chứng.
 
+19. **MSI prefill trong form "Thêm phần mềm"**
+    - [ ] Làm: Quản trị → Gói → "Thêm phần mềm" → "Chọn file cài…" và chọn một file .msi thật.
+    - Kết quả mong đợi: tên, phiên bản và mã sản phẩm MSI (ProductCode) được điền sẵn; loại hiện "MSI"; file không bị chạy.
+
 Dọn dẹp sau khi thử: xóa `%ProgramData%\SecureInstallerDemo`, và xóa tài khoản thử trước khi phát hành: `tools\SecureInstaller.Packager.exe remove-user . nguoidung --user admin`.

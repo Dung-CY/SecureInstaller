@@ -30,7 +30,7 @@ public class PackageEditorViewModelTests
         Assert.Equal(InstallerType.Msi, vm.Type);
         Assert.Equal("7-Zip 24.08 (x64 edition)", vm.Name);
         Assert.Equal("24.08.00.0", vm.Version);
-        Assert.Equal("7-zip-24.08--x64-edition-", vm.Id);
+        Assert.Equal("7-zip-24.08-x64-edition", vm.Id);
         Assert.Equal("{23170F69-40C1-2702-2408-000001000000}", vm.ProductCode);
     }
 
@@ -140,5 +140,74 @@ public class PackageEditorViewModelTests
     {
         Make().CancelCommand.Execute(null);
         Assert.True(_cancelled);
+    }
+
+    [Fact]
+    public void Version_prefill_keeps_only_the_numeric_part()
+    {
+        var vm = Make(readInfo: _ => ("Tool", "10.0.1 (build 5)", null));
+        _nextFile = @"D:	ool.exe";
+        vm.PickInstallerCommand.Execute(null);
+        Assert.Equal("10.0.1", vm.Version);
+
+        var vm2 = Make(readInfo: _ => ("Tool", "phiên bản mới", null));
+        vm2.PickInstallerCommand.Execute(null);
+        Assert.Equal("", vm2.Version);
+    }
+
+    [Fact]
+    public async Task Invalid_typed_version_is_refused_without_calling_save()
+    {
+        var vm = Make();
+        _nextFile = @"D:z.msi";
+        vm.PickInstallerCommand.Execute(null);
+        vm.Version = "1.0 beta";
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal("Phiên bản chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới", vm.Error);
+        Assert.Null(_saved);
+    }
+
+    [Theory]
+    [InlineData("Công cụ Đồ họa", "cong-cu-do-hoa")]
+    [InlineData("  7-Zip 24.08 (x64)  ", "7-zip-24.08-x64")]
+    public void Slug_strips_vietnamese_marks_and_collapses_dashes(string name, string id) =>
+        Assert.Equal(id, PackageEditorViewModel.Slug(name));
+
+    [Fact]
+    public async Task Edit_keeps_post_actions_and_icon_unless_dropped()
+    {
+        var post = new List<PostAction> { new("copy", "a.ini", @"C:.ini") };
+        var e = new PackageEntry("7zip", "7-Zip", "24.08", InstallerType.Msi, "7z.msi", "", null, 900,
+            new DetectRule(null, null), new() { "HuongDan.pdf" }, post, new(), "b", "s", "k", IconPngB64: "aWNvbg==");
+        var vm = Make(e);
+        Assert.Equal("Giữ icon hiện tại", vm.IconText);
+        Assert.Contains("HuongDan.pdf", vm.EditHint);
+        Assert.Contains("thao tác sau cài được giữ", vm.EditHint);
+        _nextFile = @"D:z.msi";
+        vm.PickInstallerCommand.Execute(null);
+
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(post, _saved!.PostActions);
+        Assert.Equal("aWNvbg==", _saved.KeepIconPngB64);
+
+        vm.ClearIconCommand.Execute(null);
+        Assert.Equal("Mặc định", vm.IconText);
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Null(_saved.KeepIconPngB64);
+    }
+
+    [Fact]
+    public async Task Inputs_are_disabled_while_saving()
+    {
+        var vm = Make();
+        _nextFile = @"D:z.msi";
+        vm.PickInstallerCommand.Execute(null);
+        var gate = new TaskCompletionSource();
+        _saveOverride = _ => gate.Task;
+        var run = vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.IsIdle);
+        gate.SetResult();
+        await run;
+        Assert.True(vm.IsIdle);
     }
 }

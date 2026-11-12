@@ -58,6 +58,7 @@ public partial class AdminViewModel : ObservableObject
     private readonly Action<object>? _navigate;
     private readonly Func<string?>? _pickFile;
     private readonly Func<IReadOnlyList<string>>? _pickFiles;
+    private readonly Func<Installer.Core.Install.TempWorkspace> _workspaceFactory;
 
     /// <summary>Tab order in AdminView: Gói, Bộ gói, Người dùng, Cấu hình quét, Log, Lịch sử quét.</summary>
     public const int HistoryTabIndex = 5;
@@ -66,9 +67,11 @@ public partial class AdminViewModel : ObservableObject
     public AdminViewModel(VaultSession session, string logsDir, string fallbackDir, Func<string?> pickFolder,
         Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack,
         Func<string, byte[]?>? iconFromExe = null, Action<object>? navigate = null,
-        Func<string?>? pickFile = null, Func<IReadOnlyList<string>>? pickFiles = null)
+        Func<string?>? pickFile = null, Func<IReadOnlyList<string>>? pickFiles = null,
+        Func<Installer.Core.Install.TempWorkspace>? workspaceFactory = null)
     {
         _navigate = navigate; _pickFile = pickFile; _pickFiles = pickFiles;
+        _workspaceFactory = workspaceFactory ?? (() => Installer.Core.Install.TempWorkspace.Create());
         if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
         _session = session; _logsDir = logsDir; _fallbackDir = fallbackDir;
         _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack; _iconFromExe = iconFromExe;
@@ -223,13 +226,10 @@ public partial class AdminViewModel : ObservableObject
         {
             entry = await Task.Run(() =>
             {
-                var dir = Path.Combine(Path.GetTempPath(), "SI_src_" + Guid.NewGuid().ToString("N"));
-                try
-                {
-                    PackageSource.Create(draft, dir);
-                    return updateId is null ? Admin.AddPackage(dir) : Admin.UpdatePackage(updateId, dir, keepOld);
-                }
-                finally { try { Directory.Delete(dir, true); } catch { } }
+                // Plain installer copies live only in the ACL-protected workspace, never in %TEMP%.
+                using var ws = _workspaceFactory();
+                var dir = PackageSource.Create(draft, Path.Combine(ws.Path, "src"));
+                return updateId is null ? Admin.AddPackage(dir) : Admin.UpdatePackage(updateId, dir, keepOld);
             });
         }
         finally { RefreshPackages(); }

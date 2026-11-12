@@ -8,14 +8,14 @@ namespace Installer.Core.Vault;
 public record PackageDraft(string Id, string Name, string Version, InstallerType Type, string InstallerPath,
     string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> ExtraFiles,
     List<string> DocFiles, string? IconPath, string? PreScriptPath, string? PostScriptPath, int ScriptTimeoutSec,
-    List<RuleSpec> Rules, UninstallSpec? Uninstall);
+    List<RuleSpec> Rules, UninstallSpec? Uninstall, List<PostAction>? PostActions = null, string? KeepIconPngB64 = null);
 
 /// <summary>Turns a <see cref="PackageDraft"/> into the source-folder layout <see cref="PackageBuilder"/> reads.</summary>
 public static class PackageSource
 {
     sealed record ManifestOut(string Id, string Name, string Version, InstallerType InstallerType, string InstallerFile,
         string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> Docs,
-        List<RuleSpec> Rules, UninstallSpec? Uninstall,
+        List<PostAction> PostActions, List<RuleSpec> Rules, UninstallSpec? Uninstall,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PostScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ScriptTimeoutSec);
@@ -28,11 +28,15 @@ public static class PackageSource
         var docs = CopyAll(d.DocFiles, Path.Combine(tempDir, "docs"));
         var scripts = CopyAll(new[] { d.PreScriptPath, d.PostScriptPath }.OfType<string>(), Path.Combine(tempDir, "scripts"));
         if (d.IconPath is { } icon) File.Copy(icon, Path.Combine(tempDir, "icon.png"));
+        else if (d.KeepIconPngB64 is { } kept) File.WriteAllBytes(Path.Combine(tempDir, "icon.png"), Convert.FromBase64String(kept));
+        var postActions = d.PostActions ?? new();
+        // Post-action sources resolve under extras\ at install time, so extra files are mirrored there when any exist.
+        if (postActions.Count > 0) CopyAll(d.ExtraFiles, Path.Combine(tempDir, "extras"));
 
         var pre = d.PreScriptPath is null ? null : Path.GetFileName(d.PreScriptPath);
         var post = d.PostScriptPath is null ? null : Path.GetFileName(d.PostScriptPath);
         var manifest = new ManifestOut(d.Id, d.Name, d.Version, d.Type, installerFile, d.SilentArgs, d.TargetDir,
-            d.TimeoutSec, d.Detect, docs, d.Rules, d.Uninstall, pre, post,
+            d.TimeoutSec, d.Detect, docs, postActions, d.Rules, d.Uninstall, pre, post,
             scripts.Count > 0 ? d.ScriptTimeoutSec : null);
         File.WriteAllBytes(Path.Combine(tempDir, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, Json.Options));
         return tempDir;

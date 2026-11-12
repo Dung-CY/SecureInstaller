@@ -71,4 +71,21 @@ public class PackageSourceTests : IDisposable
         var draft = Draft(new() { Touch("khác/7z.msi") });
         Assert.Throws<InvalidDataException>(() => PackageSource.Create(draft, Path.Combine(_tmp, "out")));
     }
+
+    [Fact]
+    public void Edit_round_trip_keeps_post_actions_and_the_current_icon()
+    {
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
+        var post = new List<PostAction> { new("copy", "config.ini", @"C:\ProgramDatazip\config.ini") };
+        var draft = Draft(new() { Touch("config.ini", "k=v") }) with
+            { PostActions = post, KeepIconPngB64 = Convert.ToBase64String(png) };
+        var folder = PackageSource.Create(draft, Path.Combine(_tmp, "out"));
+
+        var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "manifest.json"))).RootElement;
+        Assert.Equal("config.ini", json.GetProperty("post_actions")[0].GetProperty("src").GetString());
+        Assert.True(File.Exists(Path.Combine(folder, "extras", "config.ini"))); // where post-actions look at install time
+        var entry = PackageBuilder.Build(folder, Path.Combine(_tmp, "vault-root"));
+        Assert.Equal(post, entry.PostActions);
+        Assert.Equal(Convert.ToBase64String(png), entry.IconPngB64);
+    }
 }

@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,7 +17,11 @@ public sealed record UninstallOption(string? Type, string Label);
 public partial class PackageEditorViewModel : ObservableObject
 {
     static readonly Regex SafeId = new(@"^[A-Za-z0-9._-]+\z");
-    static readonly Regex SlugBad = new(@"[^a-z0-9._-]");
+    static readonly Regex SlugBad = new(@"[^a-z0-9._-]+");
+    static readonly Regex SafeVersion = new(@"^[A-Za-z0-9._-]+\z");
+    static readonly Regex LeadingVersion = new(@"^\d+(\.\d+)*");
+    private readonly List<PostAction> _postActions = new();
+    private readonly List<string> _existingDocs = new();
 
     private readonly Func<string?> _pickFile;
     private readonly Func<IReadOnlyList<string>> _pickFiles;
@@ -33,6 +39,9 @@ public partial class PackageEditorViewModel : ObservableObject
         if (existing is null) return;
 
         IsEdit = true;
+        _postActions = existing.PostActions?.ToList() ?? new();
+        _existingDocs = existing.Docs?.ToList() ?? new();
+        _keepIconPngB64 = existing.IconPngB64;
         _id = existing.Id; _name = existing.Name; _version = existing.Version; _type = existing.InstallerType;
         _silentArgs = existing.SilentArgs; _targetDir = existing.TargetDir; _timeoutText = existing.TimeoutSec.ToString();
         _productCode = existing.Detect?.ProductCode; _displayNameRegex = existing.Detect?.DisplayNameRegex;
@@ -52,9 +61,18 @@ public partial class PackageEditorViewModel : ObservableObject
     public bool IsEdit { get; }
     public string Title => IsEdit ? "Sửa phần mềm" : "Thêm phần mềm";
     /// <summary>The vault only keeps encrypted copies, so files cannot be loaded back into the form.</summary>
-    public string? EditHint => IsEdit
-        ? "Kho chỉ lưu bản đã mã hóa: hãy chọn lại file cài, file đi kèm, tài liệu, icon và script trước khi lưu."
-        : null;
+    public string? EditHint
+    {
+        get
+        {
+            if (!IsEdit) return null;
+            var sb = new StringBuilder("Kho chỉ lưu bản đã mã hóa: hãy chọn lại file cài, file đi kèm, tài liệu và script trước khi lưu.");
+            if (_existingDocs.Count > 0) sb.Append(" Tài liệu hiện có: ").Append(string.Join(", ", _existingDocs)).Append('.');
+            if (_postActions.Count > 0)
+                sb.Append($" {_postActions.Count} thao tác sau cài được giữ; các file chúng sao chép phải được chọn lại làm file đi kèm.");
+            return sb.ToString();
+        }
+    }
 
     [ObservableProperty] private string _id = "";
     [ObservableProperty] private string _name = "";
@@ -76,7 +94,11 @@ public partial class PackageEditorViewModel : ObservableObject
 
     public ObservableCollection<string> ExtraFiles { get; } = new();
     public ObservableCollection<string> DocFiles { get; } = new();
-    [ObservableProperty] private string? _iconPath;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IconText))] private string? _iconPath;
+    /// <summary>The current icon of the package being edited; written back unless the admin picks or drops it.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IconText))] private string? _keepIconPngB64;
+    public string IconText => IconPath is not null ? Path.GetFileName(IconPath)
+        : KeepIconPngB64 is not null ? "Giữ icon hiện tại" : "Mặc định";
     [ObservableProperty] private string? _preScriptPath;
     [ObservableProperty] private string? _postScriptPath;
     [ObservableProperty] private string _scriptTimeoutText = "300";
@@ -103,11 +125,20 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string? _error;
 
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CancelCommand))]
-    [NotifyPropertyChangedFor(nameof(BusyMessage))]
+    [NotifyPropertyChangedFor(nameof(BusyMessage), nameof(IsIdle))]
     private bool _isBusy;
+    public bool IsIdle => !IsBusy;
     public string? BusyMessage => IsBusy ? AdminViewModel.BusyText : null;
 
-    internal static string Slug(string name) => SlugBad.Replace(name.Trim().ToLowerInvariant(), "-");
+    /// <summary>"Công cụ Đồ họa" → "cong-cu-do-hoa": strip Vietnamese marks, then keep only id-safe characters.</summary>
+    internal static string Slug(string name)
+    {
+        var sb = new StringBuilder();
+        foreach (var c in name.Normalize(NormalizationForm.FormD))
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c is 'đ' or 'Đ' ? 'd' : c);
+        return SlugBad.Replace(sb.ToString().ToLowerInvariant(), "-").Trim('-');
+    }
 
     [RelayCommand]
     private void PickInstaller()
@@ -123,7 +154,8 @@ public partial class PackageEditorViewModel : ObservableObject
         };
         var (name, version, code) = _readInfo(path);
         if (string.IsNullOrWhiteSpace(Name) && name is not null) Name = name;
-        if (string.IsNullOrWhiteSpace(Version) && version is not null) Version = version;
+        // File versions like "10.0.1 (build 5)" would fail the vault's version rule, so only the numeric part is used.
+        if (string.IsNullOrWhiteSpace(Version) && version is not null) Version = LeadingVersion.Match(version).Value;
         if (string.IsNullOrWhiteSpace(Id) && !string.IsNullOrWhiteSpace(Name)) Id = Slug(Name);
         if (Type == InstallerType.Msi && string.IsNullOrWhiteSpace(ProductCode) && code is not null) ProductCode = code;
     }
@@ -139,7 +171,7 @@ public partial class PackageEditorViewModel : ObservableObject
     [RelayCommand] private void AddDocs() => AddDistinct(DocFiles, _pickFiles());
     [RelayCommand] private void RemoveDoc(string? f) { if (f != null) DocFiles.Remove(f); }
     [RelayCommand] private void PickIcon() { if (_pickFile() is { Length: > 0 } p) IconPath = p; }
-    [RelayCommand] private void ClearIcon() => IconPath = null;
+    [RelayCommand] private void ClearIcon() { IconPath = null; KeepIconPngB64 = null; }
     [RelayCommand] private void PickPreScript() { if (_pickFile() is { Length: > 0 } p) PreScriptPath = p; }
     [RelayCommand] private void ClearPreScript() => PreScriptPath = null;
     [RelayCommand] private void PickPostScript() { if (_pickFile() is { Length: > 0 } p) PostScriptPath = p; }
@@ -157,6 +189,7 @@ public partial class PackageEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(Name)) return "Nhập tên phần mềm";
         if (!SafeId.IsMatch(Id?.Trim() ?? "")) return "Mã gói chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới";
         if (string.IsNullOrWhiteSpace(Version)) return "Nhập phiên bản";
+        if (!SafeVersion.IsMatch(Version.Trim())) return "Phiên bản chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới";
         if (string.IsNullOrEmpty(InstallerPath)) return "Chọn file cài";
         if (!TryParseSeconds(TimeoutText, out var timeout)) return "Thời gian chờ phải từ 1 đến 86400 giây";
         var scriptTimeout = 0;
@@ -175,7 +208,8 @@ public partial class PackageEditorViewModel : ObservableObject
             : null;
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",
             Opt(TargetDir), timeout, new DetectRule(Opt(ProductCode), Opt(DisplayNameRegex)), ExtraFiles.ToList(),
-            DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, uninstall);
+            DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, uninstall,
+            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null);
         return null;
     }
 
