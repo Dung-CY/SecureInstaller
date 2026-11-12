@@ -153,6 +153,15 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
     }
 
     [Fact]
+    public async Task Settings_default_signatures_save_unchanged()
+    {
+        var vm = Make(Login());
+        vm.SignaturesText = string.Join("\n", Installer.Core.Licensing.CrackSignatureDefaults.All.Select(x => $"{x.Kind}|{x.Pattern}"));
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+    }
+
+    [Fact]
     public async Task Settings_invalid_signature_line_shows_error()
     {
         var s = Login();
@@ -160,10 +169,10 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         var vm = Make(s);
         vm.SignaturesText = "service|ok\nbogus|x";
         await vm.SaveSettingsCommand.ExecuteAsync(null);
-        Assert.Equal("Dòng 2 không hợp lệ", vm.Error);
-        vm.SignaturesText = "file|([unclosed";
+        Assert.Equal("Dấu hiệu crack: dòng 2 không hợp lệ", vm.Error);
+        vm.SignaturesText = "service|([unclosed";
         await vm.SaveSettingsCommand.ExecuteAsync(null);
-        Assert.Equal("Dòng 1 không hợp lệ", vm.Error);
+        Assert.Equal("Dấu hiệu crack: dòng 1 không hợp lệ", vm.Error);
         vm.SignaturesText = "";
         vm.MaxSecondsText = "0";
         await vm.SaveSettingsCommand.ExecuteAsync(null);

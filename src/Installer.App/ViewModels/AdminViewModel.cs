@@ -412,9 +412,10 @@ public partial class AdminViewModel : ObservableObject
             var bar = lines[i].IndexOf('|');
             var kind = bar < 0 ? "" : lines[i][..bar].Trim();
             var pattern = bar < 0 ? "" : lines[i][(bar + 1)..].Trim();
-            if (!SignatureKinds.Contains(kind) || pattern.Length == 0 || !IsValidRegex(pattern))
+            // "file" patterns are paths (e.g. %ProgramFiles%\KMSpico), not regexes.
+            if (!SignatureKinds.Contains(kind) || pattern.Length == 0 || (kind != "file" && !IsValidRegex(pattern)))
             {
-                Error = $"Dòng {i + 1} không hợp lệ";
+                Error = $"Dấu hiệu crack: dòng {i + 1} không hợp lệ";
                 return;
             }
             sigs.Add(new CrackSignature(kind, pattern));
