@@ -10,7 +10,8 @@ using Installer.Core.Versioning;
 namespace Installer.Core.Install;
 
 public sealed class UninstallService(IRepositorySource repo, InstallMarker marker, Func<InstallerType, IInstallerRunner> exeRunner,
-    Func<InstalledApp, bool>? keyExists = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
+    Func<InstalledApp, bool>? keyExists = null, Func<TimeSpan, CancellationToken, Task>? delay = null,
+    Func<TempWorkspace>? workspaceFactory = null)
 {
     private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(2);
     private static readonly Regex InnoUninstaller = new(@"^unins\d{3}\.exe\z", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -20,7 +21,8 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
     private abstract record Plan;
     private sealed record ZipPlan(string Dir) : Plan;
     private sealed record MsiPlan(string ProductCode) : Plan;
-    private sealed record CmdPlan(string Exe, string Args) : Plan;
+    private sealed record CmdPlan(string Exe, string Args, InstalledApp? Row = null) : Plan;
+    private sealed record ScriptPlan : Plan;
 
     private static readonly Regex MsiexecGuid = new(@"(?:^|\s)[/-][XIxi]\s*(\{[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\})", RegexOptions.Compiled);
 
@@ -52,15 +54,15 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
 
         if (!string.IsNullOrWhiteSpace(type)) return null; // explicit but unknown type: never fall through
 
-        if (pkg.InstallerType == InstallerType.Script) return null; // no plan without an explicit uninstall spec
+        if (pkg.InstallerType == InstallerType.Script) return new ScriptPlan(); // runs uninstall_script if any, then the marker goes
         if (pkg.InstallerType == InstallerType.Zip) return ZipFor(pkg);
         if (pkg.InstallerType == InstallerType.Msi && MsiFor(pkg, installed) is { } m2) return m2;
 
         var rows = installed.Where(a => !a.PerUser && !a.IsMarker).ToList();
         var q = rows.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.QuietUninstallString));
-        if (q != null) return FromCommandLine(q.QuietUninstallString!, null);
+        if (q != null) return FromCommandLine(q.QuietUninstallString!, null) is CmdPlan qc ? qc with { Row = q } : FromCommandLine(q.QuietUninstallString!, null);
         var u = rows.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.UninstallString));
-        return u == null ? null : FromCommandLine(u.UninstallString!, pkg.Kind);
+        return u == null ? null : FromCommandLine(u.UninstallString!, pkg.Kind) is CmdPlan uc ? uc with { Row = u } : FromCommandLine(u.UninstallString!, pkg.Kind);
     }
 
     /// <summary>kind == null: use the command as is (QuietUninstallString); otherwise add the silent switches of that installer kind.</summary>
@@ -112,14 +114,39 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
         return new CmdPlan(exe, args);
     }
 
-    private async Task<bool> WaitGoneAsync(IReadOnlyList<InstalledApp> installed, TimeSpan budget, CancellationToken ct)
+    private async Task<bool> WaitGoneAsync(CmdPlan plan, IReadOnlyList<InstalledApp> installed, TimeSpan budget, CancellationToken ct)
     {
-        var rows = installed.Where(a => !a.PerUser && !a.IsMarker).ToList();
+        // Only the row the plan targets: other matched rows (e.g. a bundle's children) may legitimately stay.
+        var rows = plan.Row != null ? new List<InstalledApp> { plan.Row } : installed.Where(a => !a.PerUser && !a.IsMarker).ToList();
         for (var waited = TimeSpan.Zero; ; waited += PollEvery)
         {
             if (!rows.Any(keyExists!)) return true;
             if (waited >= budget) return false;
             await (delay ?? Task.Delay)(PollEvery, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Decrypts the package into a protected workspace (always deleted) and runs its uninstall script; no script means nothing to run.</summary>
+    private async Task<(InstallOutcome, string?)> RunUninstallScriptAsync(PackageEntry pkg, IProgress<InstallProgress> progress, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(pkg.UninstallScript)) return (new InstallOutcome(InstallStatus.Success, 0, Strings.Uninstalled), null);
+        TempWorkspace? ws = null;
+        try
+        {
+            ws = (workspaceFactory ?? (() => TempWorkspace.Create()))();
+            if (!await InstallService.ExtractAsync(repo, pkg, ws, progress, ct).ConfigureAwait(false))
+                return (new InstallOutcome(InstallStatus.Failed, null, Strings.PackageCorrupt), null);
+            var dir = Path.GetFullPath(Path.Combine(ws.Path, "pkg", "scripts")) + Path.DirectorySeparatorChar;
+            var path = Path.GetFullPath(Path.Combine(dir, pkg.UninstallScript));
+            if (!path.StartsWith(dir, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+                return (new InstallOutcome(InstallStatus.Failed, null, Strings.PackageCorrupt), null);
+            var o = await new ScriptRunner().RunAsync(
+                new InstallRequest(InstallerType.Script, path, "", null, TimeSpan.FromSeconds(pkg.ScriptTimeoutSec)), progress, ct).ConfigureAwait(false);
+            return (o, null);
+        }
+        finally
+        {
+            try { ws?.Dispose(); } catch { }
         }
     }
 
@@ -159,8 +186,11 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
                         new InstallRequest(InstallerType.Exe, c.Exe, c.Args, null, timeout), progress, ct).ConfigureAwait(false);
                     // Inno/NSIS uninstallers relaunch from %TEMP% and return at once: wait for the Uninstall key to go.
                     if (outcome.Status == InstallStatus.Success && keyExists != null
-                        && !await WaitGoneAsync(installed, TimeSpan.FromSeconds(Math.Min(pkg.TimeoutSec, 120)), ct).ConfigureAwait(false))
+                        && !await WaitGoneAsync(c, installed, TimeSpan.FromSeconds(Math.Min(pkg.TimeoutSec, 120)), ct).ConfigureAwait(false))
                         outcome = new InstallOutcome(InstallStatus.Failed, outcome.ExitCode, Strings.UninstallIncomplete);
+                    break;
+                case ScriptPlan:
+                    (outcome, detail) = await RunUninstallScriptAsync(pkg, progress, ct).ConfigureAwait(false);
                     break;
                 default:
                     throw new InvalidOperationException();

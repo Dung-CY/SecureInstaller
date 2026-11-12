@@ -7,7 +7,7 @@ using Microsoft.Win32;
 namespace Installer.Core.Versioning;
 
 public record InstalledApp(string DisplayName, string? DisplayVersion, string KeyName, bool Is64Bit, bool PerUser,
-    string? UninstallString = null, string? QuietUninstallString = null, string? DisplayIcon = null, bool IsMarker = false);
+    string? UninstallString = null, string? QuietUninstallString = null, string? DisplayIcon = null, bool IsMarker = false, bool SystemComponent = false);
 
 public sealed class InstalledAppsScanner
 {
@@ -39,6 +39,8 @@ public sealed class InstalledAppsScanner
         foreach (var a in Find(pkg.Detect))
             if (!result.Any(r => r.KeyName == a.KeyName && r.Is64Bit == a.Is64Bit)) result.Add(a);
         if (result.Count > 0) return result;
+        try { if (FallbackRow(pkg) is { } fb) { result.Add(fb); return result; } }
+        catch (Exception) { }
         try
         {
             if (_marker != null && _marker.ReadAll().TryGetValue(pkg.Id, out var v))
@@ -46,6 +48,21 @@ public sealed class InstalledAppsScanner
         }
         catch (Exception) { }
         return result;
+    }
+
+    private static readonly Regex Word = new(@"[A-Za-z]{3,}", RegexOptions.Compiled);
+
+    /// <summary>Last resort when neither the marker nor Detect finds the app: a visible HKLM row with the package version and a shared word (3+ letters) in the name.</summary>
+    private InstalledApp? FallbackRow(PackageEntry pkg)
+    {
+        var words = Word.Matches(pkg.Name).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (words.Count == 0) return null;
+        foreach (var k in SnapshotMachineKeys())
+            if (FindByKey(k) is { SystemComponent: false, DisplayVersion: { } v } a
+                && VersionComparer.Compare(v, pkg.Version) == 0
+                && Word.Matches(a.DisplayName).Any(m => words.Contains(m.Value)))
+                return a;
+        return null;
     }
 
     private static string KeyOf(bool is64, string sub) => (is64 ? "64|" : "32|") + sub;
@@ -76,15 +93,17 @@ public sealed class InstalledAppsScanner
         return new InstalledApp(name, string.IsNullOrEmpty(ver) ? null : ver, sub, is64, false,
             Str(RegistryHive.LocalMachine, view, path, "UninstallString"),
             Str(RegistryHive.LocalMachine, view, path, "QuietUninstallString"),
-            Str(RegistryHive.LocalMachine, view, path, "DisplayIcon"));
+            Str(RegistryHive.LocalMachine, view, path, "DisplayIcon"),
+            SystemComponent: _reg.GetValue(RegistryHive.LocalMachine, view, path, "SystemComponent") is 1);
     }
 
     public bool KeyExists(InstalledApp app) => !app.PerUser && !app.IsMarker && FindByKey(KeyOf(app.Is64Bit, app.KeyName)) != null;
 
     /// <summary>Picks the Uninstall key an install created: after minus <paramref name="before"/>, else the Find(Detect) HKLM row.</summary>
-    public string? PickNewKey(IReadOnlySet<string> before, DetectRule detect)
+    public string? PickNewKey(IReadOnlySet<string> before, DetectRule detect, PackageEntry? pkg = null)
     {
-        var added = SnapshotMachineKeys().Where(k => !before.Contains(k)).ToList();
+        // Hidden (SystemComponent=1) keys are child components of a bundle, never the entry to uninstall.
+        var added = SnapshotMachineKeys().Where(k => !before.Contains(k) && FindByKey(k) is not { SystemComponent: true }).ToList();
         if (added.Count == 1) return added[0];
         if (added.Count > 1)
         {
@@ -97,7 +116,7 @@ public sealed class InstalledAppsScanner
                     try { if (rx.IsMatch(r.App!.DisplayName)) return r.Key; } catch (RegexMatchTimeoutException) { }
             return rows.FirstOrDefault(r => r.App!.UninstallString != null).Key;
         }
-        var found = Find(detect).FirstOrDefault(a => !a.PerUser);
+        var found = Find(detect).FirstOrDefault(a => !a.PerUser) ?? (pkg == null ? null : FallbackRow(pkg));
         return found == null ? null : KeyOf(found.Is64Bit, found.KeyName);
     }
 
@@ -132,14 +151,15 @@ public sealed class InstalledAppsScanner
                     {
                         try { byName = rx.IsMatch(name); } catch (RegexMatchTimeoutException) { }
                     }
-                    if (!byCode && !byName) continue;
+                    var hidden = _reg.GetValue(hive, view, path, "SystemComponent") is 1;
+                    if (!byCode && (!byName || hidden)) continue;
 
                     var raw = _reg.GetValue(hive, view, path, "DisplayVersion");
                     var ver = raw is string s ? s : raw?.ToString();
                     if (string.IsNullOrEmpty(ver)) ver = null;
                     result.Add(new InstalledApp(name, ver, sub, is64, perUser,
                         Str(hive, view, path, "UninstallString"), Str(hive, view, path, "QuietUninstallString"),
-                        Str(hive, view, path, "DisplayIcon")));
+                        Str(hive, view, path, "DisplayIcon"), SystemComponent: hidden));
                 }
                 catch (Exception) { /* a bad entry must never break the scan */ }
             }

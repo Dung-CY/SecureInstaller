@@ -286,6 +286,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Text="Icon (PNG ≤ 24 KB)" Style="{StaticResource Label}" VerticalAlignment="Center"
@@ -336,6 +337,26 @@
                                         Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn script sau khi cài"/>
                                 <Button Grid.Row="2" Grid.Column="3" Content="Bỏ" Command="{Binding ClearPostScriptCommand}"
                                         Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ script sau khi cài"/>
+
+                                <TextBlock Grid.Row="3" Text="Script gỡ" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,8" TextWrapping="NoWrap"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding UninstallScriptPath}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource OptionalFileText}">
+                                            <Setter Property="Text" Value="{Binding UninstallScriptPath, Converter={StaticResource FileNamePart}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding UninstallScriptPath}" Value="{x:Null}">
+                                                    <Setter Property="Text" Value="Không có"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Grid.Row="3" Grid.Column="2" Content="Chọn…" Command="{Binding PickUninstallScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn script gỡ"/>
+                                <Button Grid.Row="3" Grid.Column="3" Content="Bỏ" Command="{Binding ClearUninstallScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ script gỡ"/>
                             </Grid>
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,14">
                                 <TextBlock Text="Thời gian chờ script (giây)" Style="{StaticResource Label}" VerticalAlignment="Center"

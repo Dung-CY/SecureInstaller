@@ -139,4 +139,46 @@ public class InstalledAppsScannerTests
         // several, no regex match: first with an UninstallString
         Assert.Equal("32|A", s.PickNewKey(before, new DetectRule(null, "^Nope")));
     }
+
+    static PackageEntry Pk(string id, string name, string ver, string? regex) =>
+        new(id, name, ver, InstallerType.Exe, "a.exe", "", null, 60, new DetectRule(null, regex), new(), new(), new(), "b", "s", "k");
+
+    [Fact]
+    public void Burn_bundle_install_picks_the_visible_bundle_not_the_hidden_child()
+    {
+        var reg = new FakeRegistry();
+        var s = new InstalledAppsScanner(reg);
+        var before = s.SnapshotMachineKeys();
+        const string DN = "Microsoft Windows Desktop Runtime - 8.0.11 (x64)";
+        // child MSI: hidden (SystemComponent=1), registered first
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\{5F1E0000-0000-0000-0000-000000000001}",
+            new() { ["DisplayName"] = DN, ["DisplayVersion"] = "8.0.11", ["SystemComponent"] = 1, ["UninstallString"] = "MsiExec.exe /X{5F1E0000-0000-0000-0000-000000000001}" });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\{5F1E0000-0000-0000-0000-000000000002}", new() { ["SystemComponent"] = 1 });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\{de6c0000-0000-0000-0000-000000000003}",
+            new() { ["DisplayName"] = DN, ["DisplayVersion"] = "8.0.11.34123", ["QuietUninstallString"] = "\"C:\\ProgramData\\Package Cache\\{de6c}\\runtime.exe\" /uninstall /quiet" });
+        Assert.Equal("32|{de6c0000-0000-0000-0000-000000000003}", s.PickNewKey(before, new DetectRule(null, "Desktop Runtime"), Pk("net", ".NET Desktop Runtime", "8.0.11", null)));
+
+        // Find skips the hidden child, but an exact ProductCode still counts
+        var found = Assert.Single(s.Find(new DetectRule(null, "Desktop Runtime")));
+        Assert.Equal("{de6c0000-0000-0000-0000-000000000003}", found.KeyName);
+        Assert.True(Assert.Single(s.Find(new DetectRule("{5F1E0000-0000-0000-0000-000000000001}", null))).SystemComponent);
+    }
+
+    [Fact]
+    public void Preinstalled_app_with_a_different_display_name_is_found_by_version_and_shared_word()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Bit4id - Universal MW (x)",
+            new() { ["DisplayName"] = "Bit4id - Universal MW 1.4.10.839", ["DisplayVersion"] = "1.4.10.839", ["UninstallString"] = "\"C:\\Program Files (x86)\\Bit4id\\uninst.exe\"" });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Other", V("Universal Thing", "9.9"));
+        var s = new InstalledAppsScanner(reg);
+        var pkg = Pk("bit4id", "Bit4id Universal MW", "1.4.10.839", "^Bit4id Universal MW");
+        var row = Assert.Single(s.FindForPackage(pkg));
+        Assert.Equal("Bit4id - Universal MW (x)", row.KeyName);
+        Assert.False(row.IsMarker);
+        // no new key after the install: same fallback
+        Assert.Equal("32|Bit4id - Universal MW (x)", s.PickNewKey(s.SnapshotMachineKeys(), pkg.Detect, pkg));
+        // a different version does not match
+        Assert.Empty(s.FindForPackage(pkg with { Version = "2.0" }));
+    }
 }

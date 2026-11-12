@@ -55,7 +55,7 @@ public sealed class InstallService
         if (_marker != null && outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
         {
             string? uninstallKey = null;
-            if (before != null) try { uninstallKey = _scanner!.PickNewKey(before, pkg.Detect); } catch (Exception) { }
+            if (before != null) try { uninstallKey = _scanner!.PickNewKey(before, pkg.Detect, pkg); } catch (Exception) { }
             try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now, uninstallKey); }
             catch (Exception ex) { markerError = "Không ghi được dấu cài đặt: " + ex.Message; }
         }
@@ -76,10 +76,10 @@ public sealed class InstallService
         return outcome;
     }
 
-    private async Task<InstallOutcome> RunCoreAsync(PackageEntry pkg, TempWorkspace ws, IProgress<InstallProgress> progress,
-        CancellationToken ct, Action<string> setDetail)
+    /// <summary>Verifies SHA-256, decrypts and unzips the package into <c>ws\pkg</c>; false when it is corrupt. Shared with the script uninstall.</summary>
+    internal static async Task<bool> ExtractAsync(IRepositorySource repo, PackageEntry pkg, TempWorkspace ws,
+        IProgress<InstallProgress> progress, CancellationToken ct)
     {
-        var corrupt = new InstallOutcome(InstallStatus.Failed, null, Strings.PackageCorrupt);
         var encPath = Path.Combine(ws.Path, "pkg.enc");
         var zipPath = Path.Combine(ws.Path, "pkg.zip");
         var pkgDir = Path.Combine(ws.Path, "pkg");
@@ -88,7 +88,7 @@ public sealed class InstallService
         string actual;
         using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
         {
-            await using var src = await _repo.OpenPackageBlobAsync(pkg, ct).ConfigureAwait(false);
+            await using var src = await repo.OpenPackageBlobAsync(pkg, ct).ConfigureAwait(false);
             await using var dst = new FileStream(encPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
             var buf = new byte[81920];
             int n;
@@ -99,14 +99,14 @@ public sealed class InstallService
             }
             actual = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
         }
-        if (!string.Equals(actual, pkg.Sha256, StringComparison.OrdinalIgnoreCase)) return corrupt;
+        if (!string.Equals(actual, pkg.Sha256, StringComparison.OrdinalIgnoreCase)) return false;
 
         ct.ThrowIfCancellationRequested();
         progress.Report(new InstallProgress(null, "Đang giải mã"));
         ct.ThrowIfCancellationRequested();
         byte[] key;
-        try { key = await _repo.GetPackageKeyAsync(pkg, ct).ConfigureAwait(false); }
-        catch (PackageCorruptException) { return corrupt; }
+        try { key = await repo.GetPackageKeyAsync(pkg, ct).ConfigureAwait(false); }
+        catch (PackageCorruptException) { return false; }
         try
         {
             await Task.Run(() =>
@@ -116,15 +116,24 @@ public sealed class InstallService
                 PackageCrypto.Decrypt(cipher, plain, key);
             }, ct).ConfigureAwait(false);
         }
-        catch (PackageCorruptException) { return corrupt; }
+        catch (PackageCorruptException) { return false; }
         try { File.Delete(encPath); } catch { }
 
         ct.ThrowIfCancellationRequested();
         try { await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, pkgDir, true), ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
-        catch (Exception) { return corrupt; }
+        catch (Exception) { return false; }
         try { File.Delete(zipPath); } catch { }
         ct.ThrowIfCancellationRequested();
+        return true;
+    }
+
+    private async Task<InstallOutcome> RunCoreAsync(PackageEntry pkg, TempWorkspace ws, IProgress<InstallProgress> progress,
+        CancellationToken ct, Action<string> setDetail)
+    {
+        var corrupt = new InstallOutcome(InstallStatus.Failed, null, Strings.PackageCorrupt);
+        var pkgDir = Path.Combine(ws.Path, "pkg");
+        if (!await ExtractAsync(_repo, pkg, ws, progress, ct).ConfigureAwait(false)) return corrupt;
 
         var sub = pkg.InstallerType == InstallerType.Script ? "scripts" : "installer";
         var installerDir = Path.GetFullPath(Path.Combine(pkgDir, sub)) + Path.DirectorySeparatorChar;

@@ -306,4 +306,69 @@ public class UninstallServiceTests : IDisposable
         var ok = await gone.UninstallAsync(KPkg(InstallerKind.Nsis), rows, "u", Hw, NoProgress, CancellationToken.None);
         Assert.Equal(InstallStatus.Success, ok.Status);
     }
+
+    [Fact]
+    public async Task Burn_bundle_row_is_uninstalled_and_the_poll_waits_only_for_it()
+    {
+        var runner = new FakeRunner();
+        var bundle = new InstalledApp(".NET Desktop Runtime", "8.0.11", "{de6c}", false, false, null,
+            "\"C:\\ProgramData\\Package Cache\\{de6c}\\runtime.exe\" /uninstall /quiet");
+        var child = new InstalledApp(".NET Desktop Runtime", "8.0.11", "{5F1E}", true, false, "MsiExec.exe /X" + G, SystemComponent: true);
+        var svc = Mk(runner, a => a.KeyName == "{5F1E}", (_, _) => Task.CompletedTask); // the child stays, as in real life
+        var o = await svc.UninstallAsync(KPkg(InstallerKind.Burn), new List<InstalledApp> { child, bundle }, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, o.Status);
+        var req = Assert.Single(runner.Requests);
+        Assert.Equal("/uninstall /quiet", req.SilentArgs);
+        Assert.EndsWith("runtime.exe", req.InstallerPath);
+    }
+
+    [Fact]
+    public void Nsis_uninst_exe_of_a_preinstalled_app_resolves_through_the_scanner_fallback()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Bit4id - Universal MW (x)",
+            new() { ["DisplayName"] = "Bit4id - Universal MW 1.4.10.839", ["DisplayVersion"] = "1.4.10.839", ["UninstallString"] = "\"C:\\Program Files (x86)\\Bit4id\\uninst.exe\"" });
+        var pkg = Pkg(InstallerType.Exe) with { Name = "Bit4id Universal MW", Version = "1.4.10.839", Kind = InstallerKind.Nsis, Detect = new DetectRule(null, "^Bit4id Universal MW") };
+        var rows = new InstalledAppsScanner(reg).FindForPackage(pkg);
+        Assert.True(Mk(new FakeRunner()).CanUninstall(pkg, rows));
+    }
+
+    sealed class BlobRepo(string root) : IRepositorySource
+    {
+        public Catalog Catalog => Catalog.Empty();
+        public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct) =>
+            Task.FromResult<Stream>(File.OpenRead(Path.Combine(root, "vault", "packages", pkg.BlobFile)));
+        public Task<Stream> OpenDocBlobAsync(PackageEntry pkg, string docName, CancellationToken ct) => throw new NotSupportedException();
+        public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Convert.FromBase64String(pkg.KeyB64));
+        public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) => throw new NotSupportedException();
+        public void WriteLog(LogEntry entry) { }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Script_package_uninstall_runs_the_script_from_a_workspace_that_is_deleted(bool withScript)
+    {
+        var src = Path.Combine(_tmp, "src"); var vault = Path.Combine(_tmp, "vault-root"); var ran = Path.Combine(_tmp, "ran.txt");
+        Directory.CreateDirectory(Path.Combine(src, "scripts"));
+        File.WriteAllText(Path.Combine(src, "scripts", "main.cmd"), "@exit /b 0");
+        File.WriteAllText(Path.Combine(src, "scripts", "un.cmd"), $"@echo done> \"{ran}\"\r\n@exit /b 0");
+        File.WriteAllText(Path.Combine(src, "manifest.json"), "{ \"id\": \"p1\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"script\", \"installer_file\": \"main.cmd\""
+            + (withScript ? ", \"uninstall_script\": \"un.cmd\"" : "") + " }");
+        var pkg = Installer.Core.Vault.PackageBuilder.Build(src, vault);
+        Assert.Equal(withScript ? "un.cmd" : null, pkg.UninstallScript);
+
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, MarkerKey, new() { ["Version"] = "1.0" });
+        TempWorkspace? ws = null;
+        var svc = new UninstallService(new BlobRepo(vault), new InstallMarker(reg, reg), _ => new FakeRunner(),
+            workspaceFactory: () => ws = TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")));
+        Assert.True(svc.CanUninstall(pkg, None));
+        var o = await svc.UninstallAsync(pkg, None, "u", Hw, NoProgress, CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, o.Status);
+        Assert.Equal(withScript, File.Exists(ran));
+        Assert.Equal(withScript, ws != null);
+        if (ws != null) Assert.True(ws.Deleted);
+        Assert.False(MarkerExists(reg));
+    }
 }

@@ -14,7 +14,7 @@ public record PackageEntry(string Id, string Name, string Version, InstallerType
     List<PostAction> PostActions, List<RuleSpec> Rules, string BlobFile, string Sha256, string KeyB64,
     long BlobSize = 0, string? DocsKeyB64 = null, string? IconPngB64 = null, UninstallSpec? Uninstall = null,
     string? PreScript = null, string? PostScript = null, int ScriptTimeoutSec = 600,
-    InstallerKind Kind = InstallerKind.Unknown);
+    InstallerKind Kind = InstallerKind.Unknown, string? UninstallScript = null);
 
 /// <summary>Type: "msi" | "command" | "zip".</summary>
 public record UninstallSpec(string Type, string? Command = null, string? Args = null);

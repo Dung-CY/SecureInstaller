@@ -116,6 +116,7 @@ public partial class PackageEditorViewModel : ObservableObject
         : KeepIconPngB64 is not null ? "Giữ icon hiện tại" : "Mặc định";
     [ObservableProperty] private string? _preScriptPath;
     [ObservableProperty] private string? _postScriptPath;
+    [ObservableProperty] private string? _uninstallScriptPath;
     [ObservableProperty] private string _scriptTimeoutText = "300";
 
     [ObservableProperty] private bool _blockIfWindowsCracked;
@@ -169,7 +170,7 @@ public partial class PackageEditorViewModel : ObservableObject
         if (Type == InstallerType.Msi && string.IsNullOrWhiteSpace(_productCode) && code is not null) _productCode = code;
         if (Type == InstallerType.Exe && string.IsNullOrWhiteSpace(DisplayNameRegex) && name is not null
             && TrailingVersion.Replace(name.Trim(), "") is { Length: > 0 } baseName)
-            DisplayNameRegex = "^" + Regex.Escape(baseName) + "(?![A-Za-z])";
+            DisplayNameRegex = "(?<![A-Za-z0-9])" + Regex.Escape(baseName) + "(?![A-Za-z])";
     }
 
     private static void AddDistinct(ObservableCollection<string> list, IEnumerable<string> files)
@@ -188,6 +189,8 @@ public partial class PackageEditorViewModel : ObservableObject
     [RelayCommand] private void ClearPreScript() => PreScriptPath = null;
     [RelayCommand] private void PickPostScript() { if (_pickFile() is { Length: > 0 } p) PostScriptPath = p; }
     [RelayCommand] private void ClearPostScript() => PostScriptPath = null;
+    [RelayCommand] private void PickUninstallScript() { if (_pickFile() is { Length: > 0 } p) UninstallScriptPath = p; }
+    [RelayCommand] private void ClearUninstallScript() => UninstallScriptPath = null;
 
     private static string? Opt(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
@@ -205,7 +208,7 @@ public partial class PackageEditorViewModel : ObservableObject
         if (string.IsNullOrEmpty(InstallerPath)) return "Chọn file cài";
         if (!TryParseSeconds(TimeoutText, out var timeout)) return "Thời gian chờ phải từ 1 đến 86400 giây";
         var scriptTimeout = 0;
-        if ((PreScriptPath ?? PostScriptPath) is not null && !TryParseSeconds(ScriptTimeoutText, out scriptTimeout))
+        if ((PreScriptPath ?? PostScriptPath ?? UninstallScriptPath) is not null && !TryParseSeconds(ScriptTimeoutText, out scriptTimeout))
             return "Thời gian chờ của script phải từ 1 đến 86400 giây";
 
         var rules = new (bool On, string Type)[]
@@ -217,7 +220,7 @@ public partial class PackageEditorViewModel : ObservableObject
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",
             Opt(TargetDir), timeout, new DetectRule(Opt(_productCode), Opt(DisplayNameRegex)), ExtraFiles.ToList(),
             DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, _uninstall,
-            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind);
+            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind, UninstallScriptPath);
         return null;
     }
 

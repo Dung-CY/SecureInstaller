@@ -30,6 +30,7 @@ public static class PackageBuilder
         public string? PreScript { get; set; }
         public string? PostScript { get; set; }
         public int? ScriptTimeoutSec { get; set; }
+        public string? UninstallScript { get; set; }
     }
 
     internal sealed record Manifest(PackageEntry Entry, List<string> DocNames);
@@ -70,7 +71,7 @@ public static class PackageBuilder
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))
             throw new InvalidDataException($"Không tìm thấy installer_file: {instSub}\\{m.InstallerFile}");
         if (isScript) CheckScript("installer_file", m.InstallerFile);
-        foreach (var (field, name) in new[] { ("pre_script", m.PreScript), ("post_script", m.PostScript) })
+        foreach (var (field, name) in new[] { ("pre_script", m.PreScript), ("post_script", m.PostScript), ("uninstall_script", m.UninstallScript) })
         {
             if (string.IsNullOrEmpty(name)) continue;
             CheckScript(field, name);
@@ -98,7 +99,8 @@ public static class PackageBuilder
             m.SilentArgs ?? "", m.TargetDir, m.TimeoutSec ?? 1800, m.Detect ?? new DetectRule(null, null),
             docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall,
             string.IsNullOrEmpty(m.PreScript) ? null : m.PreScript, string.IsNullOrEmpty(m.PostScript) ? null : m.PostScript,
-            m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown);
+            m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown,
+            string.IsNullOrEmpty(m.UninstallScript) ? null : m.UninstallScript);
         return new Manifest(entry, docs);
     }
 

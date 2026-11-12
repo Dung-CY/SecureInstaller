@@ -9,7 +9,7 @@ public record PackageDraft(string Id, string Name, string Version, InstallerType
     string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> ExtraFiles,
     List<string> DocFiles, string? IconPath, string? PreScriptPath, string? PostScriptPath, int ScriptTimeoutSec,
     List<RuleSpec> Rules, UninstallSpec? Uninstall, List<PostAction>? PostActions = null, string? KeepIconPngB64 = null,
-    InstallerKind Kind = InstallerKind.Unknown);
+    InstallerKind Kind = InstallerKind.Unknown, string? UninstallScriptPath = null);
 
 /// <summary>Turns a <see cref="PackageDraft"/> into the source-folder layout <see cref="PackageBuilder"/> reads.</summary>
 public static class PackageSource
@@ -20,7 +20,8 @@ public static class PackageSource
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PostScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ScriptTimeoutSec,
-        InstallerKind InstallerKind);
+        InstallerKind InstallerKind,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? UninstallScript);
 
     /// <summary>Writes installer\, docs\, scripts\, icon.png and manifest.json into <paramref name="tempDir"/> and returns it.</summary>
     public static string Create(PackageDraft d, string tempDir)
@@ -32,7 +33,7 @@ public static class PackageSource
             ? Path.GetFileName(d.InstallerPath)
             : CopyAll(new[] { d.InstallerPath }.Concat(d.ExtraFiles), Path.Combine(tempDir, "installer"))[0];
         var docs = CopyAll(d.DocFiles, Path.Combine(tempDir, "docs"));
-        var scripts = CopyAll(new[] { isScript ? d.InstallerPath : null, d.PreScriptPath, d.PostScriptPath }
+        var scripts = CopyAll(new[] { isScript ? d.InstallerPath : null, d.PreScriptPath, d.PostScriptPath, d.UninstallScriptPath }
             .Concat(isScript ? d.ExtraFiles : new()).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase), Path.Combine(tempDir, "scripts"));
         if (d.IconPath is { } icon) File.Copy(icon, Path.Combine(tempDir, "icon.png"));
         else if (d.KeepIconPngB64 is { } kept) File.WriteAllBytes(Path.Combine(tempDir, "icon.png"), Convert.FromBase64String(kept));
@@ -44,7 +45,8 @@ public static class PackageSource
         var post = d.PostScriptPath is null ? null : Path.GetFileName(d.PostScriptPath);
         var manifest = new ManifestOut(d.Id, d.Name, d.Version, d.Type, installerFile, d.SilentArgs, d.TargetDir,
             d.TimeoutSec, d.Detect, docs, postActions, d.Rules, d.Uninstall, pre, post,
-            scripts.Count > 0 ? d.ScriptTimeoutSec : null, d.Kind);
+            scripts.Count > 0 ? d.ScriptTimeoutSec : null, d.Kind,
+            d.UninstallScriptPath is null ? null : Path.GetFileName(d.UninstallScriptPath));
         File.WriteAllBytes(Path.Combine(tempDir, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, Json.Options));
         return tempDir;
     }

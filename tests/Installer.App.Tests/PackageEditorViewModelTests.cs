@@ -43,7 +43,7 @@ public class PackageEditorViewModelTests
         var vm = Make(readInfo: _ => ("7-Zip 24.08", "24.08", null));
         _nextFile = @"D:\setup.exe";
         vm.PickInstallerCommand.Execute(null);
-        Assert.Equal("^7-Zip(?![A-Za-z])", vm.DisplayNameRegex);
+        Assert.Equal("(?<![A-Za-z0-9])7-Zip(?![A-Za-z])", vm.DisplayNameRegex);
     }
 
     [Fact]
