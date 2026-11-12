@@ -8,7 +8,8 @@ namespace Installer.Core.Vault;
 public record PackageDraft(string Id, string Name, string Version, InstallerType Type, string InstallerPath,
     string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> ExtraFiles,
     List<string> DocFiles, string? IconPath, string? PreScriptPath, string? PostScriptPath, int ScriptTimeoutSec,
-    List<RuleSpec> Rules, UninstallSpec? Uninstall, List<PostAction>? PostActions = null, string? KeepIconPngB64 = null);
+    List<RuleSpec> Rules, UninstallSpec? Uninstall, List<PostAction>? PostActions = null, string? KeepIconPngB64 = null,
+    InstallerKind Kind = InstallerKind.Unknown);
 
 /// <summary>Turns a <see cref="PackageDraft"/> into the source-folder layout <see cref="PackageBuilder"/> reads.</summary>
 public static class PackageSource
@@ -18,7 +19,8 @@ public static class PackageSource
         List<PostAction> PostActions, List<RuleSpec> Rules, UninstallSpec? Uninstall,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PostScript,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ScriptTimeoutSec);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ScriptTimeoutSec,
+        InstallerKind InstallerKind);
 
     /// <summary>Writes installer\, docs\, scripts\, icon.png and manifest.json into <paramref name="tempDir"/> and returns it.</summary>
     public static string Create(PackageDraft d, string tempDir)
@@ -42,7 +44,7 @@ public static class PackageSource
         var post = d.PostScriptPath is null ? null : Path.GetFileName(d.PostScriptPath);
         var manifest = new ManifestOut(d.Id, d.Name, d.Version, d.Type, installerFile, d.SilentArgs, d.TargetDir,
             d.TimeoutSec, d.Detect, docs, postActions, d.Rules, d.Uninstall, pre, post,
-            scripts.Count > 0 ? d.ScriptTimeoutSec : null);
+            scripts.Count > 0 ? d.ScriptTimeoutSec : null, d.Kind);
         File.WriteAllBytes(Path.Combine(tempDir, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, Json.Options));
         return tempDir;
     }

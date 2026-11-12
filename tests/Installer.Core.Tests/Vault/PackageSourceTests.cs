@@ -99,4 +99,19 @@ public class PackageSourceTests : IDisposable
         Assert.Equal(post, entry.PostActions);
         Assert.Equal(Convert.ToBase64String(png), entry.IconPngB64);
     }
+
+    [Fact]
+    public void Installer_kind_round_trips_and_old_manifest_loads_as_Unknown()
+    {
+        var folder = PackageSource.Create(Draft(new()) with { Kind = InstallerKind.Nsis }, Path.Combine(_tmp, "k1"));
+        Assert.Equal("nsis", JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "manifest.json")))
+            .RootElement.GetProperty("installer_kind").GetString());
+        Assert.Equal(InstallerKind.Nsis, PackageBuilder.ReadManifest(folder).Entry.Kind);
+
+        var old = PackageSource.Create(Draft(new()), Path.Combine(_tmp, "k2"));
+        var mp = Path.Combine(old, "manifest.json");
+        File.WriteAllText(mp, System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(mp), @",\s*""installer_kind"":\s*""[^""]*""", ""));
+        Assert.DoesNotContain("installer_kind", File.ReadAllText(mp));
+        Assert.Equal(InstallerKind.Unknown, PackageBuilder.ReadManifest(old).Entry.Kind);
+    }
 }

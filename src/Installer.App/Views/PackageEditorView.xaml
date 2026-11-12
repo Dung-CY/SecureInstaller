@@ -143,6 +143,31 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Foreground="{StaticResource AccentBrush}" Text="{Binding KindText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding KindText}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap" Foreground="#B45309" Text="{Binding KindWarning}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding KindWarning}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </DockPanel>
                 </Grid>
@@ -180,6 +205,8 @@
                                              AutomationProperties.Name="Phiên bản"/>
                                 </StackPanel>
                             </Grid>
+                            <Expander Header="Nâng cao" IsExpanded="False" Margin="0,0,0,12">
+                                <StackPanel Margin="0,10,0,0">
                             <StackPanel Style="{StaticResource Field}">
                                 <TextBlock Text="Tham số cài ngầm" Style="{StaticResource Label}"/>
                                 <TextBox Text="{Binding SilentArgs, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
@@ -214,6 +241,8 @@
                                              AutomationProperties.Name="Thư mục cài"/>
                                 </StackPanel>
                             </Grid>
+                                </StackPanel>
+                            </Expander>
                             <StackPanel Style="{StaticResource Field}">
                                 <TextBlock Text="Mã sản phẩm MSI (để nhận biết đã cài)" Style="{StaticResource Label}"/>
                                 <TextBox Text="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"

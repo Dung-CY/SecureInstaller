@@ -14,10 +14,11 @@ public class PackageEditorViewModelTests
     Func<PackageDraft, Task>? _saveOverride;
 
     PackageEditorViewModel Make(PackageEntry? existing = null,
-        Func<string, (string?, string?, string?)>? readInfo = null) =>
+        Func<string, (string?, string?, string?)>? readInfo = null, Func<string, InstallerKind>? detect = null) =>
         new(existing, () => _nextFile, () => _nextFiles,
             d => _saveOverride?.Invoke(d) ?? Task.FromResult(_saved = d), () => _cancelled = true,
-            readInfo ?? (_ => ("7-Zip 24.08 (x64 edition)", "24.08.00.0", "{23170F69-40C1-2702-2408-000001000000}")));
+            readInfo ?? (_ => ("7-Zip 24.08 (x64 edition)", "24.08.00.0", "{23170F69-40C1-2702-2408-000001000000}")),
+            detect ?? (_ => InstallerKind.Unknown));
 
     [Fact]
     public void Picking_an_msi_prefills_empty_fields_and_product_code()
@@ -209,5 +210,40 @@ public class PackageEditorViewModelTests
         gate.SetResult();
         await run;
         Assert.True(vm.IsIdle);
+    }
+
+    [Fact]
+    public void Picking_a_detected_installer_shows_the_kind_and_prefills_silent_args()
+    {
+        var vm = Make(detect: _ => InstallerKind.Nsis);
+        _nextFile = @"D:\Bản cài\setup.exe";
+        vm.PickInstallerCommand.Execute(null);
+
+        Assert.Equal("Đã nhận diện: NSIS", vm.KindText);
+        Assert.Null(vm.KindWarning);
+        Assert.Equal("/S", vm.SilentArgs);
+
+        // Still the previous kind's default, so a different installer replaces it; a hand edit is kept.
+        var next = Make(detect: _ => InstallerKind.Inno);
+        next.Kind = InstallerKind.Nsis; next.SilentArgs = "/S";
+        next.PickInstallerCommand.Execute(null);
+        Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", next.SilentArgs);
+        vm.SilentArgs = "/S /D=X";
+        vm.PickInstallerCommand.Execute(null);
+        Assert.Equal("/S /D=X", vm.SilentArgs);
+    }
+
+    [Fact]
+    public void Unknown_kind_warns_but_still_saves()
+    {
+        var vm = Make();
+        _nextFile = @"D:\setup.exe";
+        vm.PickInstallerCommand.Execute(null);
+
+        Assert.Equal("Không nhận diện được loại bộ cài — hãy nhập tham số cài ngầm", vm.KindWarning);
+        Assert.Null(vm.KindText);
+        Assert.Equal("", vm.SilentArgs);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(InstallerKind.Unknown, _saved!.Kind);
     }
 }

@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Installer.Core.Errors;
 using Installer.Core.Model;
+using Installer.Core.Platform;
 using Installer.Core.Vault;
 
 namespace Installer.App.ViewModels;
@@ -28,13 +29,16 @@ public partial class PackageEditorViewModel : ObservableObject
     private readonly Func<PackageDraft, Task> _save;
     private readonly Action _onCancel;
     private readonly Func<string, (string? Name, string? Version, string? ProductCode)> _readInfo;
+    private readonly Func<string, InstallerKind> _detectKind;
+    private bool _pickedUnknown;
 
     public PackageEditorViewModel(PackageEntry? existing, Func<string?> pickFile, Func<IReadOnlyList<string>> pickFiles,
         Func<PackageDraft, Task> save, Action onCancel,
-        Func<string, (string?, string?, string?)>? readInfo = null)
+        Func<string, (string?, string?, string?)>? readInfo = null, Func<string, InstallerKind>? detectKind = null)
     {
         _pickFile = pickFile; _pickFiles = pickFiles; _save = save; _onCancel = onCancel;
         _readInfo = readInfo ?? (p => Installer.Core.Platform.InstallerInfoReader.Read(p));
+        _detectKind = detectKind ?? InstallerKindDetector.Detect;
         _selectedUninstall = UninstallOptions[0];
         if (existing is null) return;
 
@@ -42,7 +46,7 @@ public partial class PackageEditorViewModel : ObservableObject
         _postActions = existing.PostActions?.ToList() ?? new();
         _existingDocs = existing.Docs?.ToList() ?? new();
         _keepIconPngB64 = existing.IconPngB64;
-        _id = existing.Id; _name = existing.Name; _version = existing.Version; _type = existing.InstallerType;
+        _id = existing.Id; _name = existing.Name; _version = existing.Version; _type = existing.InstallerType; _kind = existing.Kind;
         _silentArgs = existing.SilentArgs; _targetDir = existing.TargetDir; _timeoutText = existing.TimeoutSec.ToString();
         _productCode = existing.Detect?.ProductCode; _displayNameRegex = existing.Detect?.DisplayNameRegex;
         var rules = (existing.Rules ?? new()).Select(r => r?.Type).ToHashSet();
@@ -81,6 +85,8 @@ public partial class PackageEditorViewModel : ObservableObject
     private string? _installerPath;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(TypeLabel), nameof(IsMsi))]
     private InstallerType _type = InstallerType.Exe;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(KindText), nameof(KindWarning))]
+    private InstallerKind _kind = InstallerKind.Unknown;
     [ObservableProperty] private string _silentArgs = "";
     [ObservableProperty] private string? _targetDir;
     [ObservableProperty] private string _timeoutText = "1800";
@@ -90,6 +96,19 @@ public partial class PackageEditorViewModel : ObservableObject
 
     public string? InstallerFileName => InstallerPath is null ? null : Path.GetFileName(InstallerPath);
     public string? TypeLabel => InstallerPath is null && !IsEdit ? null : Type.ToString().ToUpperInvariant();
+    public string? KindText => Kind switch
+    {
+        InstallerKind.Msi => "Đã nhận diện: MSI",
+        InstallerKind.Inno => "Đã nhận diện: Inno Setup",
+        InstallerKind.Nsis => "Đã nhận diện: NSIS",
+        InstallerKind.Burn => "Đã nhận diện: WiX Burn",
+        InstallerKind.InstallShield => "Đã nhận diện: InstallShield",
+        InstallerKind.Zip => "Đã nhận diện: Gói zip",
+        InstallerKind.Script => "Đã nhận diện: Chỉ script",
+        _ => null
+    };
+    public string? KindWarning => Kind == InstallerKind.Unknown && _pickedUnknown
+        ? "Không nhận diện được loại bộ cài — hãy nhập tham số cài ngầm" : null;
     public bool IsMsi => Type == InstallerType.Msi;
 
     public ObservableCollection<string> ExtraFiles { get; } = new();
@@ -152,6 +171,13 @@ public partial class PackageEditorViewModel : ObservableObject
             ".zip" => InstallerType.Zip,
             _ => InstallerType.Exe
         };
+        var previousDefault = InstallerKindDetector.SilentArgsFor(Kind);
+        var kind = _detectKind(path);
+        _pickedUnknown = kind == InstallerKind.Unknown;
+        Kind = kind;
+        OnPropertyChanged(nameof(KindWarning));
+        if (string.IsNullOrWhiteSpace(SilentArgs) || SilentArgs == previousDefault)
+            SilentArgs = InstallerKindDetector.SilentArgsFor(kind);
         var (name, version, code) = _readInfo(path);
         if (string.IsNullOrWhiteSpace(Name) && name is not null) Name = name;
         // File versions like "10.0.1 (build 5)" would fail the vault's version rule, so only the numeric part is used.
@@ -209,7 +235,7 @@ public partial class PackageEditorViewModel : ObservableObject
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",
             Opt(TargetDir), timeout, new DetectRule(Opt(ProductCode), Opt(DisplayNameRegex)), ExtraFiles.ToList(),
             DocFiles.ToList(), IconPath, PreScriptPath, PostScriptPath, scriptTimeout, rules, uninstall,
-            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null);
+            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind);
         return null;
     }
 

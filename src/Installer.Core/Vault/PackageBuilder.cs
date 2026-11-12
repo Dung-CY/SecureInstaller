@@ -17,6 +17,7 @@ public static class PackageBuilder
         public string? Name { get; set; }
         public string? Version { get; set; }
         public InstallerType? InstallerType { get; set; }
+        public InstallerKind? InstallerKind { get; set; }
         public string? InstallerFile { get; set; }
         public string? SilentArgs { get; set; }
         public string? TargetDir { get; set; }
@@ -97,7 +98,7 @@ public static class PackageBuilder
             m.SilentArgs ?? "", m.TargetDir, m.TimeoutSec ?? 1800, m.Detect ?? new DetectRule(null, null),
             docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall,
             string.IsNullOrEmpty(m.PreScript) ? null : m.PreScript, string.IsNullOrEmpty(m.PostScript) ? null : m.PostScript,
-            m.ScriptTimeoutSec ?? 600);
+            m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown);
         return new Manifest(entry, docs);
     }
 
