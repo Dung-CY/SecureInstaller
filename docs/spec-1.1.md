@@ -326,3 +326,32 @@ Given nhật ký Windows ghi mạng "Wifi-Nha" có internet
 When quét
 Then cột Internet của "Wifi-Nha" là "Có" và dòng kết luận là "Máy đã từng kết nối internet: Có — lần gần nhất …"
 ```
+
+
+## Bổ sung 2026-11-12 (đợt 2) — sau khi thử demo 1.2
+
+34. **Tự nhận biết cách cài ngầm.** Khi chọn file cài, app đọc nội dung file (không chạy) để nhận biết công cụ đóng gói và tự điền tham số cài ngầm: MSI, Inno Setup, NSIS, WiX Burn, InstallShield. Không nhận biết được thì báo rõ "Không nhận diện được loại bộ cài — hãy nhập tham số cài ngầm"; không đoán bừa. Tham số chỉ còn nằm trong mục "Nâng cao".
+35. **Tự nhận biết phần mềm đã cài.** Bỏ ô "Mã sản phẩm MSI" khỏi form: MSI tự đọc mã từ file. Với .exe, lúc cài app so danh sách phần mềm của Windows trước/sau khi cài và ghi nhớ mục mới xuất hiện; phần mềm có sẵn trên máy được nhận biết theo tên. Ô biểu thức tên nằm trong "Nâng cao".
+36. **Tự gỡ cài đặt cho mọi phần mềm.** Bỏ mục "Cách gỡ cài đặt" khỏi form. App tự chọn: MSI → gỡ bằng mã MSI; lệnh gỡ ngầm Windows ghi lại; Inno → `/VERYSILENT`; NSIS → `/S`; Burn → `/uninstall /quiet`; zip → xóa thư mục. Không gỡ ngầm được thì nút Gỡ nêu lý do.
+37. **Bộ cài đặt chọn từ danh sách phần mềm.** Tạo/sửa bộ bằng cách tick phần mềm trong kho, mỗi dòng chọn "Bản mới nhất" hoặc một phiên bản; không gõ mã. Giao diện dùng chữ "phần mềm" thay cho "gói"; tab "Bộ gói" đổi thành "Bộ cài đặt".
+38. **Demo nhiều phần mềm.** Script tải bộ cài miễn phí từ trang chính thức (kiểm tra SHA-256) và thêm vào kho demo: ít nhất MSI, Inno, NSIS, Burn, một gói zip, một gói chỉ có script.
+39. **Mã kho** không gắn với thiết bị (chép sang USB/máy khác vẫn chạy). Bỏ khỏi màn hình đăng nhập, chỉ hiện trong Quản trị.
+
+### Tiêu chí chấp nhận bổ sung (đợt 2)
+```
+Given admin chọn file cài Inno Setup (ví dụ Git)
+When form hiện ra
+Then form ghi "Đã nhận diện: Inno Setup" và tham số /VERYSILENT /SUPPRESSMSGBOXES /NORESTART được điền sẵn
+
+Given admin chọn một .exe tự viết không theo chuẩn nào
+When form hiện ra
+Then form báo "Không nhận diện được loại bộ cài — hãy nhập tham số cài ngầm"
+
+Given phần mềm NSIS do app cài
+When người dùng bấm Gỡ
+Then phần mềm được gỡ ngầm và trạng thái về "Chưa cài" mà admin không phải nhập lệnh gỡ
+
+Given kho có 7-Zip và Notepad++
+When admin tạo bộ cài đặt mới
+Then admin tick hai phần mềm trong danh sách, chọn "Bản mới nhất", bấm Lưu
+```

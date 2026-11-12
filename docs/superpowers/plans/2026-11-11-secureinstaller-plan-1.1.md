@@ -861,3 +861,192 @@ Screenshot: `scan-7-usb.png`.
 Screenshot: re-render `scan-3-mang.png`.
 
 **Commit:** `feat: internet connection evidence per network and overall verdict`
+
+
+## Addendum 2 (2026-11-12): Tasks 20–23 (spec-1.1 requirements 34–39)
+
+Execution order: 20, 21, 22, 23, then a demo build for the user, then Task 14 last.
+
+### Addendum 2 Global Constraints
+- **New strings (verbatim):**
+  - "Đã nhận diện: {0}". {0} is one of "MSI", "Inno Setup", "NSIS", "WiX Burn", "InstallShield", "Gói zip", "Chỉ script".
+  - "Không nhận diện được loại bộ cài — hãy nhập tham số cài ngầm"
+  - "Nâng cao"
+  - "Gỡ chưa hoàn tất"
+  - "Bản mới nhất"
+  - Tab and heading names: "Phần mềm" (was "Gói"), "Bộ cài đặt" (was "Bộ gói").
+- **Silent install arguments per kind** (prefilled; the admin may edit them under "Nâng cao"):
+
+  | InstallerKind | Install args | Silent uninstall (derived from UninstallString) |
+  |---|---|---|
+  | Msi | (none; MsiInstaller adds /qn) | msiexec /X{GUID} via the existing MSI route |
+  | Inno | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` | `<UninstallString> /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` |
+  | Nsis | `/S` | `<UninstallString> /S` |
+  | Burn | `/quiet /norestart` | `<UninstallString>`, plus `/uninstall` if missing, plus ` /quiet /norestart` |
+  | InstallShield | `/s /v"/qn"` | not supported (null plan) |
+  | Unknown | empty, plus the "Không nhận diện được…" message | QuietUninstallString only |
+
+- **UI wording:** In user-visible text, "gói" means one software item, and it becomes "phần mềm". Two exceptions keep their words: "Gói zip" (the kind name) and `Strings.PackageCorrupt`.
+- **Downloads:** Allowed only from official vendor domains. Every file is pinned by SHA-256. Downloaded installers are never committed, and they are never executed by tests.
+
+### Task 20: Installer kind detection and silent-argument prefill
+
+**Files:**
+- Create:
+  - `src/Installer.Core/Model/InstallerKind.cs`, with `enum InstallerKind { Unknown, Msi, Inno, Nsis, Burn, InstallShield, Zip, Script }`.
+  - `src/Installer.Core/Platform/InstallerKindDetector.cs`.
+  - `samples/demo-installers.json`.
+  - `build/fetch-demo-installers.ps1`.
+- Modify:
+  - `PackageEntry`: trailing `InstallerKind Kind = InstallerKind.Unknown`.
+  - `PackageDraft` plus the manifest field `installer_kind`. Serialize it the same way as InstallerType. Old catalogs load as Unknown.
+  - `PackageBuilder`, `PackageEditorViewModel`, `PackageEditorView.xaml`.
+- Tests: `InstallerKindDetectorTests.cs`, plus additions to the editor and PackageSource tests.
+
+**Interfaces:**
+- `InstallerKindDetector.Detect(string path) → InstallerKind`:
+  - Read the bytes only; never execute the file. Any I/O failure returns Unknown.
+  - `.msi` → Msi, `.zip` → Zip, `.ps1`/`.cmd`/`.bat` → Script.
+  - For `.exe`, check in this order:
+    1. **Burn:** a PE section named `.wixburn`. Parse the PE section table.
+    2. **Inno:** the ASCII marker `Inno Setup Setup Data`, or the manifest name `JR.Inno.Setup`.
+    3. **NSIS:** `Nullsoft.NSIS.exehead` or `NullsoftInst`.
+    4. **InstallShield:** `InstallShield` in the FileVersionInfo strings, or in the manifest.
+    5. Otherwise Unknown.
+  - Stream the file in chunks, with marker overlap across chunk boundaries. Limit the scan to the first 32 MB.
+  - The implementer confirms every marker against the real samples from `fetch-demo-installers.ps1`, and records the results in the report.
+- `static string SilentArgsFor(InstallerKind)` follows the table above.
+- `samples/demo-installers.json` is a list of `{ id, name, version, kind, url, sha256, file }`. Contents:
+  - 7-Zip x64 MSI (7-zip.org)
+  - PuTTY x64 MSI (the.earth.li)
+  - Notepad++ x64 installer (github.com/notepad-plus-plus), NSIS
+  - VLC win64 (videolan.org), NSIS
+  - Git for Windows 64-bit (github.com/git-for-windows), Inno
+  - Inno Setup itself (jrsoftware.org), Inno
+  - .NET Desktop Runtime 8 x64 (Microsoft's official download host), Burn
+  - Pin current stable versions. Compute each SHA-256 from the official download. This is trust-on-first-use, and the report must say so.
+- `fetch-demo-installers.ps1 -Out <dir>`:
+  - Download each file that is missing, then verify its SHA-256. A mismatch deletes the file and fails.
+  - Skip files that are already present and verified.
+  - Print a size summary.
+- Editor:
+  - Picking an installer sets `Kind` and shows "Đã nhận diện: {0}". It fills SilentArgs from `SilentArgsFor` when SilentArgs is empty, or when SilentArgs still equals the previous kind's default.
+  - Unknown shows the "Không nhận diện được…" text as a warning. Save is still allowed.
+  - SilentArgs, TargetDir and TimeoutSec move into a collapsed "Nâng cao" Expander.
+  - The detector is injected, so tests can supply a fake.
+
+**Tests:**
+- Synthetic byte files with each marker give the expected kind, including a marker that straddles a chunk boundary.
+- A minimal PE with a `.wixburn` section gives Burn.
+- A text file gives Unknown.
+- notepad.exe gives Unknown.
+- The editor shows the prefill and the warning text.
+- Manifest round-trip: `installer_kind` is preserved, and an old manifest without it gives Unknown.
+
+**Commit:** `feat: detect installer kind and prefill silent arguments`
+
+### Task 21: Automatic installed-detection and uninstall
+
+**Files:**
+- Modify:
+  - `InstalledAppsScanner`: add `SnapshotMachineKeys()` and a marker-key lookup.
+  - `InstallMarker`: optional value `UninstallKey` = `"64|<subkey>"` or `"32|<subkey>"`.
+  - `InstallService`, `UninstallService`.
+  - `PackageEditorViewModel` and the XAML.
+  - `Strings.cs`.
+- Tests: additions to `InstallServiceTests`, `UninstallServiceTests`, `InstalledAppsScannerTests`, `InstallMarkerTests` and the editor tests.
+
+**Behaviour:**
+- **Snapshot on install:**
+  - For Exe/Msi installs, take the HKLM Uninstall subkey set (both views) before running the installer.
+  - After Success or RebootRequired, compute the new keys as after minus before:
+    - exactly one new key → use it;
+    - several → use the first whose DisplayName matches `Detect.DisplayNameRegex`, otherwise the first with an UninstallString;
+    - none (an in-place reinstall or upgrade) → use the HKLM row found by `Find(Detect)`.
+  - Write the result as the marker's `UninstallKey`.
+  - Snapshot failures never fail the install.
+- **Detection:** `FindForPackage` first returns the real HKLM row named by the marker's `UninstallKey`, when that key still exists. This is a normal row, not IsMarker, so uninstall can use it. Then it returns the `Find(Detect)` rows, without duplicates. The marker-only fallback is unchanged.
+- **Auto detect rule at add time:**
+  - MSI: ProductCode is set automatically, and the field is hidden.
+  - Exe: when DisplayNameRegex is empty, set it to `"^" + Regex.Escape(name) + "(?![A-Za-z])"`. `name` is the FileVersionInfo ProductName, with a trailing version token stripped.
+  - The DisplayNameRegex field moves into "Nâng cao". The "Mã sản phẩm MSI" field is removed from the UI, but its value is kept on edit.
+- **Uninstall:**
+  - The "Cách gỡ cài đặt" section is removed from the editor.
+  - On edit, an existing `Uninstall` spec is preserved unchanged. New packages save `Uninstall = null`.
+  - `Resolve` order:
+    1. an explicit legacy spec, as today;
+    2. zip;
+    3. msi;
+    4. HKLM QuietUninstallString, as today;
+    5. a plan derived from the HKLM `UninstallString`: msiexec with a GUID goes to the MSI route; otherwise use the per-kind table in the Global Constraints. An Inno uninstaller is also recognised by the exe name `^unins\d{3}\.exe$`, whatever the Kind.
+  - The derived command goes through the existing `ValidExe`. HKCU rows are never used.
+- **Completion:**
+  - Some uninstallers (Inno, NSIS) copy themselves to %TEMP% and return immediately.
+  - So after a command plan exits with a success code, poll until the package's HKLM Uninstall key disappears. Poll every 2 s, up to min(TimeoutSec, 120) s.
+  - If the key is still there, the outcome is Failed with "Gỡ chưa hoàn tất".
+  - Make the clock and the key check injectable, so tests do not sleep.
+  - On success, remove the marker as today.
+
+**Tests:**
+- The snapshot diff picks the new key and writes it to the marker.
+- Several new keys → the regex match wins.
+- No new key → the Find row is used.
+- FindForPackage returns the marker-key row.
+- Uninstall derives Inno/NSIS/Burn arguments from an UninstallString.
+- An `unins000.exe` name is treated as Inno.
+- InstallShield → null plan.
+- The poll times out → "Gỡ chưa hoàn tất".
+- The key disappears → Success.
+- The editor no longer exposes ProductCode or the uninstall options, and the edit round-trip keeps both.
+
+**Commit:** `feat: remember installed uninstall entry and derive silent uninstall automatically`
+
+### Task 22: Bundle picker, wording and login fingerprint
+
+**Files:**
+- Modify: `AdminViewModel.cs` and `AdminView.xaml` (the bundle editor), the user-visible strings listed below, and `LoginView.xaml` / `LoginViewModel.cs`.
+- Tests: the AdminViewModel bundle tests and the LoginViewModel tests.
+
+**Behaviour:**
+- **Bundle editor:** the `EditItems` text box and `ParseItems` are replaced by `ObservableCollection<BundlePickRow>`.
+  - Each `BundlePickRow` has `PackageId`, `Name`, a bool `IsSelected`, `Versions` (the first entry is exactly "Bản mới nhất", then that id's versions, newest first), `SelectedVersion`, and `Order`.
+  - There is one row per distinct package id in the vault.
+  - Order: selected rows keep their install order, and "Lên"/"Xuống" buttons move the selected row.
+  - Save builds a `BundleItem(id, null)` for "Bản mới nhất", otherwise `BundleItem(id, version)`.
+  - Loading a bundle ticks its items, with their pinned versions.
+  - A pinned version that no longer exists still appears in the version list with the suffix " (không còn trong kho)", so Save keeps it unchanged and the VaultAdmin validation reports the problem.
+- **Wording:** every user-visible "gói" that means one software item becomes "phần mềm". This covers AdminView, PackageListView, PackageEditorView, QueueInstallView, the AdminViewModel status messages, the PackageListViewModel prompts, the QueueInstallViewModel progress text and `Strings.NoUninstall`.
+  - "Bộ gói" becomes "Bộ cài đặt" everywhere.
+  - "Gói {0}" in the package list version tag becomes "Kho {0}".
+  - Keep "Gói zip" and `Strings.PackageCorrupt` unchanged.
+  - Update the tests that assert these strings.
+- **Login:** remove the fingerprint line from LoginView, and remove `FingerprintText` if nothing else uses it. AdminView keeps "Mã kho: …".
+
+**Tests:**
+- Picker save produces the right items, with order and pins.
+- Load then save is a round-trip.
+- "Bản mới nhất" gives a null version.
+- A missing pinned version is preserved.
+- The login VM no longer exposes the fingerprint.
+
+Load `frontend-design` before writing XAML, and render `admin-4-bundle.png`.
+
+**Commit:** `feat: bundle picker from vault software; wording phần mềm / bộ cài đặt; fingerprint only in admin`
+
+### Task 23: Demo vault with many real installers
+
+**Files:**
+- Modify: `build/build-portable.ps1`. With `-WithDemo`, it also calls `fetch-demo-installers.ps1 -Out <repo>\samples\.cache\installers` (gitignored). Then, for each entry, it writes a temporary manifest using the kind's silent args (an MSI gets its ProductCode from InstallerInfoReader through the Packager), and runs `Packager add-package`.
+- Create:
+  - a script-only demo package `samples/demo-script/`. Its PowerShell script writes `%ProgramData%\SecureInstallerDemo\script-ok.txt`.
+  - one demo bundle "Văn phòng cơ bản", containing 7-Zip and Notepad++.
+- Also add a Packager option, or a build-script step, that adds a bundle from JSON. Reuse the existing `add-bundle` command if it exists.
+- `-WithDemo` without network access: print a warning, then continue with only the offline packages (demo-notepad zip and demo-script).
+
+**Tests:**
+- Run the script into scratchpad with `-InitVault -WithDemo -AdminPassword`.
+- The Packager `list`, or reading the catalog, shows at least 9 packages and the bundle.
+- Record the sizes in the report.
+- Do not install anything on this machine.
+
+**Commit:** `feat: demo vault with real MSI/Inno/NSIS/Burn installers and a demo bundle`
