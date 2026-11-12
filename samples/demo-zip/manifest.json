@@ -3,6 +3,7 @@
   "name": "Gói thử nghiệm",
   "version": "1.0.0",
   "installer_type": "zip",
+  "installer_kind": "zip",
   "installer_file": "app.zip",
   "target_dir": "%ProgramData%\\SecureInstallerDemo",
   "docs": ["HuongDan.txt"],

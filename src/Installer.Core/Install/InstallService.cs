@@ -84,7 +84,7 @@ public sealed class InstallService
         var zipPath = Path.Combine(ws.Path, "pkg.zip");
         var pkgDir = Path.Combine(ws.Path, "pkg");
 
-        progress.Report(new InstallProgress(0, "Đang kiểm tra gói"));
+        progress.Report(new InstallProgress(0, "Đang kiểm tra phần mềm"));
         string actual;
         using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
         {

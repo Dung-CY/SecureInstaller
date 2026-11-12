@@ -53,7 +53,7 @@ public sealed class VaultAdmin
     {
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
         if (_s.Catalog.Packages.Any(p => Same(p.Id, m.Id) && Same(p.Version, m.Version)))
-            throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
+            throw new Errors.UserMessageException($"Phần mềm {m.Id} phiên bản {m.Version} đã tồn tại");
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
         try { Commit(_s.Catalog.Packages.Append(entry).ToList()); }
         catch (Exception ex) when (ex is not CatalogCommitPendingException) { DeleteFiles(entry); throw; }
@@ -63,12 +63,12 @@ public sealed class VaultAdmin
     public PackageEntry UpdatePackage(string id, string sourceFolder, bool keepOld)
     {
         var m = PackageBuilder.ReadManifest(sourceFolder).Entry;
-        if (!Same(m.Id, id)) throw new InvalidDataException("Trường id trong manifest không khớp với gói cần cập nhật");
+        if (!Same(m.Id, id)) throw new InvalidDataException("Trường id trong manifest không khớp với phần mềm cần cập nhật");
         if (!_s.Catalog.Packages.Any(p => Same(p.Id, id)))
-            throw new Errors.UserMessageException("Không tìm thấy gói");
+            throw new Errors.UserMessageException("Không tìm thấy phần mềm");
 
         if (keepOld && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, m.Version)))
-            throw new Errors.UserMessageException($"Gói {m.Id} phiên bản {m.Version} đã tồn tại");
+            throw new Errors.UserMessageException($"Phần mềm {m.Id} phiên bản {m.Version} đã tồn tại");
 
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
         var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (!keepOld || Same(p.Version, m.Version))).ToList();
@@ -83,7 +83,7 @@ public sealed class VaultAdmin
     {
         var removed = _s.Catalog.Packages
             .Where(p => Same(p.Id, id) && (version is null || Same(p.Version, version))).ToList();
-        if (removed.Count == 0) throw new Errors.UserMessageException("Không tìm thấy gói");
+        if (removed.Count == 0) throw new Errors.UserMessageException("Không tìm thấy phần mềm");
         Commit(_s.Catalog.Packages.Except(removed).ToList());
         foreach (var e in removed) DeleteFiles(e);
     }

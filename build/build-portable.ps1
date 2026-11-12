@@ -11,7 +11,9 @@ param(
     [switch]$WithDemo,
     [string]$Configuration = 'Release',
     # Chỉ dùng cho CI/thử nghiệm: mật khẩu truyền qua tham số sẽ hiện trong danh sách tiến trình.
-    [string]$AdminPassword
+    [string]$AdminPassword,
+    # Thư mục chứa bộ cài demo đã tải (tải về đây nếu thiếu).
+    [string]$DemoCache
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,6 +21,7 @@ $ErrorActionPreference = 'Stop'
 if ($WithDemo -and -not $InitVault) { throw 'Tùy chọn -WithDemo cần đi kèm -InitVault.' }
 
 $repo = Split-Path -Parent $PSScriptRoot
+if (-not $DemoCache) { $DemoCache = Join-Path $repo 'samples\.cache\installers' }
 $dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue
 if ($dotnetCmd) { $dotnet = $dotnetCmd.Source }
 else { $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe' }
@@ -69,6 +72,38 @@ Publish-Project 'src\Installer.Packager' $toolsDir
 $packager = Join-Path $toolsDir 'SecureInstaller.Packager.exe'
 if (-not (Test-Path -LiteralPath $packager)) { throw "Không thấy $packager sau khi publish." }
 
+function Get-MsiProductCode([string]$msi) {
+    # Chỉ đọc bảng Property của MSI, không chạy bộ cài.
+    $wi = New-Object -ComObject WindowsInstaller.Installer
+    $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi, 0))
+    $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
+    $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+    $rec = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+    $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @(1))
+}
+
+function Add-DemoInstaller($i, [string]$file) {
+    $kind = [string]$i.kind
+    $m = [ordered]@{
+        id = $i.id; name = $i.name; version = $i.version; installer_file = $i.file
+        installer_kind = $kind.ToLowerInvariant(); detect = @{ display_name_regex = $i.display_regex }
+    }
+    if ($kind -eq 'Msi') { $m.installer_type = 'msi'; $m.detect.product_code = Get-MsiProductCode $file }
+    else {
+        $m.installer_type = 'exe'
+        $m.silent_args = switch ($kind) { 'Inno' { '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' } 'Nsis' { '/S' } 'Burn' { '/quiet /norestart' } }
+    }
+    $t = Join-Path ([System.IO.Path]::GetTempPath()) ('SI_demo_' + [guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $t 'installer') | Out-Null
+        Copy-Item -LiteralPath $file -Destination (Join-Path $t 'installer')
+        [System.IO.File]::WriteAllText((Join-Path $t 'manifest.json'), ($m | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding $false))
+        & $packager add-package $appDir $t --user $Admin --password $plain
+        if ($LASTEXITCODE -ne 0) { throw "Packager add-package thất bại cho $($i.id) (mã $LASTEXITCODE)" }
+    }
+    finally { Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 $fingerprint = $null
 try {
     if ($InitVault) {
@@ -97,6 +132,20 @@ try {
             }
             finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
+            & $packager add-package $appDir (Join-Path $repo 'samples\demo-script') --user $Admin --password $plain
+            if ($LASTEXITCODE -ne 0) { throw "Packager add-package thất bại cho demo-script (mã $LASTEXITCODE)" }
+
+            # Bộ cài thật từ nhà phát hành; không có mạng thì chỉ giữ các gói offline ở trên.
+            $online = $true
+            try { & (Join-Path $PSScriptRoot 'fetch-demo-installers.ps1') -Out $DemoCache }
+            catch { $online = $false; Write-Warning "Không tải được bộ cài demo ($($_.Exception.Message)). Chỉ thêm các phần mềm offline." }
+            if ($online) {
+                $list = Get-Content (Join-Path $repo 'samples\demo-installers.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($i in $list) { Add-DemoInstaller $i (Join-Path $DemoCache $i.file) }
+                & $packager add-bundle $appDir (Join-Path $repo 'samples\demo-bundle.json') --user $Admin --password $plain
+                if ($LASTEXITCODE -ne 0) { throw "Packager add-bundle thất bại (mã $LASTEXITCODE)" }
+            }
+
             & $packager add-user $appDir nguoidung --role user --new-password $plain --user $Admin --password $plain
             if ($LASTEXITCODE -ne 0) { throw "Packager add-user thất bại (mã $LASTEXITCODE)" }
         }
@@ -109,7 +158,7 @@ finally { $plain = $null }
 
 $sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
 Write-Host ('Dung lượng: {0:N0} MB' -f $sizeMb)
-if ($sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
+if (-not $WithDemo -and $sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
 
 Write-Host ''
 Write-Host "Hoàn tất. Thư mục portable: $appDir"

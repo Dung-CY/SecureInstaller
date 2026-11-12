@@ -118,7 +118,7 @@ public class PackageEditorViewModelTests
         _nextFile = @"D:\7z.msi";
         vm.PickInstallerCommand.Execute(null);
         var gate = new TaskCompletionSource();
-        _saveOverride = async _ => { await gate.Task; throw new InvalidDataException("Gói 7zip phiên bản 24.08 đã tồn tại"); };
+        _saveOverride = async _ => { await gate.Task; throw new InvalidDataException("Phần mềm 7zip phiên bản 24.08 đã tồn tại"); };
 
         var run = vm.SaveCommand.ExecuteAsync(null);
         Assert.True(vm.IsBusy);
@@ -127,7 +127,7 @@ public class PackageEditorViewModelTests
         await run;
 
         Assert.False(vm.IsBusy);
-        Assert.Equal("Gói 7zip phiên bản 24.08 đã tồn tại", vm.Error);
+        Assert.Equal("Phần mềm 7zip phiên bản 24.08 đã tồn tại", vm.Error);
     }
 
     [Fact]

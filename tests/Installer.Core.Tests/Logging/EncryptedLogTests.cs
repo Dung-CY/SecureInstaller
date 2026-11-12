@@ -179,7 +179,7 @@ public class EncryptedLogTests : IClassFixture<LogVaultFixture>
         Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray());
         var text = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
         var lines = text.Split("\r\n");
-        Assert.Equal("Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Gói,Phiên bản,Trạng thái,Mã thoát,Chi tiết", lines[0]);
+        Assert.Equal("Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Phần mềm,Phiên bản,Trạng thái,Mã thoát,Chi tiết", lines[0]);
         Assert.EndsWith(",-1,'=cmd", lines[1]);
         Assert.EndsWith(",0,\"a, \"\"b\"\" ư\"", lines[2]);
         Assert.Equal("", lines[3]);

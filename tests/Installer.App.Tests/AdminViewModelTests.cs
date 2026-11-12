@@ -623,7 +623,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         ed2.PickInstallerCommand.Execute(null);
         ed2.Name = "Công cụ"; ed2.Id = "congcu"; ed2.Version = "2.1";
         await ed2.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("Gói congcu phiên bản 2.1 đã tồn tại", ed2.Error);
+        Assert.Equal("Phần mềm congcu phiên bản 2.1 đã tồn tại", ed2.Error);
         Assert.Same(ed2, current);
     }
 

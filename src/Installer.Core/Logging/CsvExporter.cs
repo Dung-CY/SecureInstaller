@@ -5,7 +5,7 @@ namespace Installer.Core.Logging;
 
 public static class CsvExporter
 {
-    private const string Header = "Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Gói,Phiên bản,Trạng thái,Mã thoát,Chi tiết";
+    private const string Header = "Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Phần mềm,Phiên bản,Trạng thái,Mã thoát,Chi tiết";
 
     public static void Export(IEnumerable<LogEntry> entries, string path)
     {

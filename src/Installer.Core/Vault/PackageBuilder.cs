@@ -53,7 +53,7 @@ public static class PackageBuilder
 
         if (m.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(m.SilentArgs) &&
             m.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
-            throw new InvalidDataException("silent_args của gói MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
+            throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
 
         if (m.Uninstall is { } u)
         {
