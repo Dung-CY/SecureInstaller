@@ -1,6 +1,6 @@
 namespace Installer.Core.Model;
 
-public enum InstallerType { Msi, Exe, Zip }
+public enum InstallerType { Msi, Exe, Zip, Script }
 public enum UserRole { User, Admin }
 
 public record DetectRule(string? ProductCode, string? DisplayNameRegex);
@@ -12,7 +12,8 @@ public record CrackSignature(string Kind, string Pattern);
 public record PackageEntry(string Id, string Name, string Version, InstallerType InstallerType, string InstallerFile,
     string SilentArgs, string? TargetDir, int TimeoutSec, DetectRule Detect, List<string> Docs,
     List<PostAction> PostActions, List<RuleSpec> Rules, string BlobFile, string Sha256, string KeyB64,
-    long BlobSize = 0, string? DocsKeyB64 = null, string? IconPngB64 = null, UninstallSpec? Uninstall = null);
+    long BlobSize = 0, string? DocsKeyB64 = null, string? IconPngB64 = null, UninstallSpec? Uninstall = null,
+    string? PreScript = null, string? PostScript = null, int ScriptTimeoutSec = 600);
 
 /// <summary>Type: "msi" | "command" | "zip".</summary>
 public record UninstallSpec(string Type, string? Command = null, string? Args = null);

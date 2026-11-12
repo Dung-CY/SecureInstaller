@@ -48,6 +48,7 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
 
         if (!string.IsNullOrWhiteSpace(type)) return null; // explicit but unknown type: never fall through
 
+        if (pkg.InstallerType == InstallerType.Script) return null; // no plan without an explicit uninstall spec
         if (pkg.InstallerType == InstallerType.Zip) return ZipFor(pkg);
         if (pkg.InstallerType == InstallerType.Msi && MsiFor(pkg, installed) is { } m2) return m2;
 

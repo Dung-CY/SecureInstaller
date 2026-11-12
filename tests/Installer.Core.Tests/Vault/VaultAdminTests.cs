@@ -21,6 +21,32 @@ public class VaultAdminTests : IDisposable
         return (root, s, new VaultAdmin(s));
     }
 
+    [Fact]
+    public void Script_extensions_validated_and_scripts_zipped()
+    {
+        var (_, _, a) = NewVault();
+        string Mk(string pre) => SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"exe\", \"installer_file\": \"setup.exe\", \"pre_script\": \"" + pre + "\" }");
+        var bad = Mk("evil.exe");
+        Directory.CreateDirectory(Path.Combine(bad, "scripts"));
+        File.WriteAllText(Path.Combine(bad, "scripts", "evil.exe"), "x");
+        Assert.Contains("pre_script", Assert.Throws<InvalidDataException>(() => a.AddPackage(bad)).Message);
+
+        var good = Mk("pre.cmd");
+        Directory.CreateDirectory(Path.Combine(good, "scripts"));
+        File.WriteAllText(Path.Combine(good, "scripts", "pre.cmd"), "@exit /b 0");
+        var e = a.AddPackage(good);
+        Assert.Equal("pre.cmd", e.PreScript);
+        Assert.Equal(600, e.ScriptTimeoutSec);
+    }
+
+    [Fact]
+    public void Script_type_requires_installer_file_in_scripts_folder()
+    {
+        var (_, _, a) = NewVault();
+        var src = SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s2\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"script\", \"installer_file\": \"setup.exe\" }");
+        Assert.Throws<InvalidDataException>(() => a.AddPackage(src)); // setup.exe is in installer\, not scripts\
+    }
+
     string Blob(string root, PackageEntry e) => Path.Combine(root, "vault", "packages", e.BlobFile);
 
     [Fact]

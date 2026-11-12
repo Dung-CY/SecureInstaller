@@ -24,9 +24,14 @@ public static class PackageSource
     public static string Create(PackageDraft d, string tempDir)
     {
         Directory.CreateDirectory(tempDir);
-        var installerFile = CopyAll(new[] { d.InstallerPath }.Concat(d.ExtraFiles), Path.Combine(tempDir, "installer"))[0];
+        // A Script-type package's installer is the script itself and lives in scripts\.
+        var isScript = d.Type == InstallerType.Script;
+        var installerFile = isScript
+            ? Path.GetFileName(d.InstallerPath)
+            : CopyAll(new[] { d.InstallerPath }.Concat(d.ExtraFiles), Path.Combine(tempDir, "installer"))[0];
         var docs = CopyAll(d.DocFiles, Path.Combine(tempDir, "docs"));
-        var scripts = CopyAll(new[] { d.PreScriptPath, d.PostScriptPath }.OfType<string>(), Path.Combine(tempDir, "scripts"));
+        var scripts = CopyAll(new[] { isScript ? d.InstallerPath : null, d.PreScriptPath, d.PostScriptPath }
+            .OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase), Path.Combine(tempDir, "scripts"));
         if (d.IconPath is { } icon) File.Copy(icon, Path.Combine(tempDir, "icon.png"));
         else if (d.KeepIconPngB64 is { } kept) File.WriteAllBytes(Path.Combine(tempDir, "icon.png"), Convert.FromBase64String(kept));
         var postActions = d.PostActions ?? new();

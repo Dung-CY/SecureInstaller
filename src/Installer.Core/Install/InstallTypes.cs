@@ -28,6 +28,7 @@ public sealed class InstallerRunnerFactory
         InstallerType.Msi => new MsiInstaller(),
         InstallerType.Exe => new ExeInstaller(),
         InstallerType.Zip => new ZipInstaller(),
+        InstallerType.Script => new ScriptRunner(),
         _ => throw new ArgumentOutOfRangeException(nameof(t)),
     };
 }

@@ -36,7 +36,7 @@ public sealed class InstallService
         try
         {
             ws = _workspaceFactory();
-            outcome = await RunCoreAsync(pkg, ws, progress, ct, d => detail = d).ConfigureAwait(false);
+            outcome = await RunCoreAsync(pkg, ws, progress, ct, d => detail = detail == null ? d : detail + "; " + d).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { outcome = new InstallOutcome(InstallStatus.Failed, null, ErrorText.Cancelled); }
         catch (Exception ex)
@@ -119,10 +119,36 @@ public sealed class InstallService
         try { File.Delete(zipPath); } catch { }
         ct.ThrowIfCancellationRequested();
 
-        var installerDir = Path.GetFullPath(Path.Combine(pkgDir, "installer")) + Path.DirectorySeparatorChar;
-        var installerPath = Path.GetFullPath(Path.Combine(pkgDir, "installer", pkg.InstallerFile));
+        var sub = pkg.InstallerType == InstallerType.Script ? "scripts" : "installer";
+        var installerDir = Path.GetFullPath(Path.Combine(pkgDir, sub)) + Path.DirectorySeparatorChar;
+        var installerPath = Path.GetFullPath(Path.Combine(pkgDir, sub, pkg.InstallerFile));
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))
             return corrupt;
+
+        // Hook scripts always use the real ScriptRunner (not the per-type factory): they are configuration, not the installer.
+        var scriptsDir = Path.GetFullPath(Path.Combine(pkgDir, "scripts")) + Path.DirectorySeparatorChar;
+        string? HookPath(string? name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            var p = Path.GetFullPath(Path.Combine(scriptsDir, name));
+            return p.StartsWith(scriptsDir, StringComparison.OrdinalIgnoreCase) && File.Exists(p) ? p : "";
+        }
+        Task<InstallOutcome> RunHook(string path) => new ScriptRunner().RunAsync(
+            new InstallRequest(InstallerType.Script, path, "", null, TimeSpan.FromSeconds(pkg.ScriptTimeoutSec)), progress, ct);
+
+        var prePath = HookPath(pkg.PreScript);
+        var postPath = HookPath(pkg.PostScript);
+        if (prePath == "" || postPath == "") return corrupt; // listed hook missing or outside scripts\
+        if (prePath != null)
+        {
+            var pre = await RunHook(prePath).ConfigureAwait(false);
+            if (pre.Status != InstallStatus.Success)
+            {
+                if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+                setDetail(pre.Detail ?? pre.Message);
+                return new InstallOutcome(InstallStatus.Failed, pre.ExitCode, "Script trước khi cài lỗi");
+            }
+        }
 
         var req = new InstallRequest(pkg.InstallerType, installerPath, pkg.SilentArgs, pkg.TargetDir,
             TimeSpan.FromSeconds(pkg.TimeoutSec));
@@ -135,6 +161,16 @@ public sealed class InstallService
             {
                 outcome = outcome with { Message = outcome.Message + $" ({failed.Count} thao tác sau cài lỗi)" };
                 setDetail(string.Join("; ", failed.Select(f => $"{f.Action.Dst}: {f.Error}")));
+            }
+            if (postPath != null)
+            {
+                var post = await RunHook(postPath).ConfigureAwait(false);
+                if (post.Status != InstallStatus.Success)
+                {
+                    if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+                    outcome = outcome with { Message = outcome.Message + " (Cấu hình sau cài lỗi)" };
+                    setDetail(post.Detail ?? post.Message);
+                }
             }
         }
         return outcome;

@@ -26,6 +26,9 @@ public static class PackageBuilder
         public List<PostAction>? PostActions { get; set; }
         public List<RuleSpec>? Rules { get; set; }
         public UninstallSpec? Uninstall { get; set; }
+        public string? PreScript { get; set; }
+        public string? PostScript { get; set; }
+        public int? ScriptTimeoutSec { get; set; }
     }
 
     internal sealed record Manifest(PackageEntry Entry, List<string> DocNames);
@@ -59,10 +62,20 @@ public static class PackageBuilder
                 throw new InvalidDataException("uninstall.command là bắt buộc khi type là command");
         }
 
-        var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, "installer", m.InstallerFile));
-        var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, "installer")) + Path.DirectorySeparatorChar;
+        var isScript = m.InstallerType == InstallerType.Script;
+        var instSub = isScript ? "scripts" : "installer";
+        var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, instSub, m.InstallerFile));
+        var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, instSub)) + Path.DirectorySeparatorChar;
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))
-            throw new InvalidDataException($"Không tìm thấy installer_file: installer\\{m.InstallerFile}");
+            throw new InvalidDataException($"Không tìm thấy installer_file: {instSub}\\{m.InstallerFile}");
+        if (isScript) CheckScript("installer_file", m.InstallerFile);
+        foreach (var (field, name) in new[] { ("pre_script", m.PreScript), ("post_script", m.PostScript) })
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            CheckScript(field, name);
+            if (name != Path.GetFileName(name) || !File.Exists(Path.Combine(sourceFolder, "scripts", name)))
+                throw new InvalidDataException($"Không tìm thấy {field}: scripts\\{name}");
+        }
 
         var docsDir = Path.Combine(sourceFolder, "docs");
         List<string> docs;
@@ -82,8 +95,16 @@ public static class PackageBuilder
 
         var entry = new PackageEntry(m.Id, m.Name, m.Version, m.InstallerType.Value, m.InstallerFile,
             m.SilentArgs ?? "", m.TargetDir, m.TimeoutSec ?? 1800, m.Detect ?? new DetectRule(null, null),
-            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall);
+            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall,
+            string.IsNullOrEmpty(m.PreScript) ? null : m.PreScript, string.IsNullOrEmpty(m.PostScript) ? null : m.PostScript,
+            m.ScriptTimeoutSec ?? 600);
         return new Manifest(entry, docs);
+    }
+
+    static void CheckScript(string field, string name)
+    {
+        if (!Installer.Core.Install.ScriptRunner.Extensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{field} chỉ được là .ps1, .cmd hoặc .bat");
     }
 
     const string BlobSuffix = ".pkg.enc";
@@ -138,7 +159,7 @@ public static class PackageBuilder
             using (var zipFs = new FileStream(tmpZip, FileMode.CreateNew, FileAccess.ReadWrite))
             using (var zip = new ZipArchive(zipFs, ZipArchiveMode.Create))
             {
-                foreach (var top in new[] { "installer", "extras" })
+                foreach (var top in new[] { "installer", "extras", "scripts" })
                 {
                     var dir = Path.Combine(sourceFolder, top);
                     if (!Directory.Exists(dir)) continue;

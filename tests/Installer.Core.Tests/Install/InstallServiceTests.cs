@@ -326,6 +326,67 @@ public class InstallServiceTests : IDisposable
         Assert.Contains("Không ghi được dấu cài đặt", ReadLogs(e).Last().Detail);
     }
 
+    string ScriptPkg(string id, string? pre, string? post, string type = "exe", string file = "setup.exe", string? installerScript = null)
+    {
+        var m = "{ \"id\": \"" + id + "\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"" + type + "\", \"installer_file\": \"" + file + "\""
+            + (pre != null ? ", \"pre_script\": \"" + pre + "\"" : "") + (post != null ? ", \"post_script\": \"" + post + "\"" : "") + " }";
+        var dir = SamplePackage.Create(_tmp, id, manifestOverride: m, withInstaller: type != "script");
+        Directory.CreateDirectory(Path.Combine(dir, "scripts"));
+        if (pre != null) File.WriteAllText(Path.Combine(dir, "scripts", pre), pre.EndsWith("ok.cmd") ? "@exit /b 0" : "@echo PRE-BOOM\r\n@exit /b 7");
+        if (post != null) File.WriteAllText(Path.Combine(dir, "scripts", post), post.EndsWith("ok.cmd") ? "@exit /b 0" : "@echo POST-BOOM\r\n@exit /b 9");
+        if (installerScript != null) File.WriteAllText(Path.Combine(dir, "scripts", installerScript), "@exit /b 0");
+        return dir;
+    }
+
+    [Fact]
+    public async Task Pre_script_failure_stops_install_runner_not_called()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("pre1", "pre-bad.cmd", null));
+        var runner = new FakeRunner();
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, res.Status);
+        Assert.Equal("Script trước khi cài lỗi", res.Message);
+        Assert.Empty(runner.Requests);
+        Assert.Contains("PRE-BOOM", Assert.Single(ReadLogs(e)).Detail);
+    }
+
+    [Fact]
+    public async Task Post_script_failure_keeps_success_with_warning()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("post1", "pre-ok.cmd", "post-bad.cmd"));
+        var runner = new FakeRunner();
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.EndsWith(" (Cấu hình sau cài lỗi)", res.Message);
+        Assert.Single(runner.Requests);
+        var log = Assert.Single(ReadLogs(e));
+        Assert.Equal("Success", log.Status);
+        Assert.Contains("POST-BOOM", log.Detail);
+    }
+
+    [Fact]
+    public async Task Script_type_package_installs_via_runner_and_writes_marker()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("sc1", null, null, "script", "cfg.cmd", "cfg.cmd"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        var runner = new FakeRunner();
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        var req = Assert.Single(runner.Requests);
+        Assert.Equal(InstallerType.Script, req.Type);
+        Assert.EndsWith(Path.Combine("pkg", "scripts", "cfg.cmd"), req.InstallerPath);
+        Assert.True(runner.InstallerExistedAtCall);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+    }
+
     [Fact]
     public async Task Marker_written_on_reboot_required()
     {
