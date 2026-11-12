@@ -59,10 +59,10 @@ public class ScanReportViewModelTests
         Assert.Equal("Không xác định", DisplayText.Of(LicenseVerdict.Unknown));
         Assert.Equal("Không cài", DisplayText.Of(LicenseVerdict.NotInstalled));
         Assert.Equal("Chưa cài", DisplayText.Of(VersionStatus.NotInstalled));
-        Assert.Equal("Cũ hơn", DisplayText.Of(VersionStatus.Older));
-        Assert.Equal("Bằng nhau", DisplayText.Of(VersionStatus.Equal));
-        Assert.Equal("Mới hơn", DisplayText.Of(VersionStatus.Newer));
-        Assert.Equal("Không so sánh được", DisplayText.Of(VersionStatus.Incomparable));
+        Assert.Equal("Cần cập nhật", DisplayText.Of(VersionStatus.Older));
+        Assert.Equal("Đã cài", DisplayText.Of(VersionStatus.Equal));
+        Assert.Equal("Máy có bản mới hơn", DisplayText.Of(VersionStatus.Newer));
+        Assert.Equal("Đã cài (không rõ phiên bản)", DisplayText.Of(VersionStatus.Incomparable));
     }
 
     static ScanReport ReportWithDevices() => Report(LicenseVerdict.Suspicious) is var r

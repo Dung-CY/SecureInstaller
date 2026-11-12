@@ -63,7 +63,7 @@ public partial class PackageListViewModel : ObservableObject
 
     partial void OnIsInstallingChanged(bool value)
     {
-        ApplyBundleCommand.NotifyCanExecuteChanged();
+        ClearSelectionCommand.NotifyCanExecuteChanged();
         foreach (var r in Rows) r.NotifyInstallingChanged();
     }
 
@@ -80,7 +80,7 @@ public partial class PackageListViewModel : ObservableObject
     public IReadOnlyList<Bundle> Bundles { get; }
     public bool HasBundles => Bundles.Count > 0;
 
-    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(ApplyBundleCommand))]
+    [ObservableProperty]
     private Bundle? _selectedBundle;
 
     /// <summary>One line per bundle item that was not ticked: "{name}: {reason}" when blocked, "{id}: Không có trong kho" when missing.</summary>
@@ -90,13 +90,15 @@ public partial class PackageListViewModel : ObservableObject
     private List<PackageRowViewModel>? _bundleOrder;
     private bool _applyingBundle;
 
-    private bool CanApplyBundle() => SelectedBundle != null && !IsInstalling;
-
-    /// <summary>Clears the ticks, then ticks the bundle's resolvable and allowed packages, remembering the bundle's order.</summary>
-    [RelayCommand(CanExecute = nameof(CanApplyBundle))]
-    private void ApplyBundle()
+    partial void OnSelectedBundleChanged(Bundle? value)
     {
-        if (SelectedBundle is not { } bundle) return;
+        if (value is null) { _bundleOrder = null; SetNotices(Array.Empty<string>()); return; }
+        ApplyBundle(value);
+    }
+
+    /// <summary>Clears the ticks, then ticks the bundle's allowed packages that are not yet installed or are older, remembering the bundle's order.</summary>
+    private void ApplyBundle(Bundle bundle)
+    {
         var order = new List<PackageRowViewModel>();
         var notices = new List<string>();
         _applyingBundle = true;
@@ -109,6 +111,7 @@ public partial class PackageListViewModel : ObservableObject
                 if (row is null) { notices.Add($"{item.PackageId}: {Strings.NotInVault}"); continue; }
                 if (!row.Allowed) { notices.Add($"{row.Name}: {row.ReasonsText}"); continue; }
                 if (order.Contains(row)) continue; // "id" and "id@ver" can resolve to the same package
+                if (row.Status is not (VersionStatus.NotInstalled or VersionStatus.Older)) { notices.Add($"{row.Name}: đã cài trên máy"); continue; }
                 row.IsSelected = true;
                 order.Add(row);
             }
@@ -116,6 +119,15 @@ public partial class PackageListViewModel : ObservableObject
         finally { _applyingBundle = false; }
         _bundleOrder = order;
         SetNotices(notices);
+    }
+
+    private bool CanClearSelection() => !IsInstalling;
+
+    [RelayCommand(CanExecute = nameof(CanClearSelection))]
+    private void ClearSelection()
+    {
+        foreach (var r in Rows) r.IsSelected = false;
+        SelectedBundle = null; // also clears bundle order and notices
     }
 
     private void SetNotices(IEnumerable<string> notices)

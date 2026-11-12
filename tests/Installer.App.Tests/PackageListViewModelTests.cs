@@ -80,7 +80,7 @@ public class PackageListViewModelTests
         Assert.Equal("7-Zip", row.Name);
         Assert.Equal("24.08", row.PackageVersion);
         Assert.Equal("22.01", row.InstalledVersion);
-        Assert.Equal("Cũ hơn", row.StatusText);
+        Assert.Equal("Cần cập nhật", row.StatusText);
         Assert.True(row.InstallCommand.CanExecute(null));
     }
 
@@ -145,7 +145,7 @@ public class PackageListViewModelTests
         Assert.False(h.Vm.IsInstalling);
         Assert.Equal(0, h.Vm.SelectedCount);
         Assert.All(h.Vm.Rows, r => Assert.False(r.IsSelected));
-        Assert.Equal("Bằng nhau", h.Vm.Rows[2].StatusText);
+        Assert.Equal("Đã cài", h.Vm.Rows[2].StatusText);
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public class PackageListViewModelTests
         });
         var row = h.Vm.Rows[0];
         Assert.Equal("23.01 (x64), 22.01 (x86)", row.InstalledVersion);
-        Assert.Equal("Cũ hơn", row.StatusText);
+        Assert.Equal("Cần cập nhật", row.StatusText);
     }
 
     [Fact]
@@ -354,27 +354,30 @@ public class PackageListViewModelTests
     }
 
     [Fact]
-    public void Apply_bundle_selects_in_bundle_order_and_lists_blocked_and_missing()
+    public void Selecting_bundle_ticks_only_notinstalled_or_older_and_lists_the_rest()
     {
-        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        // A not installed, B untouched, C older, Foo blocked; "ghost" missing
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected), x => x.Installed = p => p.Name == "C" ? "0.5" : null);
         Assert.True(h.Vm.HasBundles);
         Assert.Same(bundle, Assert.Single(h.Vm.Bundles));
-        Assert.False(h.Vm.ApplyBundleCommand.CanExecute(null));
-        var b = h.Vm.Rows.Single(r => r.Name == "B");
-        b.IsSelected = true; // cleared by applying the bundle
+        h.Vm.Rows.Single(r => r.Name == "B").IsSelected = true; // cleared by applying the bundle
 
         h.Vm.SelectedBundle = bundle;
-        Assert.True(h.Vm.ApplyBundleCommand.CanExecute(null));
-        h.Vm.ApplyBundleCommand.Execute(null);
 
         Assert.Equal(new[] { "A", "C" }, h.Vm.Rows.Where(r => r.IsSelected).Select(r => r.Name));
-        Assert.Equal(2, h.Vm.SelectedCount);
         var foo = h.Vm.Rows.Single(r => r.Name == "Foo");
         Assert.Equal(new[] { $"Foo: {foo.ReasonsText}", "ghost: Không có trong kho" }, h.Vm.BundleNotices);
-        Assert.True(h.Vm.HasBundleNotices);
-
         h.Vm.InstallSelectedCommand.Execute(null);
         Assert.Equal(new[] { "C", "A" }, h.Installs); // bundle order, not display order
+    }
+
+    [Fact]
+    public void Bundle_skips_installed_rows_with_notice()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected), x => x.Installed = p => p.Name == "A" ? "1.0" : null);
+        h.Vm.SelectedBundle = bundle;
+        Assert.Equal(new[] { "C" }, h.Vm.Rows.Where(r => r.IsSelected).Select(r => r.Name));
+        Assert.Contains("A: đã cài trên máy", h.Vm.BundleNotices);
     }
 
     [Fact]
@@ -382,10 +385,32 @@ public class PackageListViewModelTests
     {
         var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
         h.Vm.SelectedBundle = bundle;
-        h.Vm.ApplyBundleCommand.Execute(null);
         h.Vm.Rows.Single(r => r.Name == "B").IsSelected = true;
         h.Vm.InstallSelectedCommand.Execute(null);
         Assert.Equal(new[] { "A", "B", "C" }, h.Installs);
+    }
+
+    [Fact]
+    public void Null_bundle_clears_notices_but_keeps_ticks()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        h.Vm.SelectedBundle = bundle;
+        h.Vm.SelectedBundle = null;
+        Assert.False(h.Vm.HasBundleNotices);
+        Assert.Equal(2, h.Vm.SelectedCount);
+    }
+
+    [Fact]
+    public void ClearSelection_unticks_all_and_resets_bundle()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        h.Vm.SelectedBundle = bundle;
+        Assert.True(h.Vm.ClearSelectionCommand.CanExecute(null));
+        h.Vm.ClearSelectionCommand.Execute(null);
+        Assert.Equal(0, h.Vm.SelectedCount);
+        Assert.Null(h.Vm.SelectedBundle);
+        Assert.Empty(h.Vm.BundleNotices);
+        Assert.False(h.Vm.HasBundleNotices);
     }
 
     [Fact]

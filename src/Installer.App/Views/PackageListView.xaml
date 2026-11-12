@@ -35,7 +35,7 @@
             </StackPanel>
         </Grid>
 
-        <!-- Bundle bar: pick a bundle to pre-tick its packages in install order; hidden when the catalog has none -->
+        <!-- Bundle bar: picking a bundle ticks its not-yet-installed packages in install order; hidden when the catalog has none -->
         <Border Grid.Row="1" Margin="0,0,0,12" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
                 BorderThickness="1" CornerRadius="8" Padding="14,10"
                 Visibility="{Binding HasBundles, Converter={StaticResource BoolToVisibility}}">
@@ -51,7 +51,7 @@
                     <ComboBox Grid.Column="1" Style="{StaticResource AppComboBox}" ItemsSource="{Binding Bundles}"
                               SelectedItem="{Binding SelectedBundle}" DisplayMemberPath="Name"
                               AutomationProperties.Name="Chọn bộ gói"/>
-                    <Button Grid.Column="2" Content="Tick các gói trong bộ" Command="{Binding ApplyBundleCommand}"
+                    <Button Grid.Column="2" Content="Bỏ chọn tất cả" Command="{Binding ClearSelectionCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="8,0,14,0"/>
                     <TextBlock Grid.Column="3" Text="{Binding SelectedBundle.Description}" Style="{StaticResource Muted}"
                                VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"

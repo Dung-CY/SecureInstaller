@@ -21,11 +21,11 @@ public static class DisplayText
     public static string Of(VersionStatus s) => s switch
     {
         VersionStatus.NotInstalled => "Chưa cài",
-        VersionStatus.Older => "Cũ hơn",
-        VersionStatus.Equal => "Bằng nhau",
-        VersionStatus.Newer => "Mới hơn",
-        VersionStatus.Incomparable => "Không so sánh được",
-        _ => "Không so sánh được"
+        VersionStatus.Older => "Cần cập nhật",
+        VersionStatus.Equal => "Đã cài",
+        VersionStatus.Newer => "Máy có bản mới hơn",
+        VersionStatus.Incomparable => "Đã cài (không rõ phiên bản)",
+        _ => "Đã cài (không rõ phiên bản)"
     };
 
     public static string Of(NetworkKind k) => k switch

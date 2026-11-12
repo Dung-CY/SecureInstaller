@@ -416,7 +416,7 @@
     <SolidColorBrush x:Key="WarnBrush" Color="#9A5B00"/>
     <SolidColorBrush x:Key="WarnBgBrush" Color="#FFF3DD"/>
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#EAF1FB"/>
-    <!-- Stronger than AccentSoftBrush so the "Cũ hơn" pill stays visible on a ticked (tinted) row -->
+    <!-- Stronger than AccentSoftBrush so the "Cần cập nhật" pill stays visible on a ticked (tinted) row -->
     <SolidColorBrush x:Key="AccentPillBrush" Color="#D6E4F8"/>
 
     <!-- Fallback package icon: a neutral parcel on a soft tile -->
