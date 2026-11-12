@@ -62,7 +62,7 @@ public sealed class MachineScanner
                 network = network with
                 {
                     Profiles = network.Profiles
-                        .Select(p => p with { HadInternet = r.ByProfile.TryGetValue(p.Name, out var h) ? h : null })
+                        .Select(p => p with { HadInternet = p.Name is not null && r.ByProfile.TryGetValue(p.Name, out var h) ? h : null })
                         .ToList()
                 };
             }

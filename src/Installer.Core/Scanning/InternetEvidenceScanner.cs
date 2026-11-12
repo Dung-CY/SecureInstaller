@@ -19,6 +19,7 @@ public sealed class InternetEvidenceScanner
     private const string ProfileLog = "Microsoft-Windows-NetworkProfile/Operational";
     private const string NcsiLog = "Microsoft-Windows-NCSI/Operational";
     private const uint InternetMask = 0x440;   // NLM_CONNECTIVITY IPV4_INTERNET | IPV6_INTERNET
+    private static readonly TimeSpan ProbeWindow = TimeSpan.FromMinutes(10);
     private readonly IEventLogReader _log;
 
     public InternetEvidenceScanner(IEventLogReader log) => _log = log;
@@ -28,18 +29,30 @@ public sealed class InternetEvidenceScanner
         var strong = new List<EvidenceItem>();
         var byProfile = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
+        var connects = new List<(string Name, DateTime Time)>();
         foreach (var e in _log.Read(ProfileLog, new[] { 10000 }))
         {
             if (e.Properties.Count < 5 || e.Properties[0] is not string name || string.IsNullOrWhiteSpace(name)) continue;
-            if (ToUInt(e.Properties[4]) is not { } state) continue;
-            var has = (state & InternetMask) != 0;
-            byProfile[name] = (byProfile.TryGetValue(name, out var old) && old) || has;
-            if (has) strong.Add(new("NetworkProfile", e.TimeCreated, $"Mạng \"{name}\" có kết nối internet"));
+            connects.Add((name, e.TimeCreated));
+            // On Windows 11 State is not NLM_CONNECTIVITY (observed 1..41), so the mask rarely fires; NCSI below is the main source.
+            if (ToUInt(e.Properties[4]) is { } state && (state & InternetMask) != 0)
+            {
+                byProfile[name] = true;
+                strong.Add(new("NetworkProfile", e.TimeCreated, $"Mạng \"{name}\" có kết nối internet"));
+            }
         }
+        connects.Sort((a, b) => a.Time.CompareTo(b.Time));
 
         foreach (var e in _log.Read(NcsiLog, new[] { 4042 }))
-            if (e.Properties.Count > 3 && ToUInt(e.Properties[3]) == 2)
-                strong.Add(new("NCSI", e.TimeCreated, "Windows ghi nhận kết nối internet"));
+        {
+            var cap = e.Properties.Count > 3 ? ToUInt(e.Properties[3]) : null;
+            if (cap is not (1 or 2)) continue;
+            if (cap == 2) strong.Add(new("NCSI", e.TimeCreated, "Windows ghi nhận kết nối internet"));
+            // shortcut: NCSI has no profile name, so attribute it to the latest connect within 10 min; two networks up at once can be mis-attributed.
+            var owner = connects.LastOrDefault(c => c.Time <= e.TimeCreated && e.TimeCreated - c.Time <= ProbeWindow);
+            if (owner.Name is null) continue;
+            byProfile[owner.Name] = (byProfile.TryGetValue(owner.Name, out var old) && old) || cap == 2;
+        }
 
         if (strong.Count > 0) return Result(InternetVerdict.Yes, strong, byProfile);
 

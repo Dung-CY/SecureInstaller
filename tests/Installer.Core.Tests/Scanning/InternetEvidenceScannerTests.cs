@@ -34,19 +34,41 @@ public class InternetEvidenceScannerTests
         Assert.Equal(InternetVerdict.Yes, r.Evidence.Verdict);
         Assert.Equal(T.AddDays(-3), r.Evidence.LastSeen);
         Assert.True(r.ByProfile["office"]);
-        Assert.False(r.ByProfile["Lab"]);
+        Assert.False(r.ByProfile.ContainsKey("Lab"));   // no internet flag, no NCSI -> unknown, never "local only"
         Assert.False(r.ByProfile.ContainsKey("Other"));
     }
 
     [Fact]
-    public void Local_only_profile_is_false_and_without_other_evidence_NoEvidence()
+    public void Profile_without_flag_or_ncsi_is_unknown_and_NoEvidence()
     {
         var ev = new FakeEvents();
         ev.All.Add(("Microsoft-Windows-NetworkProfile/Operational", Profile("Lab", 0x20, -2)));
         var r = new InternetEvidenceScanner(ev).Scan();
-        Assert.False(r.ByProfile["Lab"]);
+        Assert.False(r.ByProfile.ContainsKey("Lab"));
         Assert.Equal(InternetVerdict.NoEvidence, r.Evidence.Verdict);
         Assert.Null(r.Evidence.LastSeen);
+    }
+
+    private static EventRecordInfo Ncsi(DateTime t, uint cap) =>
+        new(4042, t, new object?[] { Guid.NewGuid(), 1UL, 0u, cap, 4u, 0u });
+
+    [Fact]
+    public void Ncsi_after_connect_is_attributed_to_that_profile()
+    {
+        var ev = new FakeEvents();
+        const string P = "Microsoft-Windows-NetworkProfile/Operational", N = "Microsoft-Windows-NCSI/Operational";
+        ev.All.Add((P, Profile("Office", 9, -3)));
+        ev.All.Add((N, Ncsi(T.AddDays(-3).AddSeconds(5), 1)));
+        ev.All.Add((N, Ncsi(T.AddDays(-3).AddSeconds(8), 2)));
+        ev.All.Add((P, Profile("Lab", 9, -2)));
+        ev.All.Add((N, Ncsi(T.AddDays(-2).AddSeconds(5), 1)));
+        ev.All.Add((P, Profile("Late", 9, -1)));
+        ev.All.Add((N, Ncsi(T.AddDays(-1).AddMinutes(30), 2)));   // outside the probe window
+        var r = new InternetEvidenceScanner(ev).Scan();
+        Assert.True(r.ByProfile["Office"]);
+        Assert.False(r.ByProfile["Lab"]);
+        Assert.False(r.ByProfile.ContainsKey("Late"));
+        Assert.Equal(InternetVerdict.Yes, r.Evidence.Verdict);
     }
 
     [Fact]
