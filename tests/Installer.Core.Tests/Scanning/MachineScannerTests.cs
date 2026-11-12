@@ -14,14 +14,14 @@ public class MachineScannerTests
     }
 
     [Fact]
-    public async Task MachineScanner_reports_five_steps_in_order()
+    public async Task MachineScanner_reports_six_steps_in_order()
     {
         var wmi = new FakeWmi(); var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
         var ms = new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, new FakeProbe(true)),
             new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
         var p = new SyncProgress();
         var report = await ms.ScanAsync(Catalog.Empty(), p, CancellationToken.None);
-        Assert.Equal(new[] { "Đang quét phần cứng", "Đang đọc lịch sử mạng", "Đang kiểm tra bản quyền", "Đang tìm file theo từ khóa", "Đang đọc lịch sử USB" }, p.Steps);
+        Assert.Equal(new[] { "Đang quét phần cứng", "Đang đọc lịch sử mạng", "Đang kiểm tra bản quyền", "Đang tìm file theo từ khóa", "Đang đọc lịch sử USB", "Đang tìm bằng chứng kết nối internet" }, p.Steps);
         Assert.True(report.Network.InternetNow);
         Assert.NotNull(report.Keywords);
     }
