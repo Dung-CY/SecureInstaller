@@ -123,7 +123,7 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string _id = "";
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _version = "";
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallerFileName), nameof(TypeLabel), nameof(KeepOldEnabled), nameof(KeepOldHint))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallerFileName), nameof(InstallerSubtitle), nameof(TypeLabel), nameof(KeepOldEnabled), nameof(KeepOldHint))]
     private string? _installerPath;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(TypeLabel), nameof(IsMsi))]
     private InstallerType _type = InstallerType.Exe;
@@ -140,7 +140,10 @@ public partial class PackageEditorViewModel : ObservableObject
     public bool KeepOldEnabled => !IsEdit || InstallerPath is not null;
     public string? KeepOldHint => KeepOldEnabled ? null : "Chọn file cài mới để giữ bản cũ";
 
-    public string? InstallerFileName => InstallerPath is null ? null : Path.GetFileName(InstallerPath);
+    public string? InstallerFileName => InstallerPath is null ? _existing?.InstallerFile : Path.GetFileName(InstallerPath);
+    public string InstallerSubtitle => InstallerPath is not null ? Path.GetDirectoryName(InstallerPath) ?? ""
+        : _existing is not null ? "Đang dùng file cài trong kho — chọn file mới nếu muốn thay."
+        : "File .msi, .exe hoặc .zip. Tên và phiên bản được điền sẵn nếu đọc được.";
     public string? TypeLabel => InstallerPath is null && !IsEdit ? null : Type.ToString().ToUpperInvariant();
     public string? KindText => Kind switch
     {

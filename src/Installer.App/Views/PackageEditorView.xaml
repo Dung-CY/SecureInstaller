@@ -165,18 +165,8 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <TextBlock FontSize="13" Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
-                                        <Setter Property="Text" Value="{Binding InstallerPath, Converter={StaticResource FileNamePart}, ConverterParameter=dir}"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding InstallerPath}" Value="{x:Null}">
-                                                <Setter Property="Text" Value="File .msi, .exe hoặc .zip. Tên và phiên bản được điền sẵn nếu đọc được."/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                            <TextBlock FontSize="13" Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       Style="{StaticResource Muted}" Text="{Binding InstallerSubtitle}"/>
                             <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap"
                                        Foreground="{StaticResource AccentBrush}" Text="{Binding KindText}">
                                 <TextBlock.Style>
