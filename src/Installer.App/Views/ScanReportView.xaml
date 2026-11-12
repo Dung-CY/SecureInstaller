@@ -87,8 +87,9 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBox Grid.Row="0" Style="{StaticResource SearchBox}" Tag="Tìm theo tên hoặc mã thiết bị"
                              Text="{Binding DeviceSearch, UpdateSourceTrigger=PropertyChanged, Delay=150}"
@@ -113,7 +114,7 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                    <TreeView Grid.Row="2" Style="{StaticResource PeripheralTree}" ItemsSource="{Binding PeripheralGroups}"
+                    <TreeView Grid.Row="2" MaxHeight="300" Style="{StaticResource PeripheralTree}" ItemsSource="{Binding PeripheralGroups}"
                               ItemContainerStyle="{StaticResource GroupTreeItem}">
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type vm:PeripheralGroup}" ItemsSource="{Binding Items}"
@@ -143,7 +144,8 @@
                     <Grid Grid.Row="3" Margin="0,14,0,0">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="Lịch sử thiết bị lưu trữ" Style="{StaticResource SectionHeading}" Margin="0,0,0,8"/>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding UsbRows}" MaxHeight="190">
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding UsbRows}" MaxHeight="190"
+                                  AutomationProperties.Name="Lịch sử thiết bị lưu trữ">
                             <DataGrid.Style>
                                 <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
                                     <Style.Triggers>

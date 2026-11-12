@@ -103,4 +103,29 @@ public class UsbStorageHistoryScannerTests
     {
         Assert.Empty(Make(new FakeRegistry(), new FakeEvents(), new FakeFiles()).Scan());
     }
+
+    [Fact]
+    public void Dangling_device_install_does_not_steal_next_section()
+    {
+        var files = new FakeFiles { Lines = new[]
+        {
+            Install(Serial),                                   // no Section start follows
+            @">>>  [Setup Import Driver Package - c:\x.inf]", ">>>  Section start 2026/05/05 05:05:05.005",
+        } };
+        var rec = Assert.Single(Make(Reg(Serial + "&0"), new FakeEvents(), files).Scan());
+        Assert.Null(rec.FirstConnected);
+    }
+
+    [Fact]
+    public void Empty_serial_never_matches_anything()
+    {
+        var ev = new FakeEvents();
+        ev.Partition.Add(new(1006, DateTime.Now, new object?[] { "" }));
+        ev.Pnp.Add(new(400, DateTime.Now, new object?[] { $@"USBSTOR\{Model}\&0" }));
+        var files = new FakeFiles { Lines = new[] { Install(Serial), ">>>  Section start 2026/01/01 01:01:01.001" } };
+        var rec = Assert.Single(Make(Reg("&0"), ev, files).Scan());
+        Assert.Equal("", rec.Serial);
+        Assert.Null(rec.FirstConnected);
+        Assert.Null(rec.LastConnected);
+    }
 }

@@ -41,7 +41,7 @@ public sealed class UsbStorageHistoryScanner
         }
         if (devices.Count == 0) return new();
 
-        var patterns = devices.Select(d => new Regex(@"[#\\]" + Regex.Escape(d.Serial) + @"(&\d+)*[#\\\]]",
+        var patterns = devices.Select(d => d.Serial.Length == 0 ? null : new Regex(@"[#\\]" + Regex.Escape(d.Serial) + @"(&\d+)*[#\\\]]",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)).ToList();
         var first = FirstTimes(patterns);
 
@@ -56,7 +56,7 @@ public sealed class UsbStorageHistoryScanner
             DateTime? last = null;
             foreach (var e in ev)
             {
-                if (!Matches(e, serial, patterns[i])) continue;
+                if (patterns[i] is not { } rx || !Matches(e, serial, rx)) continue;   // empty serial: never matches
                 var t = e.TimeCreated;   // IEventLogReader contract: already local
                 if (last is null || t > last) last = t;
             }
@@ -76,17 +76,17 @@ public sealed class UsbStorageHistoryScanner
             && inst.StartsWith("USBSTOR\\", StringComparison.OrdinalIgnoreCase) && path.IsMatch(inst + "\\");
     }
 
-    private DateTime?[] FirstTimes(List<Regex> patterns)
+    private DateTime?[] FirstTimes(List<Regex?> patterns)
     {
         var first = new DateTime?[patterns.Count];
         var pending = new List<int>();
         foreach (var line in _files.ReadLines(_infDir, "setupapi.dev*.log"))
         {
-            if (line.StartsWith(InstallMarker, StringComparison.Ordinal))
+            if (line.StartsWith(">>>  [", StringComparison.Ordinal))   // any new section header ends a dangling install
             {
                 pending.Clear();
-                if (line.Contains("USBSTOR", StringComparison.OrdinalIgnoreCase))
-                    for (int i = 0; i < patterns.Count; i++) if (patterns[i].IsMatch(line)) pending.Add(i);
+                if (line.StartsWith(InstallMarker, StringComparison.Ordinal) && line.Contains("USBSTOR", StringComparison.OrdinalIgnoreCase))
+                    for (int i = 0; i < patterns.Count; i++) if (patterns[i]?.IsMatch(line) == true) pending.Add(i);
             }
             else if (pending.Count > 0 && line.StartsWith(SectionMarker, StringComparison.Ordinal))
             {
