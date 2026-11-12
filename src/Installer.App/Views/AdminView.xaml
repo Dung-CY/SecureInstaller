@@ -98,9 +98,13 @@
                         </DataGrid.Columns>
                     </DataGrid>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="Thêm gói..." Command="{Binding AddPackageCommand}" Padding="16,7" Margin="0,0,8,0"/>
-                        <Button Content="Cập nhật gói..." Command="{Binding UpdatePackageCommand}" Style="{StaticResource SecondaryButton}"
-                                Padding="14,7" Margin="0,0,8,0"/>
+                        <Button Content="Thêm phần mềm" Command="{Binding NewPackageCommand}" Padding="16,7" Margin="0,0,8,0"/>
+                        <Button Content="Sửa" Command="{Binding EditPackageCommand}" Style="{StaticResource SecondaryButton}"
+                                Padding="14,7" Margin="0,0,16,0"/>
+                        <Button Content="Thêm từ thư mục" Command="{Binding AddPackageCommand}" Style="{StaticResource SecondaryButton}"
+                                Padding="14,7" Margin="0,0,8,0" ToolTip="Nâng cao: thư mục có sẵn manifest.json"/>
+                        <Button Content="Cập nhật từ thư mục" Command="{Binding UpdatePackageCommand}" Style="{StaticResource SecondaryButton}"
+                                Padding="14,7" Margin="0,0,8,0" ToolTip="Nâng cao: thư mục có sẵn manifest.json"/>
                         <CheckBox Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" VerticalAlignment="Center"
                                   Margin="0,0,16,0"/>
                         <Button Content="Xóa gói" Command="{Binding RemovePackageCommand}" Style="{StaticResource DangerOutline}"

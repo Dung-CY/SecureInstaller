@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,6 +56,8 @@ public partial class AdminViewModel : ObservableObject
     private VaultAdmin? _admin;
     private readonly Func<string, byte[]?>? _iconFromExe;
     private readonly Action<object>? _navigate;
+    private readonly Func<string?>? _pickFile;
+    private readonly Func<IReadOnlyList<string>>? _pickFiles;
 
     /// <summary>Tab order in AdminView: Gói, Bộ gói, Người dùng, Cấu hình quét, Log, Lịch sử quét.</summary>
     public const int HistoryTabIndex = 5;
@@ -62,9 +65,10 @@ public partial class AdminViewModel : ObservableObject
 
     public AdminViewModel(VaultSession session, string logsDir, string fallbackDir, Func<string?> pickFolder,
         Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack,
-        Func<string, byte[]?>? iconFromExe = null, Action<object>? navigate = null)
+        Func<string, byte[]?>? iconFromExe = null, Action<object>? navigate = null,
+        Func<string?>? pickFile = null, Func<IReadOnlyList<string>>? pickFiles = null)
     {
-        _navigate = navigate;
+        _navigate = navigate; _pickFile = pickFile; _pickFiles = pickFiles;
         if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
         _session = session; _logsDir = logsDir; _fallbackDir = fallbackDir;
         _pickFolder = pickFolder; _pickSavePath = pickSavePath; _confirm = confirm; _onBack = onBack; _iconFromExe = iconFromExe;
@@ -95,6 +99,7 @@ public partial class AdminViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(BackCommand), nameof(AddPackageCommand), nameof(UpdatePackageCommand),
+        nameof(NewPackageCommand), nameof(EditPackageCommand),
         nameof(RemovePackageCommand), nameof(AddUserCommand), nameof(RemoveUserCommand),
         nameof(ResetPasswordCommand), nameof(SaveSettingsCommand), nameof(SaveBundleCommand), nameof(RemoveBundleCommand),
         nameof(OpenScanCommand))]
@@ -141,7 +146,7 @@ public partial class AdminViewModel : ObservableObject
 
     // ---------- Packages ----------
     public List<AdminPackageRow> Packages { get; private set; } = new();
-    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(UpdatePackageCommand), nameof(RemovePackageCommand))]
+    [ObservableProperty, NotifyCanExecuteChangedFor(nameof(UpdatePackageCommand), nameof(RemovePackageCommand), nameof(EditPackageCommand))]
     private AdminPackageRow? _selectedPackage;
     [ObservableProperty] private bool _keepOld;
 
@@ -185,6 +190,52 @@ public partial class AdminViewModel : ObservableObject
         if (!_confirm($"Xóa gói {sel.Name} {sel.Version}?")) return;
         await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa gói {sel.Name} {sel.Version}");
         RefreshPackages();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMutate))]
+    private void NewPackage() => OpenEditor(null);
+
+    [RelayCommand(CanExecute = nameof(CanMutatePackage))]
+    private void EditPackage()
+    {
+        if (SelectedPackage is not { } sel) return;
+        OpenEditor(_session.Catalog.Packages.FirstOrDefault(p => p.Id == sel.Id && p.Version == sel.Version));
+    }
+
+    /// <summary>Navigates to the form; Cancel or a successful save returns to this instance on the Gói tab.</summary>
+    private void OpenEditor(PackageEntry? existing)
+    {
+        if (_navigate is null || _pickFile is null || _pickFiles is null) return;
+        Error = null; Status = null;
+        SelectedTabIndex = 0;
+        PackageEditorViewModel? editor = null;
+        editor = new PackageEditorViewModel(existing, _pickFile, _pickFiles,
+            draft => SaveDraft(draft, existing?.Id, editor!.KeepOld), () => _navigate(this));
+        _navigate(editor);
+    }
+
+    /// <summary>Builds a temporary source folder from the form and feeds it to the same VaultAdmin calls as the folder flow.
+    /// Throws on failure so the editor stays open and shows the error.</summary>
+    private async Task SaveDraft(PackageDraft draft, string? updateId, bool keepOld)
+    {
+        PackageEntry entry;
+        try
+        {
+            entry = await Task.Run(() =>
+            {
+                var dir = Path.Combine(Path.GetTempPath(), "SI_src_" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    PackageSource.Create(draft, dir);
+                    return updateId is null ? Admin.AddPackage(dir) : Admin.UpdatePackage(updateId, dir, keepOld);
+                }
+                finally { try { Directory.Delete(dir, true); } catch { } }
+            });
+        }
+        finally { RefreshPackages(); }
+        Error = null;
+        Status = updateId is null ? $"Đã thêm gói {entry.Name} {entry.Version}" : $"Đã cập nhật gói {entry.Name} {entry.Version}";
+        _navigate!(this);
     }
 
     // ---------- Bundles ----------

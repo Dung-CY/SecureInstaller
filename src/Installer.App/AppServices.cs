@@ -83,7 +83,19 @@ public sealed class AppServices
         // Back rebuilds the package list from the current catalog, which the admin may have changed.
         Main.NavigateTo(new AdminViewModel(session, Path.Combine(_root, "logs"), EncryptedLog.DefaultFallbackDir(),
             PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report),
-            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo));
+            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo, PickFile, PickFiles));
+    }
+
+    private static string? PickFile()
+    {
+        var dlg = new OpenFileDialog { Title = "Chọn file", Filter = "Tất cả các file (*.*)|*.*" };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private static IReadOnlyList<string> PickFiles()
+    {
+        var dlg = new OpenFileDialog { Title = "Chọn file", Filter = "Tất cả các file (*.*)|*.*", Multiselect = true };
+        return dlg.ShowDialog() == true ? dlg.FileNames : Array.Empty<string>();
     }
 
     private static string? PickFolder()

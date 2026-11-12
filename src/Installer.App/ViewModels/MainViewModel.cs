@@ -22,7 +22,7 @@ public partial class MainViewModel : ObservableObject
     {
         QueueInstallViewModel { IsDone: false, IsUninstall: true } => "Đang gỡ cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.",
         QueueInstallViewModel { IsDone: false } => "Đang cài đặt. Vui lòng đợi hoặc bấm Hủy trước khi thoát.",
-        AdminViewModel { IsBusy: true } => "Đang xử lý. Vui lòng đợi trước khi thoát.",
+        AdminViewModel { IsBusy: true } or PackageEditorViewModel { IsBusy: true } => "Đang xử lý. Vui lòng đợi trước khi thoát.",
         _ => null
     };
 

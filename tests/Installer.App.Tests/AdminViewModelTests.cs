@@ -555,4 +555,58 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.True(vm.RemoveUserCommand.CanExecute(null));
         Assert.True(vm.ResetPasswordCommand.CanExecute(null));
     }
+
+    [Fact]
+    public async Task Editor_add_saves_into_vault_and_returns_to_the_packages_tab()
+    {
+        var picked = Path.Combine(_tmp, "Bản cài");
+        Directory.CreateDirectory(picked);
+        var setup = Path.Combine(picked, "setup.exe");
+        File.WriteAllBytes(setup, new byte[2000]);
+        var extra = Path.Combine(picked, "config.ini");
+        File.WriteAllText(extra, "k=v");
+        object? current = null;
+        var vm = new AdminViewModel(Login(), _logs, _fallback, () => null, () => null, _ => true, () => { },
+            null, o => current = o, () => setup, () => new[] { extra });
+        vm.SelectedTabIndex = 2;
+
+        vm.NewPackageCommand.Execute(null);
+        var ed = Assert.IsType<PackageEditorViewModel>(current);
+        Assert.Equal(0, vm.SelectedTabIndex);
+        ed.PickInstallerCommand.Execute(null);
+        ed.Name = "Công cụ"; ed.Id = "congcu"; ed.Version = "2.1";
+        ed.AddExtraFilesCommand.Execute(null);
+        await ed.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(ed.Error);
+        Assert.Same(vm, current);
+        Assert.Equal("Đã thêm gói Công cụ 2.1", vm.Status);
+        var row = Assert.Single(vm.Packages);
+        Assert.Equal(("congcu", "2.1"), (row.Id, row.Version));
+
+        // Saving the same id+version again fails inside the editor, which stays open.
+        vm.NewPackageCommand.Execute(null);
+        var ed2 = Assert.IsType<PackageEditorViewModel>(current);
+        ed2.PickInstallerCommand.Execute(null);
+        ed2.Name = "Công cụ"; ed2.Id = "congcu"; ed2.Version = "2.1";
+        await ed2.SaveCommand.ExecuteAsync(null);
+        Assert.Equal("Gói congcu phiên bản 2.1 đã tồn tại", ed2.Error);
+        Assert.Same(ed2, current);
+    }
+
+    [Fact]
+    public void Edit_opens_the_editor_prefilled_and_cancel_returns()
+    {
+        var s = Login();
+        new VaultAdmin(s).AddPackage(MakePackage(_tmp, "demo", "1.0"));
+        object? current = null;
+        var vm = new AdminViewModel(s, _logs, _fallback, () => null, () => null, _ => true, () => { },
+            null, o => current = o, () => null, Array.Empty<string>);
+        vm.SelectedPackage = vm.Packages.Single();
+        vm.EditPackageCommand.Execute(null);
+        var ed = Assert.IsType<PackageEditorViewModel>(current);
+        Assert.Equal(("demo", "Demo demo", "1.0", "/S"), (ed.Id, ed.Name, ed.Version, ed.SilentArgs));
+        ed.CancelCommand.Execute(null);
+        Assert.Same(vm, current);
+    }
 }

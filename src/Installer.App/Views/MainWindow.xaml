@@ -22,6 +22,9 @@
         <DataTemplate DataType="{x:Type vm:AdminViewModel}">
             <v:AdminView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PackageEditorViewModel}">
+            <v:PackageEditorView/>
+        </DataTemplate>
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
