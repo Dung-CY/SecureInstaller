@@ -25,6 +25,17 @@ public class PackageSourceTests : IDisposable
         null, preScript, null, 120, new() { new RuleSpec("block_if_windows_cracked") }, new UninstallSpec("msi"));
 
     [Fact]
+    public void Script_type_puts_script_and_extra_files_in_scripts_folder()
+    {
+        var d = Draft(new() { Touch("data/cfg.ini", "k=v") }) with { Type = InstallerType.Script, InstallerPath = Touch("run.cmd", "@exit /b 0"), Uninstall = null };
+        var folder = PackageSource.Create(d, Path.Combine(_tmp, "out2"));
+        Assert.True(File.Exists(Path.Combine(folder, "scripts", "run.cmd")));
+        Assert.Equal("k=v", File.ReadAllText(Path.Combine(folder, "scripts", "cfg.ini")));
+        Assert.False(Directory.Exists(Path.Combine(folder, "installer")));
+        Assert.Equal("run.cmd", JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "manifest.json"))).RootElement.GetProperty("installer_file").GetString());
+    }
+
+    [Fact]
     public void Writes_a_manifest_PackageBuilder_accepts_with_extras_beside_the_installer()
     {
         var draft = Draft(new() { Touch("cấu hình/config.ini", "k=v") }, preScript: Touch("pre.ps1"));

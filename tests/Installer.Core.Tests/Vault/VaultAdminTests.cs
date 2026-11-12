@@ -40,6 +40,16 @@ public class VaultAdminTests : IDisposable
     }
 
     [Fact]
+    public void Script_name_with_cmd_metacharacters_rejected()
+    {
+        var (_, _, a) = NewVault();
+        var src = SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s3\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"exe\", \"installer_file\": \"setup.exe\", \"post_script\": \"a&b.cmd\" }");
+        Directory.CreateDirectory(Path.Combine(src, "scripts"));
+        File.WriteAllText(Path.Combine(src, "scripts", "a&b.cmd"), "@exit /b 0");
+        Assert.Contains("post_script", Assert.Throws<InvalidDataException>(() => a.AddPackage(src)).Message);
+    }
+
+    [Fact]
     public void Script_type_requires_installer_file_in_scripts_folder()
     {
         var (_, _, a) = NewVault();

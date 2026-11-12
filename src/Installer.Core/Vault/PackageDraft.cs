@@ -31,7 +31,7 @@ public static class PackageSource
             : CopyAll(new[] { d.InstallerPath }.Concat(d.ExtraFiles), Path.Combine(tempDir, "installer"))[0];
         var docs = CopyAll(d.DocFiles, Path.Combine(tempDir, "docs"));
         var scripts = CopyAll(new[] { isScript ? d.InstallerPath : null, d.PreScriptPath, d.PostScriptPath }
-            .OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase), Path.Combine(tempDir, "scripts"));
+            .Concat(isScript ? d.ExtraFiles : new()).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase), Path.Combine(tempDir, "scripts"));
         if (d.IconPath is { } icon) File.Copy(icon, Path.Combine(tempDir, "icon.png"));
         else if (d.KeepIconPngB64 is { } kept) File.WriteAllBytes(Path.Combine(tempDir, "icon.png"), Convert.FromBase64String(kept));
         var postActions = d.PostActions ?? new();

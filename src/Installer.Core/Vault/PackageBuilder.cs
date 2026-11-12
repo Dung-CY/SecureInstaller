@@ -105,6 +105,8 @@ public static class PackageBuilder
     {
         if (!Installer.Core.Install.ScriptRunner.Extensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase))
             throw new InvalidDataException($"{field} chỉ được là .ps1, .cmd hoặc .bat");
+        if (name != Path.GetFileName(name) || name.IndexOfAny("&^%!()@<>|;,=".ToCharArray()) >= 0)
+            throw new InvalidDataException($"{field}: tên file script không được chứa các ký tự & ^ % ! ( ) @ < > | ; , =");
     }
 
     const string BlobSuffix = ".pkg.enc";

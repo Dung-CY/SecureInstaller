@@ -54,8 +54,36 @@ public class ScriptRunnerTests : IDisposable
     [Fact]
     public async Task Timeout_kills_process_tree()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var r = await Run(Script("slow.cmd", "@echo off\r\nping -n 30 127.0.0.1 >nul\r\n"), timeoutSec: 1);
         Assert.Equal(InstallStatus.Timeout, r.Status);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task Background_child_holding_pipes_is_not_a_timeout()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var r = await Run(Script("bg.cmd", "@echo off\r\nstart \"\" /b ping -n 20 127.0.0.1 >nul\r\nexit 0\r\n"), timeoutSec: 60);
+        Assert.Equal(InstallStatus.Success, r.Status);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(12), $"took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task Script_with_space_and_vietnamese_name_runs_and_output_captured()
+    {
+        var r = await Run(Script("cấu hình 1.cmd", "@echo off\r\necho hello-viet\r\n"));
+        Assert.Equal(InstallStatus.Success, r.Status);
+        Assert.Contains("hello-viet", r.Detail);
+    }
+
+    [Fact]
+    public async Task Ps1_vietnamese_output_decodes_without_throwing()
+    {
+        // The OEM code page may not represent Vietnamese here, so only the no-throw/success contract is asserted unconditionally.
+        var r = await Run(Script("vn.ps1", "[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)\r\nWrite-Output 'xin chào ABC'\r\n"));
+        Assert.Equal(InstallStatus.Success, r.Status);
+        Assert.Contains("ABC", r.Detail);
     }
 
     [Fact]

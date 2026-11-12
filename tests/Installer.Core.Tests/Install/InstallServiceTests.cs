@@ -353,6 +353,23 @@ public class InstallServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Successful_hook_output_goes_to_log_detail_with_prefix()
+    {
+        var e = NewVault();
+        var dir = ScriptPkg("hk1", "pre-ok.cmd", "post-ok.cmd");
+        File.WriteAllText(Path.Combine(dir, "scripts", "pre-ok.cmd"), "@echo PRE-HELLO");
+        File.WriteAllText(Path.Combine(dir, "scripts", "post-ok.cmd"), "@echo POST-HELLO");
+        var pkg = new VaultAdmin(e.Session).AddPackage(dir);
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), new FakeRunner(), new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        var log = Assert.Single(ReadLogs(e));
+        Assert.Equal("Success", log.Status);
+        Assert.Contains("pre_script: PRE-HELLO", log.Detail);
+        Assert.Contains("post_script: POST-HELLO", log.Detail);
+    }
+
+    [Fact]
     public async Task Post_script_failure_keeps_success_with_warning()
     {
         var e = NewVault();

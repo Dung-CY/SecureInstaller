@@ -148,6 +148,7 @@ public sealed class InstallService
                 setDetail(pre.Detail ?? pre.Message);
                 return new InstallOutcome(InstallStatus.Failed, pre.ExitCode, "Script trước khi cài lỗi");
             }
+            if (!string.IsNullOrWhiteSpace(pre.Detail)) setDetail("pre_script: " + pre.Detail.Trim());
         }
 
         var req = new InstallRequest(pkg.InstallerType, installerPath, pkg.SilentArgs, pkg.TargetDir,
@@ -171,6 +172,7 @@ public sealed class InstallService
                     outcome = outcome with { Message = outcome.Message + " (Cấu hình sau cài lỗi)" };
                     setDetail(post.Detail ?? post.Message);
                 }
+                else if (!string.IsNullOrWhiteSpace(post.Detail)) setDetail("post_script: " + post.Detail.Trim());
             }
         }
         return outcome;

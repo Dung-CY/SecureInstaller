@@ -17,10 +17,10 @@ public sealed class ScriptRunner : IInstallerRunner
         var script = Path.GetFullPath(req.InstallerPath);
         var sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
         var ps = string.Equals(Path.GetExtension(script), ".ps1", StringComparison.OrdinalIgnoreCase);
-        var enc = ps ? new UTF8Encoding(false) : OemEncoding();
+        var enc = OemEncoding();
         var psi = new ProcessStartInfo(ps ? Path.Combine(sys, "WindowsPowerShell", "v1.0", "powershell.exe") : Path.Combine(sys, "cmd.exe"))
         {
-            Arguments = ps ? $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\"" : $"/c \"{script}\"",
+            Arguments = ps ? $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\"" : $"/d /c \"\"{script}\"\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -49,10 +49,7 @@ public sealed class ScriptRunner : IInstallerRunner
 
         using (proc)
         {
-            proc.OutputDataReceived += (_, e) => Add(e.Data);
-            proc.ErrorDataReceived += (_, e) => Add(e.Data);
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
+            var readers = Task.WhenAll(Pump(proc.StandardOutput, Add), Pump(proc.StandardError, Add));
             using var timeoutCts = new CancellationTokenSource(req.Timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
             try { await proc.WaitForExitAsync(linked.Token).ConfigureAwait(false); }
@@ -65,18 +62,24 @@ public sealed class ScriptRunner : IInstallerRunner
                     await proc.WaitForExitAsync(killWait.Token).ConfigureAwait(false);
                 }
                 catch { }
+                await Task.WhenAny(readers, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
                 var detail = Tail();
                 return timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
                     ? new InstallOutcome(InstallStatus.Timeout, null, "Quá thời gian cài đặt", detail)
                     : new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.Cancelled, detail);
             }
-            await Task.Run(() => proc.WaitForExit()).ConfigureAwait(false); // flush async output readers
+            await Task.WhenAny(readers, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false); // a background child may hold the pipes open
             var code = proc.ExitCode;
             var outText = Tail();
             return code == 0
                 ? new InstallOutcome(InstallStatus.Success, 0, "Cài đặt thành công", outText)
                 : new InstallOutcome(InstallStatus.Failed, code, $"Lỗi cài đặt (mã {code})", outText);
         }
+    }
+
+    static async Task Pump(StreamReader r, Action<string?> add)
+    {
+        try { string? l; while ((l = await r.ReadLineAsync().ConfigureAwait(false)) != null) add(l); } catch { }
     }
 
     static Encoding OemEncoding()
