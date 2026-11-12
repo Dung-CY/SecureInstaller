@@ -414,6 +414,47 @@ public class PackageListViewModelTests
     }
 
     [Fact]
+    public void Bundle_skips_newer_and_incomparable_with_notice()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected),
+            x => x.Installed = p => p.Name == "A" ? "2.0" : p.Name == "C" ? "bản thử" : null);
+        h.Vm.SelectedBundle = bundle;
+        Assert.Equal(VersionStatus.Newer, h.Vm.Rows.Single(r => r.Name == "A").Status);
+        Assert.Equal(VersionStatus.Incomparable, h.Vm.Rows.Single(r => r.Name == "C").Status);
+        Assert.Equal(0, h.Vm.SelectedCount);
+        Assert.Contains("A: đã cài trên máy", h.Vm.BundleNotices);
+        Assert.Contains("C: đã cài trên máy", h.Vm.BundleNotices);
+    }
+
+    [Fact]
+    public void After_ClearSelection_install_runs_in_display_order()
+    {
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected));
+        h.Vm.SelectedBundle = bundle; // bundle order C, A
+        h.Vm.ClearSelectionCommand.Execute(null);
+        foreach (var n in new[] { "C", "A" }) h.Vm.Rows.Single(r => r.Name == n).IsSelected = true;
+        h.Vm.InstallSelectedCommand.Execute(null);
+        Assert.Equal(new[] { "A", "C" }, h.Installs);
+    }
+
+    [Fact]
+    public async Task ClearSelection_disabled_while_queue_runs_and_back_resets_bundle()
+    {
+        var gate = new TaskCompletionSource<InstallOutcome>();
+        var h = Harness.Create(BundleCat(out var bundle), Report(LicenseVerdict.CrackSuspected), x => x.Install = (p, pr, ct) => gate.Task);
+        h.Vm.SelectedBundle = bundle;
+        h.Vm.InstallSelectedCommand.Execute(null);
+        Assert.False(h.Vm.ClearSelectionCommand.CanExecute(null));
+        gate.SetResult(Ok);
+        var q = (QueueInstallViewModel)h.Nav[0];
+        await q.Completion;
+        q.BackCommand.Execute(null);
+        Assert.True(h.Vm.ClearSelectionCommand.CanExecute(null));
+        Assert.Null(h.Vm.SelectedBundle);
+        Assert.False(h.Vm.HasBundleNotices);
+    }
+
+    [Fact]
     public void Bundle_picker_hidden_without_bundles()
     {
         var h = Harness.Create(Cat(Pkg("A", "1.0")), Report());

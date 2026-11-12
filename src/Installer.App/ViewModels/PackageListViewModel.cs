@@ -195,8 +195,7 @@ public partial class PackageListViewModel : ObservableObject
         var vm = CreateQueueVm(title, items, run, () =>
         {
             foreach (var r in Rows) { r.IsSelected = false; r.Refresh(); }
-            _bundleOrder = null;
-            SetNotices(Array.Empty<string>());
+            SelectedBundle = null; // clears bundle order and notices too
             IsInstalling = false;
             Current = null;
             _navigate(this);

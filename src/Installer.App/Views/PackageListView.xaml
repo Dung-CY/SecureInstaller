@@ -92,7 +92,7 @@
                             <ColumnDefinition Width="64"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="196"/>
-                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="190"/>
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Actions"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="2" Text="Phần mềm" Style="{StaticResource ColumnHeader}"/>
@@ -128,7 +128,7 @@
                                     <ColumnDefinition Width="64"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="196"/>
-                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="190"/>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="Actions"/>
                                 </Grid.ColumnDefinitions>
 
