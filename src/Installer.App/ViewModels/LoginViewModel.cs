@@ -24,9 +24,7 @@ public partial class LoginViewModel : ObservableObject
     private VaultStore EnsureStore()
     {
         if (_store is not null) return _store;
-        var store = _openVault();
-        VaultFingerprint = VaultStore.Fingerprint(store.Meta.SigningPublicKeyB64);
-        return _store = store;
+        return _store = _openVault();
     }
 
     private static string Describe(Exception ex) => ex switch
@@ -43,9 +41,6 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private string _password = "";
     [ObservableProperty] private string? _error;
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(LoginCommand))] private bool _isBusy;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(FingerprintText))] private string? _vaultFingerprint;
-
-    public string? FingerprintText => VaultFingerprint is null ? null : $"Mã kho: {VaultFingerprint}";
 
     private bool CanLogin() => !IsBusy;
 

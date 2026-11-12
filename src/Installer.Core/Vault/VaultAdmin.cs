@@ -139,16 +139,16 @@ public sealed class VaultAdmin
     void ValidateBundle(Bundle b)
     {
         if (string.IsNullOrEmpty(b.Id) || !BundleId.IsMatch(b.Id))
-            throw new InvalidDataException("Mã bộ gói không hợp lệ");
-        if (string.IsNullOrWhiteSpace(b.Name)) throw new InvalidDataException("Tên bộ gói trống");
-        if (b.Items is null || b.Items.Count == 0) throw new InvalidDataException("Bộ gói không có gói nào");
+            throw new InvalidDataException("Mã bộ cài đặt không hợp lệ");
+        if (string.IsNullOrWhiteSpace(b.Name)) throw new InvalidDataException("Tên bộ cài đặt trống");
+        if (b.Items is null || b.Items.Count == 0) throw new InvalidDataException("Bộ cài đặt không có phần mềm nào");
         var seen = new HashSet<(string, string?)>();
         foreach (var it in b.Items)
             if (!seen.Add((it.PackageId.ToLowerInvariant(), it.Version?.ToLowerInvariant())))
-                throw new InvalidDataException($"Bộ gói có gói bị lặp: {it.PackageId}");
+                throw new InvalidDataException($"Bộ cài đặt có phần mềm bị lặp: {it.PackageId}");
         foreach (var (item, pkg) in BundleResolver.Resolve(_s.Catalog, b))
             if (pkg is null)
-                throw new InvalidDataException($"Bộ gói tham chiếu gói không có trong kho: {item.PackageId}");
+                throw new InvalidDataException($"Bộ cài đặt tham chiếu phần mềm không có trong kho: {item.PackageId}");
     }
 
     List<Bundle> Bundles => _s.Catalog.Bundles ?? new();
@@ -158,7 +158,7 @@ public sealed class VaultAdmin
     public Bundle AddBundle(Bundle b)
     {
         ValidateBundle(b);
-        if (Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Bộ gói đã tồn tại");
+        if (Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Bộ cài đặt đã tồn tại");
         Commit(_s.Catalog.Packages, bundles: Bundles.Append(b).ToList());
         return b;
     }
@@ -166,14 +166,14 @@ public sealed class VaultAdmin
     public Bundle UpdateBundle(Bundle b)
     {
         ValidateBundle(b);
-        if (!Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Không tìm thấy bộ gói");
+        if (!Bundles.Any(x => Same(x.Id, b.Id))) throw new Errors.UserMessageException("Không tìm thấy bộ cài đặt");
         Commit(_s.Catalog.Packages, bundles: Bundles.Select(x => Same(x.Id, b.Id) ? b : x).ToList());
         return b;
     }
 
     public void RemoveBundle(string id)
     {
-        if (!Bundles.Any(x => Same(x.Id, id))) throw new Errors.UserMessageException("Không tìm thấy bộ gói");
+        if (!Bundles.Any(x => Same(x.Id, id))) throw new Errors.UserMessageException("Không tìm thấy bộ cài đặt");
         Commit(_s.Catalog.Packages, bundles: Bundles.Where(x => !Same(x.Id, id)).ToList());
     }
 }

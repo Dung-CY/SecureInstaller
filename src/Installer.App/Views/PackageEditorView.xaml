@@ -137,7 +137,7 @@
                                         <Setter Property="Text" Value="{Binding InstallerPath, Converter={StaticResource FileNamePart}, ConverterParameter=dir}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding InstallerPath}" Value="{x:Null}">
-                                                <Setter Property="Text" Value="File .msi, .exe hoặc .zip. Tên, phiên bản và mã sản phẩm được điền sẵn nếu đọc được."/>
+                                                <Setter Property="Text" Value="File .msi, .exe hoặc .zip. Tên và phiên bản được điền sẵn nếu đọc được."/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -182,7 +182,7 @@
                     <!-- Left: what goes into the catalog -->
                     <Border Grid.Column="0" Style="{StaticResource FormCard}" VerticalAlignment="Top">
                         <StackPanel>
-                            <TextBlock Text="Thông tin gói" Style="{StaticResource CardHeading}"/>
+                            <TextBlock Text="Thông tin phần mềm" Style="{StaticResource CardHeading}"/>
                             <StackPanel Style="{StaticResource Field}">
                                 <TextBlock Text="Tên phần mềm" Style="{StaticResource Label}"/>
                                 <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
@@ -195,9 +195,9 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Style="{StaticResource Field}">
-                                    <TextBlock Text="Mã gói" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="Mã phần mềm" Style="{StaticResource Label}"/>
                                     <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                             IsReadOnly="{Binding IsEdit}" AutomationProperties.Name="Mã gói"/>
+                                             IsReadOnly="{Binding IsEdit}" AutomationProperties.Name="Mã phần mềm"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Style="{StaticResource Field}">
                                     <TextBlock Text="Phiên bản" Style="{StaticResource Label}"/>
@@ -217,7 +217,7 @@
                                             <Setter Property="Text" Value="Ví dụ: /S hoặc /quiet /norestart, tùy bộ cài."/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsMsi}" Value="True">
-                                                    <Setter Property="Text" Value="Chỉ thuộc tính dạng TÊN=giá_trị; app tự cài ngầm gói MSI."/>
+                                                    <Setter Property="Text" Value="Chỉ thuộc tính dạng TÊN=giá_trị; app tự cài ngầm phần mềm MSI."/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

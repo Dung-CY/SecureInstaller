@@ -60,7 +60,7 @@ public class QueueInstallViewModelTests
             pr.Report(new InstallProgress(40, "Đang gỡ bỏ"));
             return gate.Task;
         }, runningText: "Đang gỡ");
-        Assert.Equal("Gói 2/2", vm.Header);
+        Assert.Equal("Phần mềm 2/2", vm.Header);
         Assert.Equal("Thành công", vm.Items[0].Status);
         Assert.Equal("Đang gỡ", vm.Items[1].Status);
         Assert.Equal(40, vm.Percent);
@@ -181,7 +181,7 @@ public class QueueInstallViewModelTests
         var gate = new TaskCompletionSource<InstallOutcome>();
         var vm = Make(new[] { Pkg("A"), Pkg("B") }, (p, pr, ct) => gate.Task);
         Assert.True(vm.IsIndeterminate);
-        Assert.Equal("Gói 1/2", vm.Header);
+        Assert.Equal("Phần mềm 1/2", vm.Header);
         Assert.Equal(new[] { "Đang cài", "Đang chờ" }, vm.Items.Select(i => i.Status));
         gate.SetResult(Out(InstallStatus.Success));
     }

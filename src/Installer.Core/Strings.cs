@@ -14,7 +14,7 @@ public static class Strings
     public const string Unexpected = "Đã xảy ra lỗi không mong muốn.";
     public const string ReadOnlyNotice = "Kho chỉ đọc — nhật ký được lưu tạm trên máy này";
     public const string VaultInfo = "Kho phiên bản {0} · cập nhật {1:dd/MM/yyyy}";
-    public const string NoUninstall = "Gói này không hỗ trợ gỡ tự động";
+    public const string NoUninstall = "Phần mềm này không hỗ trợ gỡ tự động";
     public const string Uninstalled = "Đã gỡ cài đặt";
     public const string UninstallTimeout = "Quá thời gian gỡ cài đặt";
     public const string UninstallIncomplete = "Gỡ chưa hoàn tất";

@@ -17,9 +17,6 @@
                            Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
 
                 <Button Content="Đăng nhập" Command="{Binding LoginCommand}" IsDefault="True"/>
-
-                <TextBlock Text="{Binding FingerprintText}" Style="{StaticResource Muted}" Margin="0,20,0,0"
-                           HorizontalAlignment="Center" FontFamily="Consolas"/>
             </StackPanel>
         </Border>
     </Grid>

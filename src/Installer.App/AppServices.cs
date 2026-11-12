@@ -102,7 +102,7 @@ public sealed class AppServices
 
     private static string? PickFolder()
     {
-        var dlg = new OpenFolderDialog { Title = "Chọn thư mục gói phần mềm" };
+        var dlg = new OpenFolderDialog { Title = "Chọn thư mục phần mềm" };
         return dlg.ShowDialog() == true ? dlg.FolderName : null;
     }
 

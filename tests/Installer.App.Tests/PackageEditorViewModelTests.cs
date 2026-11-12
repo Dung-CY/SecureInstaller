@@ -73,7 +73,7 @@ public class PackageEditorViewModelTests
 
     [Theory]
     [InlineData("", "a", "1.0", true, "Nhập tên phần mềm")]
-    [InlineData("A", "có dấu", "1.0", true, "Mã gói chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới")]
+    [InlineData("A", "có dấu", "1.0", true, "Mã phần mềm chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới")]
     [InlineData("A", "a", " ", true, "Nhập phiên bản")]
     [InlineData("A", "a", "1.0", false, "Chọn file cài")]
     public async Task Save_validates_and_shows_error(string name, string id, string version, bool installer, string error)

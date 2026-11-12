@@ -74,7 +74,7 @@
                                      IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
                                      Foreground="{StaticResource AccentBrush}" BorderThickness="0"
                                      Background="{StaticResource SubtleBrush}"
-                                     AutomationProperties.Name="Tiến độ gói đang chạy"/>
+                                     AutomationProperties.Name="Tiến độ phần mềm đang chạy"/>
                     </StackPanel>
 
                     <!-- Result banner once the whole queue has finished -->
@@ -103,7 +103,7 @@
                 <!-- Per-item results -->
                 <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,1">
                     <ListBox ItemsSource="{Binding Items}" Style="{StaticResource PlainList}" MaxHeight="300" Padding="24,4"
-                             AutomationProperties.Name="Kết quả từng gói">
+                             AutomationProperties.Name="Kết quả từng phần mềm">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:QueueItem}">
                                 <Grid Margin="0,4">

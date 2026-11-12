@@ -117,12 +117,12 @@ public static class Program
                         ?? throw new InvalidDataException("bundle.json trống");
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                { throw new InvalidDataException("Không đọc được tệp bộ gói: " + ex.Message); }
+                { throw new InvalidDataException("Không đọc được tệp bộ cài đặt: " + ex.Message); }
                 catch (System.Text.Json.JsonException ex) { throw new InvalidDataException("bundle.json không hợp lệ: " + ex.Message); }
                 var admin = OpenAdmin(p, pos[0]);
                 var exists = admin.HasBundle(b.Id);
                 if (exists) admin.UpdateBundle(b); else admin.AddBundle(b);
-                Console.WriteLine($"Đã lưu bộ gói {b.Name}");
+                Console.WriteLine($"Đã lưu bộ cài đặt {b.Name}");
                 return 0;
             }
             case "remove-bundle":
@@ -130,7 +130,7 @@ public static class Program
                 Need(2);
                 var admin = OpenAdmin(p, pos[0]);
                 admin.RemoveBundle(pos[1]);
-                Console.WriteLine($"Đã xóa bộ gói {pos[1]}");
+                Console.WriteLine($"Đã xóa bộ cài đặt {pos[1]}");
                 return 0;
             }
             case "add-user":

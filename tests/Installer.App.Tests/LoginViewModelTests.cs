@@ -35,7 +35,6 @@ public class LoginViewModelTests : IDisposable
         Assert.Equal("admin", got!.Username);
         Assert.Null(vm.Error);
         Assert.False(vm.IsBusy);
-        Assert.Matches("^[0-9A-F]{4}(-[0-9A-F]{4}){3}$", vm.VaultFingerprint!);
     }
 
     [Fact]
@@ -69,15 +68,11 @@ public class LoginViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Fingerprint_visible_before_login_and_after_failed_login()
+    public void Login_vm_does_not_expose_fingerprint()
     {
-        var store = NewVault();
-        var vm = Make(() => store);
-        Assert.Matches("^[0-9A-F]{4}(-[0-9A-F]{4}){3}$", vm.VaultFingerprint!);
-        Assert.StartsWith("Mã kho: ", vm.FingerprintText);
-        vm.Username = "admin"; vm.Password = "wrong";
-        await vm.LoginCommand.ExecuteAsync(null);
-        Assert.NotNull(vm.VaultFingerprint);
+        var vm = Make(() => NewVault());
+        Assert.Null(typeof(LoginViewModel).GetProperty("VaultFingerprint"));
+        Assert.Null(typeof(LoginViewModel).GetProperty("FingerprintText"));
     }
 
     [Fact]

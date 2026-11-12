@@ -107,7 +107,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.Equal("1.0", row.Version);
         Assert.Equal(1, row.DocCount);
         Assert.Equal(v0 + 1, s.Catalog.Version);
-        Assert.Equal("Đã thêm gói Demo demo 1.0", vm.Status);
+        Assert.Equal("Đã thêm phần mềm Demo demo 1.0", vm.Status);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         await vm.AddPackageCommand.ExecuteAsync(null);
         vm.SelectedPackage = vm.Packages.Single();
         await vm.RemovePackageCommand.ExecuteAsync(null);
-        Assert.Equal("Xóa gói Demo demo 1.0?", asked);
+        Assert.Equal("Xóa phần mềm Demo demo 1.0?", asked);
         Assert.Empty(vm.Packages);
     }
 
@@ -333,60 +333,92 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         foreach (var (id, v) in pkgs) admin.AddPackage(MakePackage(_tmp, id, v));
     }
 
+    static BundlePickRow Row(AdminViewModel vm, string id) => vm.PickRows.Single(r => r.PackageId == id);
+
     [Fact]
-    public async Task Admin_save_bundle_parses_lines_and_persists()
+    public async Task Admin_save_bundle_from_picker_persists_order_and_pins()
     {
         var s = Login();
-        AddPackages(s, ("demo", "1.0"), ("b", "1.0"), ("b", "2.0"));
+        AddPackages(s, ("demo", "1.0"), ("b", "1.0"), ("b", "2.0"), ("b", "10.0"));
         string? asked = null;
         var vm = Make(s, confirm: m => { asked = m; return true; });
         Assert.Empty(vm.Bundles);
         Assert.False(vm.RemoveBundleCommand.CanExecute(null));
+        Assert.Equal(new[] { "b", "demo" }, vm.PickRows.Select(r => r.PackageId));
+        Assert.Equal(new[] { "Bản mới nhất", "10.0", "2.0", "1.0" }, Row(vm, "b").Versions);
 
         vm.EditId = "office";
         vm.EditName = "Văn phòng";
         vm.EditDescription = "Cho kế toán";
-        vm.EditItems = "demo\r\n\r\n   \n  b@1.0  \n";
+        Row(vm, "demo").IsSelected = true;   // ticked first -> installs first
+        Row(vm, "b").IsSelected = true;
+        Row(vm, "b").SelectedVersion = "2.0";
+        Assert.Equal(new[] { "demo", "b" }, vm.PickRows.Select(r => r.PackageId));
+        Assert.Equal(new[] { 1, 2 }, vm.PickRows.Select(r => r.Order));
         await vm.SaveBundleCommand.ExecuteAsync(null);
         Assert.Null(vm.Error);
-        Assert.Equal("Đã lưu bộ gói Văn phòng", vm.Status);
+        Assert.Equal("Đã lưu bộ cài đặt Văn phòng", vm.Status);
         var row = Assert.Single(vm.Bundles);
-        Assert.Equal("office", row.Id);
         Assert.Equal(2, row.ItemCount);
 
         var saved = Assert.Single(Login().Catalog.Bundles!);
         Assert.Equal(("office", "Văn phòng", "Cho kế toán"), (saved.Id, saved.Name, saved.Description));
-        Assert.Equal(new[] { new BundleItem("demo"), new BundleItem("b", "1.0") }, saved.Items);
+        Assert.Equal(new[] { new BundleItem("demo"), new BundleItem("b", "2.0") }, saved.Items);
 
-        // Selecting a row loads it into the editor; saving the same id updates it in place.
+        // Load then save round-trips; Lên/Xuống reorder.
         vm.NewBundleCommand.Execute(null);
         Assert.Equal("", vm.EditId);
-        Assert.Equal("", vm.EditItems);
+        Assert.DoesNotContain(vm.PickRows, r => r.IsSelected);
         vm.SelectedBundle = vm.Bundles.Single();
-        Assert.Equal("office", vm.EditId);
-        Assert.Equal("Văn phòng", vm.EditName);
         Assert.Equal("Cho kế toán", vm.EditDescription);
-        Assert.Equal("demo\nb@1.0", vm.EditItems);
-        vm.EditName = "Văn phòng 2";
-        vm.EditItems = "b";
+        Assert.Equal(new[] { "demo", "b" }, vm.PickRows.Where(r => r.IsSelected).Select(r => r.PackageId));
+        Assert.Equal("2.0", Row(vm, "b").SelectedVersion);
         await vm.SaveBundleCommand.ExecuteAsync(null);
-        Assert.Null(vm.Error);
+        Assert.Equal(saved.Items, Login().Catalog.Bundles!.Single().Items);
+
+        vm.SelectedPickRow = Row(vm, "b");
+        Assert.False(vm.MovePickDownCommand.CanExecute(null));
+        vm.MovePickUpCommand.Execute(null);
+        vm.EditName = "Văn phòng 2";
+        await vm.SaveBundleCommand.ExecuteAsync(null);
         var updated = Assert.Single(Login().Catalog.Bundles!);
         Assert.Equal("Văn phòng 2", updated.Name);
-        Assert.Equal(new[] { new BundleItem("b") }, updated.Items);
+        Assert.Equal(new[] { new BundleItem("b", "2.0"), new BundleItem("demo") }, updated.Items);
 
         vm.SelectedBundle = vm.Bundles.Single();
         Assert.True(vm.RemoveBundleCommand.CanExecute(null));
         await vm.RemoveBundleCommand.ExecuteAsync(null);
-        Assert.Equal("Xóa bộ gói Văn phòng 2?", asked);
+        Assert.Equal("Xóa bộ cài đặt Văn phòng 2?", asked);
         Assert.Null(vm.Error);
-        Assert.Equal("Đã xóa bộ gói Văn phòng 2", vm.Status);
+        Assert.Equal("Đã xóa bộ cài đặt Văn phòng 2", vm.Status);
         Assert.Empty(vm.Bundles);
         Assert.Empty(Login().Catalog.Bundles ?? new());
     }
 
     [Fact]
-    public async Task Admin_invalid_bundle_line_shows_error()
+    public async Task Admin_bundle_latest_is_null_version_and_missing_pin_is_preserved()
+    {
+        var s = Login();
+        AddPackages(s, ("demo", "1.0"), ("demo", "0.9"));
+        var admin = new VaultAdmin(s);
+        admin.AddBundle(new Bundle("old", "Cũ", "", new List<BundleItem> { new("demo", "0.9") }));
+        admin.RemovePackage("demo", "0.9");
+        var vm = Make(s);
+        vm.SelectedBundle = vm.Bundles.Single();
+        var demo = Row(vm, "demo");
+        Assert.Equal("0.9 (không còn trong kho)", demo.SelectedVersion);
+        Assert.Contains("0.9 (không còn trong kho)", demo.Versions);
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Equal("Bộ cài đặt tham chiếu phần mềm không có trong kho: demo", vm.Error);
+        Assert.Equal(new BundleItem("demo", "0.9"), Login().Catalog.Bundles!.Single().Items![0]);
+
+        demo.SelectedVersion = BundlePickRow.Latest;
+        await vm.SaveBundleCommand.ExecuteAsync(null);
+        Assert.Null(Login().Catalog.Bundles!.Single().Items![0].Version);
+    }
+
+    [Fact]
+    public async Task Admin_bundle_validation_errors_are_shown()
     {
         var s = Login();
         AddPackages(s, ("demo", "1.0"));
@@ -394,19 +426,8 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         var vm = Make(s);
         vm.EditId = "office";
         vm.EditName = "Văn phòng";
-        foreach (var (text, line) in new[] { ("demo\n@1.0", 2), ("a@b@c", 1), ("demo@", 1), ("\n\nbad id", 3) })
-        {
-            vm.EditItems = text;
-            await vm.SaveBundleCommand.ExecuteAsync(null);
-            Assert.Equal($"Dòng {line} không hợp lệ", vm.Error);
-        }
-        // Validation inside VaultAdmin is shown through ErrorText.ForUser.
-        vm.EditItems = "ghost";
         await vm.SaveBundleCommand.ExecuteAsync(null);
-        Assert.Equal("Bộ gói tham chiếu gói không có trong kho: ghost", vm.Error);
-        vm.EditItems = "";
-        await vm.SaveBundleCommand.ExecuteAsync(null);
-        Assert.Equal("Bộ gói không có gói nào", vm.Error);
+        Assert.Equal("Bộ cài đặt không có phần mềm nào", vm.Error);
         Assert.Equal(v0, s.Catalog.Version);
         Assert.Empty(vm.Bundles);
     }
@@ -592,7 +613,7 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
 
         Assert.Null(ed.Error);
         Assert.Same(vm, current);
-        Assert.Equal("Đã thêm gói Công cụ 2.1", vm.Status);
+        Assert.Equal("Đã thêm phần mềm Công cụ 2.1", vm.Status);
         var row = Assert.Single(vm.Packages);
         Assert.Equal(("congcu", "2.1"), (row.Id, row.Version));
 

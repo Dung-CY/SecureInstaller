@@ -59,7 +59,7 @@ public class BundleTests : IDisposable
         Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k\n", "K", "", new() { new("demo") })));
         var ex = Assert.Throws<InvalidDataException>(() =>
             a.AddBundle(new Bundle("k", "K", "", new() { new("demo", "1.0"), new("DEMO", "1.0") })));
-        Assert.Equal("Bộ gói có gói bị lặp: DEMO", ex.Message);
+        Assert.Equal("Bộ cài đặt có phần mềm bị lặp: DEMO", ex.Message);
         Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k", "K", "", new() { new("demo"), new("DEMO") })));
         a.AddBundle(new Bundle("k", "K", "", new() { new("demo"), new("demo", "1.0") }));
     }
@@ -81,7 +81,7 @@ public class BundleTests : IDisposable
         var v = s.Catalog.Version;
         var ex = Assert.Throws<InvalidDataException>(() =>
             a.AddBundle(new Bundle("k", "K", "", new() { new("demo"), new("ghost") })));
-        Assert.Equal("Bộ gói tham chiếu gói không có trong kho: ghost", ex.Message);
+        Assert.Equal("Bộ cài đặt tham chiếu phần mềm không có trong kho: ghost", ex.Message);
         Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("bad id", "K", "", new() { new("demo") })));
         Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k", " ", "", new() { new("demo") })));
         Assert.Throws<InvalidDataException>(() => a.AddBundle(new Bundle("k", "K", "", new())));
@@ -96,11 +96,11 @@ public class BundleTests : IDisposable
         a.AddBundle(new Bundle("k", "K", "d", new() { new("demo") }));
         Assert.Equal(v + 1, s.Catalog.Version);
         var ex = Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.AddBundle(new Bundle("K", "K2", "", new() { new("demo") })));
-        Assert.Equal("Bộ gói đã tồn tại", ex.Message);
+        Assert.Equal("Bộ cài đặt đã tồn tại", ex.Message);
         a.UpdateBundle(new Bundle("k", "K2", "d", new() { new("demo", "1.0") }));
         Assert.Equal("K2", Assert.Single(s.Catalog.Bundles!).Name);
         Assert.Equal(v + 2, s.Catalog.Version);
-        Assert.Equal("Không tìm thấy bộ gói",
+        Assert.Equal("Không tìm thấy bộ cài đặt",
             Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.UpdateBundle(new Bundle("zz", "Z", "", new() { new("demo") }))).Message);
         a.RemoveBundle("k");
         Assert.Empty(s.Catalog.Bundles!);

@@ -172,8 +172,8 @@ public partial class PackageListViewModel : ObservableObject
             return $"Máy đang có phiên bản mới hơn ({r.InstalledVersionRaw}). Vẫn cài {r.Name} {r.PackageVersion}?";
         }
         var lines = rows.Select(r => $"• {r.Name} {r.PackageVersion} (trên máy: {r.InstalledVersionRaw})");
-        return "Máy đang có phiên bản mới hơn của các gói sau:\n" + string.Join("\n", lines) +
-               "\n\nVẫn cài các gói này? Nếu không đồng ý, các gói trên sẽ được bỏ khỏi hàng đợi.";
+        return "Máy đang có phiên bản mới hơn của các phần mềm sau:\n" + string.Join("\n", lines) +
+               "\n\nVẫn cài các phần mềm này? Nếu không đồng ý, các phần mềm trên sẽ được bỏ khỏi hàng đợi.";
     }
 
     internal void StartUninstall(PackageRowViewModel row)

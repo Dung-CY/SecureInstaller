@@ -59,7 +59,7 @@ public partial class QueueInstallViewModel : ObservableObject
         RunningText = runningText;
         _onBack = onBack;
         foreach (var p in items) Items.Add(new QueueItem(p));
-        Header = $"Gói {Math.Min(1, Items.Count)}/{Items.Count}";
+        Header = $"Phần mềm {Math.Min(1, Items.Count)}/{Items.Count}";
         Step = "Đang chuẩn bị";
         Completion = RunAsync(run, progressFactory);
     }
@@ -97,7 +97,7 @@ public partial class QueueInstallViewModel : ObservableObject
             }
 
             CurrentItem = item;
-            Header = $"Gói {i + 1}/{Items.Count}";
+            Header = $"Phần mềm {i + 1}/{Items.Count}";
             Percent = null;
             Step = "Đang chuẩn bị";
             Set(item, RunningText, "active");
@@ -147,7 +147,7 @@ public partial class QueueInstallViewModel : ObservableObject
         HasProblems = ok < Items.Count;
         Percent = 100; // never leave an indeterminate bar spinning on the result screen
         Step = _cts.IsCancellationRequested ? "Đã dừng" : "Hoàn tất";
-        Result = $"{ok}/{Items.Count} gói thành công." + (anyReboot ? "\n" + RebootLine : "");
+        Result = $"{ok}/{Items.Count} phần mềm thành công." + (anyReboot ? "\n" + RebootLine : "");
         IsDone = true;
         _cts.Dispose(); // IsCancellationRequested stays readable after Dispose; Cancel is a no-op once done
     }

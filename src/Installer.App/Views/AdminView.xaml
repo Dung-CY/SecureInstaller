@@ -80,19 +80,19 @@
 
         <TabControl Grid.Row="1" Style="{StaticResource ReportTabs}" SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
 
-            <!-- 0: Gói -->
-            <TabItem Header="Gói" Style="{StaticResource ReportTab}">
+            <!-- 0: Phần mềm -->
+            <TabItem Header="Phần mềm" Style="{StaticResource ReportTab}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <DataGrid Grid.Row="0" ItemsSource="{Binding Packages}" SelectedItem="{Binding SelectedPackage}"
-                              AutomationProperties.Name="Danh sách gói trong kho">
+                              AutomationProperties.Name="Danh sách phần mềm trong kho">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Tên" Binding="{Binding Name}" Width="1.5*"/>
                             <DataGridTextColumn Header="Phiên bản" Binding="{Binding Version}" Width="100"/>
-                            <DataGridTextColumn Header="Mã gói" Binding="{Binding Id}" Width="1*"/>
+                            <DataGridTextColumn Header="Mã phần mềm" Binding="{Binding Id}" Width="1*"/>
                             <DataGridTextColumn Header="Loại" Binding="{Binding InstallerType}" Width="80"/>
                             <DataGridTextColumn Header="Tài liệu" Binding="{Binding DocCount}" Width="80"/>
                         </DataGrid.Columns>
@@ -107,14 +107,14 @@
                                 Padding="14,7" Margin="0,0,8,0" ToolTip="Nâng cao: thư mục có sẵn manifest.json"/>
                         <CheckBox Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" VerticalAlignment="Center"
                                   Margin="0,0,16,0"/>
-                        <Button Content="Xóa gói" Command="{Binding RemovePackageCommand}" Style="{StaticResource DangerOutline}"
+                        <Button Content="Xóa phần mềm" Command="{Binding RemovePackageCommand}" Style="{StaticResource DangerOutline}"
                                 Padding="14,7"/>
                     </StackPanel>
                 </Grid>
             </TabItem>
 
-            <!-- 1: Bộ gói — list on the left, editor on the right -->
-            <TabItem Header="Bộ gói" Style="{StaticResource ReportTab}">
+            <!-- 1: Bộ cài đặt — list on the left, editor on the right -->
+            <TabItem Header="Bộ cài đặt" Style="{StaticResource ReportTab}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="260"/>
@@ -128,14 +128,14 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="False">
-                            <TextBlock DockPanel.Dock="Left" Text="Các bộ gói" Style="{StaticResource SectionHeading}"
+                            <TextBlock DockPanel.Dock="Left" Text="Các bộ cài đặt" Style="{StaticResource SectionHeading}"
                                        VerticalAlignment="Center"/>
                             <Button DockPanel.Dock="Right" Content="Bộ mới" Command="{Binding NewBundleCommand}"
                                     Style="{StaticResource SecondaryButton}"/>
                         </DockPanel>
                         <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6">
                             <Grid>
-                                <TextBlock Text="Chưa có bộ gói nào. Điền thông tin bên phải rồi bấm Lưu bộ gói."
+                                <TextBlock Text="Chưa có bộ cài đặt nào. Điền thông tin bên phải rồi bấm Lưu bộ cài đặt."
                                            Margin="14,12" FontSize="13">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
@@ -151,7 +151,7 @@
                                 <ListBox ItemsSource="{Binding Bundles}" SelectedItem="{Binding SelectedBundle}"
                                          BorderThickness="0" Background="Transparent"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                         AutomationProperties.Name="Danh sách bộ gói">
+                                         AutomationProperties.Name="Danh sách bộ cài đặt">
                                     <ListBox.ItemContainerStyle>
                                         <Style TargetType="ListBoxItem">
                                             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -198,7 +198,7 @@
                                                                ToolTip="{Binding ItemsText}"/>
                                                 </StackPanel>
                                                 <Border Grid.Column="1" Style="{StaticResource CountBadge}">
-                                                    <TextBlock Text="{Binding ItemCount, StringFormat='{}{0} gói'}" FontSize="12"
+                                                    <TextBlock Text="{Binding ItemCount, StringFormat='{}{0} phần mềm'}" FontSize="12"
                                                                Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap"
                                                                HorizontalAlignment="Center"/>
                                                 </Border>
@@ -219,29 +219,87 @@
                                     <ColumnDefinition Width="1.2*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Mã bộ gói" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Mã bộ cài đặt" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
                                     <TextBox Text="{Binding EditId, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" Height="34"
                                              VerticalContentAlignment="Center"
-                                             AutomationProperties.Name="Mã bộ gói"/>
+                                             AutomationProperties.Name="Mã bộ cài đặt"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Tên hiển thị" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
                                     <TextBox Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}" Height="34" VerticalContentAlignment="Center"
-                                             AutomationProperties.Name="Tên bộ gói"/>
+                                             AutomationProperties.Name="Tên bộ cài đặt"/>
                                 </StackPanel>
                             </Grid>
                             <TextBlock Text="Mô tả" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
                             <TextBox Text="{Binding EditDescription, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                                     AutomationProperties.Name="Mô tả bộ gói"/>
-                            <TextBlock Text="Các gói theo thứ tự cài" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,2"/>
+                                     AutomationProperties.Name="Mô tả bộ cài đặt"/>
+                            <TextBlock Text="Phần mềm trong bộ, theo thứ tự cài" Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,2"/>
                             <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                                       Text="Mỗi dòng một mã gói. Thêm @phiên bản để cố định phiên bản, ví dụ 7zip@24.08; bỏ trống để lấy bản mới nhất."/>
-                            <TextBox Text="{Binding EditItems, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="150"
-                                     FontFamily="Consolas" VerticalScrollBarVisibility="Auto" Margin="0,0,0,14"
-                                     AutomationProperties.Name="Các gói trong bộ"/>
+                                       Text="Tick phần mềm cần cài, chọn phiên bản cố định nếu cần, rồi dùng Lên/Xuống để đổi thứ tự."/>
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Height="230">
+                                    <ListBox ItemsSource="{Binding PickRows}" SelectedItem="{Binding SelectedPickRow}"
+                                             BorderThickness="0" Background="Transparent"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             AutomationProperties.Name="Phần mềm trong bộ cài đặt">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource SubtleBrush}"/>
+                                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:BundlePickRow}">
+                                                <Grid Margin="4,5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="22"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="150"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
+                                                              Margin="0,0,8,0" AutomationProperties.Name="{Binding Name}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Order}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource AccentBrush}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="False">
+                                                                        <Setter Property="Visibility" Value="Hidden"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <StackPanel Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding PackageId}" Style="{StaticResource Muted}" FontFamily="Consolas"/>
+                                                    </StackPanel>
+                                                    <ComboBox Grid.Column="3" ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}"
+                                                              VerticalAlignment="Center" AutomationProperties.Name="Phiên bản"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Top">
+                                    <Button Content="Lên" Command="{Binding MovePickUpCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,0,6"/>
+                                    <Button Content="Xuống" Command="{Binding MovePickDownCommand}" Style="{StaticResource SecondaryButton}"/>
+                                </StackPanel>
+                            </Grid>
                             <StackPanel Orientation="Horizontal">
-                                <Button Content="Lưu bộ gói" Command="{Binding SaveBundleCommand}" Padding="18,7" Margin="0,0,8,0"/>
-                                <Button Content="Xóa bộ gói" Command="{Binding RemoveBundleCommand}" Style="{StaticResource DangerOutline}"
+                                <Button Content="Lưu bộ cài đặt" Command="{Binding SaveBundleCommand}" Padding="18,7" Margin="0,0,8,0"/>
+                                <Button Content="Xóa bộ cài đặt" Command="{Binding RemoveBundleCommand}" Style="{StaticResource DangerOutline}"
                                         Padding="14,7"/>
                             </StackPanel>
                         </StackPanel>
@@ -329,7 +387,7 @@
                             <DataGridTextColumn Header="Người dùng" Binding="{Binding Username}" Width="110"/>
                             <DataGridTextColumn Header="Máy" Binding="{Binding Hostname}" Width="110"/>
                             <DataGridTextColumn Header="Hành động" Binding="{Binding Action}" Width="90"/>
-                            <DataGridTextColumn Header="Gói" Binding="{Binding PackageId}" Width="100"/>
+                            <DataGridTextColumn Header="Phần mềm" Binding="{Binding PackageId}" Width="100"/>
                             <DataGridTextColumn Header="Phiên bản" Binding="{Binding PackageVersion}" Width="80"/>
                             <DataGridTextColumn Header="Kết quả" Binding="{Binding Status}" Width="80"/>
                             <DataGridTextColumn Header="Chi tiết" Binding="{Binding Detail}" Width="1*"/>

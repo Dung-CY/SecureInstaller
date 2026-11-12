@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -9,10 +10,38 @@ using Installer.Core.Logging;
 using Installer.Core.Model;
 using Installer.Core.Scanning;
 using Installer.Core.Vault;
+using Installer.Core.Versioning;
 
 namespace Installer.App.ViewModels;
 
 public sealed record AdminPackageRow(string Name, string Version, string Id, string InstallerType, int DocCount);
+
+/// <summary>One software item in the bundle picker: ticked rows form the bundle, in the order they appear.</summary>
+public sealed partial class BundlePickRow : ObservableObject
+{
+    public const string Latest = "Bản mới nhất";
+    public const string MissingSuffix = " (không còn trong kho)";
+
+    public BundlePickRow(string packageId, string name, IEnumerable<string> versions)
+    {
+        PackageId = packageId; Name = name;
+        Versions = new[] { Latest }.Concat(versions).ToList();
+        _selectedVersion = Latest;
+    }
+
+    public string PackageId { get; }
+    public string Name { get; }
+    public List<string> Versions { get; }
+    [ObservableProperty] private bool _isSelected;
+    [ObservableProperty] private string _selectedVersion;
+    /// <summary>1-based install position when ticked, else 0.</summary>
+    [ObservableProperty] private int _order;
+    internal Action<BundlePickRow>? SelectionChanged { get; set; }
+    partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke(this);
+
+    internal BundleItem ToItem() => new(PackageId, SelectedVersion == Latest ? null
+        : SelectedVersion.EndsWith(MissingSuffix, StringComparison.Ordinal) ? SelectedVersion[..^MissingSuffix.Length] : SelectedVersion);
+}
 
 public sealed record RoleOption(UserRole Role, string Label);
 
@@ -60,7 +89,7 @@ public partial class AdminViewModel : ObservableObject
     private readonly Func<IReadOnlyList<string>>? _pickFiles;
     private readonly Func<Installer.Core.Install.TempWorkspace> _workspaceFactory;
 
-    /// <summary>Tab order in AdminView: Gói, Bộ gói, Người dùng, Cấu hình quét, Log, Lịch sử quét.</summary>
+    /// <summary>Tab order in AdminView: Phần mềm, Bộ cài đặt, Người dùng, Cấu hình quét, Log, Lịch sử quét.</summary>
     public const int HistoryTabIndex = 5;
     public const int HistoryPageSize = 200;
 
@@ -161,6 +190,7 @@ public partial class AdminViewModel : ObservableObject
             .ToList();
         SelectedPackage = null;
         OnPropertyChanged(nameof(Packages));
+        LoadPick(PickedItems());
     }
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
@@ -170,7 +200,7 @@ public partial class AdminViewModel : ObservableObject
         if (string.IsNullOrEmpty(folder)) return;
         PackageEntry? added = null;
         if (await Run(() => added = Admin.AddPackage(folder)))
-            Status = $"Đã thêm gói {added!.Name} {added.Version}";
+            Status = $"Đã thêm phần mềm {added!.Name} {added.Version}";
         RefreshPackages();
     }
 
@@ -182,7 +212,7 @@ public partial class AdminViewModel : ObservableObject
         if (string.IsNullOrEmpty(folder)) return;
         PackageEntry? updated = null;
         if (await Run(() => updated = Admin.UpdatePackage(sel.Id, folder, KeepOld)))
-            Status = $"Đã cập nhật gói {updated!.Name} {updated.Version}";
+            Status = $"Đã cập nhật phần mềm {updated!.Name} {updated.Version}";
         RefreshPackages();
     }
 
@@ -190,8 +220,8 @@ public partial class AdminViewModel : ObservableObject
     private async Task RemovePackage()
     {
         if (SelectedPackage is not { } sel) return;
-        if (!_confirm($"Xóa gói {sel.Name} {sel.Version}?")) return;
-        await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa gói {sel.Name} {sel.Version}");
+        if (!_confirm($"Xóa phần mềm {sel.Name} {sel.Version}?")) return;
+        await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa phần mềm {sel.Name} {sel.Version}");
         RefreshPackages();
     }
 
@@ -205,7 +235,7 @@ public partial class AdminViewModel : ObservableObject
         OpenEditor(_session.Catalog.Packages.FirstOrDefault(p => p.Id == sel.Id && p.Version == sel.Version));
     }
 
-    /// <summary>Navigates to the form; Cancel or a successful save returns to this instance on the Gói tab.</summary>
+    /// <summary>Navigates to the form; Cancel or a successful save returns to this instance on the Phần mềm tab.</summary>
     private void OpenEditor(PackageEntry? existing)
     {
         if (_navigate is null || _pickFile is null || _pickFiles is null) return;
@@ -234,7 +264,7 @@ public partial class AdminViewModel : ObservableObject
         }
         finally { RefreshPackages(); }
         Error = null;
-        Status = updateId is null ? $"Đã thêm gói {entry.Name} {entry.Version}" : $"Đã cập nhật gói {entry.Name} {entry.Version}";
+        Status = updateId is null ? $"Đã thêm phần mềm {entry.Name} {entry.Version}" : $"Đã cập nhật phần mềm {entry.Name} {entry.Version}";
         _navigate!(this);
     }
 
@@ -245,7 +275,8 @@ public partial class AdminViewModel : ObservableObject
     [ObservableProperty] private string _editId = "";
     [ObservableProperty] private string _editName = "";
     [ObservableProperty] private string _editDescription = "";
-    [ObservableProperty] private string _editItems = "";
+    public ObservableCollection<BundlePickRow> PickRows { get; } = new();
+    [ObservableProperty] private BundlePickRow? _selectedPickRow;
 
     internal static string FormatItem(BundleItem i) => i.Version is null ? i.PackageId : $"{i.PackageId}@{i.Version}";
 
@@ -264,48 +295,87 @@ public partial class AdminViewModel : ObservableObject
         EditId = value.Id;
         EditName = value.Name;
         EditDescription = value.Description;
-        EditItems = string.Join("\n", (value.Bundle.Items ?? new()).Select(FormatItem));
+        LoadPick(value.Bundle.Items);
     }
 
     [RelayCommand]
     private void NewBundle()
     {
         SelectedBundle = null;
-        EditId = EditName = EditDescription = EditItems = "";
+        EditId = EditName = EditDescription = "";
+        LoadPick(null);
         Error = null; Status = null;
     }
 
-    /// <summary>Parses one item per line, "id" or "id@version"; blank lines are skipped. Returns the 1-based bad line, or 0.</summary>
-    internal static int ParseItems(string text, out List<BundleItem> items)
+    private List<BundleItem> PickedItems() => PickRows.Where(r => r.IsSelected).Select(r => r.ToItem()).ToList();
+
+    /// <summary>Rebuilds one row per package id in the vault, ticking and pinning the given items (selected rows first, in order).</summary>
+    private void LoadPick(IReadOnlyList<BundleItem>? items)
     {
-        items = new();
-        var lines = SplitLines(text);
-        for (var i = 0; i < lines.Length; i++)
+        items ??= new List<BundleItem>();
+        PickRows.Clear();
+        var byId = _session.Catalog.Packages.GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.First().Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var rows = byId.Select(g => new BundlePickRow(g.Key, g.First().Name,
+            g.Select(p => p.Version).Distinct().OrderByDescending(v => v, Comparer<string>.Create(
+                (x, y) => VersionComparer.Compare(x, y) ?? string.CompareOrdinal(x, y))))).ToList();
+        var picked = new List<BundlePickRow>();
+        foreach (var it in items)
         {
-            var line = lines[i];
-            if (line.Length == 0) continue;
-            var parts = line.Split('@');
-            var id = parts[0].Trim();
-            var version = parts.Length == 2 ? parts[1].Trim() : null;
-            if (parts.Length > 2 || id.Length == 0 || id.Any(char.IsWhiteSpace) || version is { Length: 0 })
-                return i + 1;
-            items.Add(new BundleItem(id, version));
+            var row = rows.FirstOrDefault(r => string.Equals(r.PackageId, it.PackageId, StringComparison.OrdinalIgnoreCase));
+            if (row is null) { row = new BundlePickRow(it.PackageId, it.PackageId, Array.Empty<string>()); } // not in vault: keep so validation reports it
+            else rows.Remove(row);
+            if (it.Version is { } v)
+            {
+                if (!row.Versions.Contains(v)) { v += BundlePickRow.MissingSuffix; row.Versions.Add(v); }
+                row.SelectedVersion = v;
+            }
+            row.IsSelected = true;
+            picked.Add(row);
         }
-        return 0;
+        foreach (var r in picked.Concat(rows)) { r.SelectionChanged = OnPickToggled; PickRows.Add(r); }
+        Renumber();
+    }
+
+    private void Renumber() { var n = 0; foreach (var r in PickRows) r.Order = r.IsSelected ? ++n : 0; }
+
+    /// <summary>A newly ticked row joins the end of the ticked block; an unticked one drops below it.</summary>
+    private void OnPickToggled(BundlePickRow row)
+    {
+        PickRows.Remove(row);
+        PickRows.Insert(PickRows.Count(r => r.IsSelected), row);
+        Renumber();
+    }
+
+    private bool CanMovePick(int d) => CanMutate() && SelectedPickRow is { IsSelected: true } r
+        && PickRows.IndexOf(r) + d is var i && i >= 0 && i < PickRows.Count && PickRows[i].IsSelected;
+    private void MovePick(int d)
+    {
+        var r = SelectedPickRow!; var i = PickRows.IndexOf(r);
+        PickRows.Move(i, i + d); Renumber();
+        SelectedPickRow = r;
+        MovePickUpCommand.NotifyCanExecuteChanged(); MovePickDownCommand.NotifyCanExecuteChanged();
+    }
+    [RelayCommand(CanExecute = nameof(CanMovePickUp))] private void MovePickUp() => MovePick(-1);
+    [RelayCommand(CanExecute = nameof(CanMovePickDown))] private void MovePickDown() => MovePick(1);
+    private bool CanMovePickUp() => CanMovePick(-1);
+    private bool CanMovePickDown() => CanMovePick(1);
+    partial void OnSelectedPickRowChanged(BundlePickRow? value)
+    {
+        MovePickUpCommand.NotifyCanExecuteChanged(); MovePickDownCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
     private async Task SaveBundle()
     {
         Error = null; Status = null;
-        var bad = ParseItems(EditItems ?? "", out var items);
-        if (bad > 0) { Error = $"Dòng {bad} không hợp lệ"; return; }
+        var items = PickedItems();
         var bundle = new Bundle((EditId ?? "").Trim(), (EditName ?? "").Trim(), (EditDescription ?? "").Trim(), items);
         var ok = await Run(() =>
         {
             if (Admin.HasBundle(bundle.Id)) Admin.UpdateBundle(bundle);
             else Admin.AddBundle(bundle);
-        }, $"Đã lưu bộ gói {bundle.Name}");
+        }, $"Đã lưu bộ cài đặt {bundle.Name}");
         if (!ok) return;
         RefreshBundles();
         // Keep the saved bundle selected so further edits update it.
@@ -317,11 +387,12 @@ public partial class AdminViewModel : ObservableObject
     private async Task RemoveBundle()
     {
         if (SelectedBundle is not { } sel) return;
-        if (!_confirm($"Xóa bộ gói {sel.Name}?")) return;
-        if (await Run(() => Admin.RemoveBundle(sel.Id), $"Đã xóa bộ gói {sel.Name}"))
+        if (!_confirm($"Xóa bộ cài đặt {sel.Name}?")) return;
+        if (await Run(() => Admin.RemoveBundle(sel.Id), $"Đã xóa bộ cài đặt {sel.Name}"))
         {
             RefreshBundles();
-            EditId = EditName = EditDescription = EditItems = "";
+            EditId = EditName = EditDescription = "";
+            LoadPick(null);
         }
     }
 

@@ -199,7 +199,7 @@ public partial class PackageEditorViewModel : ObservableObject
     {
         draft = null;
         if (string.IsNullOrWhiteSpace(Name)) return "Nhập tên phần mềm";
-        if (!SafeId.IsMatch(Id?.Trim() ?? "")) return "Mã gói chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới";
+        if (!SafeId.IsMatch(Id?.Trim() ?? "")) return "Mã phần mềm chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới";
         if (string.IsNullOrWhiteSpace(Version)) return "Nhập phiên bản";
         if (!SafeVersion.IsMatch(Version.Trim())) return "Phiên bản chỉ được chứa chữ không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới";
         if (string.IsNullOrEmpty(InstallerPath)) return "Chọn file cài";

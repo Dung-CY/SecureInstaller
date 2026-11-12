@@ -45,7 +45,7 @@ public class ErrorTextTests
         Assert.Equal("Đã xảy ra lỗi không mong muốn.", Strings.Unexpected);
         Assert.Equal("Kho chỉ đọc — nhật ký được lưu tạm trên máy này", Strings.ReadOnlyNotice);
         Assert.Equal("Kho phiên bản {0} · cập nhật {1:dd/MM/yyyy}", Strings.VaultInfo);
-        Assert.Equal("Gói này không hỗ trợ gỡ tự động", Strings.NoUninstall);
+        Assert.Equal("Phần mềm này không hỗ trợ gỡ tự động", Strings.NoUninstall);
         Assert.Equal("Không có trong kho", Strings.NotInVault);
     }
 }
