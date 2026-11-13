@@ -22,9 +22,10 @@ if ($WithDemo -and -not $InitVault) { throw 'Tùy chọn -WithDemo cần đi kè
 
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $DemoCache) { $DemoCache = Join-Path $repo 'samples\.cache\installers' }
-$dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue
-if ($dotnetCmd) { $dotnet = $dotnetCmd.Source }
-else { $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe' }
+# A runtime-only dotnet (e.g. from installing .NET Desktop Runtime) may come first on PATH: pick one that has an SDK.
+$dotnet = @((Get-Command dotnet -All -ErrorAction SilentlyContinue).Source) + (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe') |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_) -and (& $_ --list-sdks 2>$null) } | Select-Object -First 1
+if (-not $dotnet) { $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe' }
 if (-not (Test-Path -LiteralPath $dotnet)) { throw 'Không tìm thấy dotnet. Hãy cài .NET SDK 8.' }
 
 $outFull = [System.IO.Path]::GetFullPath($Out)
