@@ -87,10 +87,6 @@ public partial class PackageRowViewModel : ObservableObject
         catch (Exception) { can = false; }
         CanUninstall = can;
         if (!Allowed && _isSelected) IsSelected = false;
-
-        _installedIconLoaded = false;
-        _installedIcon = null;
-        OnPropertyChanged(nameof(InstalledIcon));
     }
 
     /// <summary>
@@ -108,41 +104,6 @@ public partial class PackageRowViewModel : ObservableObject
         comparable.Sort((a, b) => VersionComparer.Compare(b.Version, a.Version) ?? 0);
         return string.Join(", ", comparable.Select(c => $"{c.Version} ({c.Arch})"));
     }
-
-    private bool _installedIconLoaded;
-    private byte[]? _installedIcon;
-
-    /// <summary>
-    /// Icon of the installed program from a machine-wide (HKLM) DisplayIcon; HKCU data is never loaded.
-    /// Extracted lazily on first read so only rows the list actually shows pay for it.
-    /// </summary>
-    public byte[]? InstalledIcon
-    {
-        get
-        {
-            if (_installedIconLoaded) return _installedIcon;
-            _installedIconLoaded = true;
-            var app = Matches.FirstOrDefault(a => !a.PerUser && !a.IsMarker && !string.IsNullOrWhiteSpace(a.DisplayIcon));
-            if (app is not null)
-            {
-                try
-                {
-                    var (path, index) = IconExtractor.ParseDisplayIcon(app.DisplayIcon!);
-                    if (IsSafeLocalIconPath(path)) _installedIcon = _owner.ExtractIconCached(path, index);
-                }
-                catch (Exception) { _installedIcon = null; }
-            }
-            return _installedIcon;
-        }
-    }
-
-    /// <summary>
-    /// Only absolute local paths are opened: a UNC-style (\\ or //) path would make the elevated app touch the network and
-    /// can freeze the UI, and a relative path would resolve against the app's current directory.
-    /// </summary>
-    internal static bool IsSafeLocalIconPath(string path) =>
-        path.Length > 0 && !path.StartsWith(@"\\", StringComparison.Ordinal) && !path.StartsWith("//", StringComparison.Ordinal)
-        && System.IO.Path.IsPathFullyQualified(path);
 
     internal static byte[]? DecodeIcon(string? b64)
     {

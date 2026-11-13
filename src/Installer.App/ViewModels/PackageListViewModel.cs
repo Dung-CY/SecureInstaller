@@ -24,8 +24,6 @@ public partial class PackageListViewModel : ObservableObject
     private readonly Func<string, bool> _confirm;
     private readonly Action<string> _openFile;
     private readonly Action<object> _navigate;
-    private readonly Func<string, int, byte[]?>? _extractIcon;
-    private readonly Dictionary<(string, int), byte[]?> _iconCache = new();
 
     public PackageListViewModel(Catalog catalog, ScanReport scan,
         Func<PackageEntry, IReadOnlyList<InstalledApp>> findInstalled,
@@ -34,12 +32,12 @@ public partial class PackageListViewModel : ObservableObject
         Func<string, bool> confirm, Action<string> openFile, Action<object> navigate,
         Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> uninstall,
         Func<PackageEntry, IReadOnlyList<InstalledApp>, bool> canUninstall,
-        Action? openAdmin = null, Func<string, int, byte[]?>? extractIcon = null)
+        Action? openAdmin = null)
     {
         CanOpenAdmin = openAdmin != null;
         OpenAdminCommand = new RelayCommand(() => openAdmin?.Invoke());
         _catalog = catalog; _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
-        _openFile = openFile; _navigate = navigate; _extractIcon = extractIcon;
+        _openFile = openFile; _navigate = navigate;
         var byVersionDesc = Comparer<string>.Create((a, b) => VersionComparer.Compare(b, a) ?? string.CompareOrdinal(b, a));
         var sorted = catalog.Packages
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -251,21 +249,6 @@ public partial class PackageListViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanViewScan))]
     private void ViewScan() =>
         _navigate(ScanReportViewModel.ForReport(_scan, ScanReportViewModel.DefaultTitle, () => _navigate(this)));
-
-    internal byte[]? ExtractIconCached(string path, int index)
-    {
-        if (_extractIcon is null) return null;
-        var key = (path.ToUpperInvariant(), index);
-        lock (_iconCache)
-        {
-            if (_iconCache.TryGetValue(key, out var hit)) return hit;
-        }
-        byte[]? png;
-        try { png = _extractIcon(path, index); }
-        catch (Exception) { png = null; }
-        lock (_iconCache) _iconCache[key] = png;
-        return png;
-    }
 
     internal async Task OpenDocAsync(PackageRowViewModel row, string doc)
     {

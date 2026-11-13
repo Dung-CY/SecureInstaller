@@ -76,8 +76,7 @@ public sealed class AppServices
             // `matches` is FindForPackage(pkg) for this package only (captured by the row).
             (pkg, matches, progress, ct) => uninstallService.UninstallAsync(pkg, matches, session.Username, report.Hardware, progress, ct),
             uninstallService.CanUninstall,
-            session.IsAdmin ? () => ShowAdmin(session, report) : null,
-            (path, index) => IconExtractor.ExtractPng(path, index)));
+            session.IsAdmin ? () => ShowAdmin(session, report) : null));
     }
 
     private void ShowAdmin(VaultSession session, ScanReport report)

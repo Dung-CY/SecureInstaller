@@ -48,7 +48,6 @@ public class PackageListViewModelTests
         public Func<PackageEntry, IReadOnlyList<InstalledApp>, bool> CanUninstall = (p, m) => true;
         public Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> Install = null!;
         public Func<PackageEntry, string, CancellationToken, Task<string>> Extract = (p, d, c) => Task.FromResult(@"C:\x\" + d);
-        public List<(string Path, int Index)> IconExtracts = new();
 
         public static Harness Create(Catalog cat, ScanReport scan, Action<Harness>? tweak = null)
         {
@@ -63,8 +62,7 @@ public class PackageListViewModelTests
                 path => h.Opened.Add(path),
                 vm => h.Nav.Add(vm),
                 (p, m, pr, ct) => { h.Uninstalls.Add((p.Name, m.Count)); return Task.FromResult(new InstallOutcome(InstallStatus.Success, 0, "Đã gỡ cài đặt")); },
-                (p, m) => h.CanUninstall(p, m),
-                extractIcon: (path, idx) => { h.IconExtracts.Add((path, idx)); return new byte[] { 1, 2, 3 }; });
+                (p, m) => h.CanUninstall(p, m));
             h.Vm.CreateQueueVm = (t, items, run, back, running) =>
                 new QueueInstallViewModel(t, items, run, back, a => new QueueInstallViewModelTests.SyncProgress(a), running);
             return h;
@@ -293,33 +291,6 @@ public class PackageListViewModelTests
     }
 
     [Fact]
-    public void Installed_icon_uses_first_machine_wide_display_icon_and_is_cached()
-    {
-        var apps = new List<InstalledApp>
-        {
-            new("A", "1.0", "u", true, true, DisplayIcon: @"C:\user\evil.exe"),
-            new("A", "1.0", "n", true, false),
-            new("A", "1.0", "k", true, false, DisplayIcon: "\"C:\\Program Files\\A\\a.exe\",2"),
-        };
-        var h = Harness.Create(Cat(Pkg("A", "1.0"), Pkg("A", "2.0")), Report(), x => x.InstalledApps = _ => apps);
-        Assert.Empty(h.IconExtracts); // lazy: nothing extracted during construction
-        Assert.Equal(new byte[] { 1, 2, 3 }, h.Vm.Rows[0].InstalledIcon);
-        Assert.Equal(new byte[] { 1, 2, 3 }, h.Vm.Rows[1].InstalledIcon);
-        Assert.Equal(new[] { (@"C:\Program Files\A\a.exe", 2) }, h.IconExtracts);
-    }
-
-    [Fact]
-    public void Installed_icon_null_when_only_per_user_icon()
-    {
-        var h = Harness.Create(Cat(Pkg("A", "1.0")), Report(), x => x.InstalledApps = _ => new List<InstalledApp>
-        {
-            new("A", "1.0", "u", true, true, DisplayIcon: @"C:\user\evil.exe"),
-        });
-        Assert.Null(h.Vm.Rows[0].InstalledIcon);
-        Assert.Empty(h.IconExtracts);
-    }
-
-    [Fact]
     public async Task OpenDoc_calls_openFile_with_extracted_path()
     {
         var p = Pkg("Foo", "1.0", docs: new[] { "guide.pdf" });
@@ -450,6 +421,8 @@ public class PackageListViewModelTests
         Assert.Null(card.Items[0].SkipReason);
         Assert.Equal("Không có trong kho", card.Items[2].SkipReason);
         Assert.Equal("đã cài trên máy", card.Items[3].SkipReason);
+        Assert.Equal("4 phần mềm · 1 sẽ được cài · Bộ cho phòng kế toán", card.SummaryText);
+        Assert.Equal("1.0", card.Items[0].Version);
         Assert.True(card.InstallCommand.CanExecute(null));
         card.InstallCommand.Execute(null);
         Assert.Equal(new[] { "C" }, h.Installs);
@@ -510,22 +483,6 @@ public class PackageListViewModelTests
         Assert.False(h.Vm.HasBundles);
         Assert.Empty(h.Vm.Bundles);
         Assert.False(h.Vm.HasBundleNotices);
-    }
-
-    [Fact]
-    public void Installed_icon_skips_relative_and_network_paths()
-    {
-        var h = Harness.Create(Cat(Pkg("A", "1.0"), Pkg("B", "1.0"), Pkg("C", "1.0")), Report(), x => x.InstalledApps = p => new List<InstalledApp>
-        {
-            new(p.Name, "1.0", "k", true, false, DisplayIcon: p.Name switch
-            {
-                "A" => @"\\server\share\a.exe,0",
-                "B" => "//server/share/b.exe",
-                _ => @"relative\c.exe",
-            }),
-        });
-        Assert.All(h.Vm.Rows, r => Assert.Null(r.InstalledIcon));
-        Assert.Empty(h.IconExtracts);
     }
 
     [Fact]
