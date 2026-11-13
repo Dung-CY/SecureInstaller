@@ -157,9 +157,12 @@ try {
 }
 finally { $plain = $null }
 
-$sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
-Write-Host ('Dung lượng: {0:N0} MB' -f $sizeMb)
-if (-not $WithDemo -and $sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
+# The 120 MB budget is for the program only; the vault grows with whatever software is added.
+$sizeMb = [math]::Round(((Get-ChildItem -LiteralPath $appDir -Recurse -File |
+    Where-Object { -not $_.FullName.StartsWith($vaultDir + '\', [StringComparison]::OrdinalIgnoreCase) } |
+    Measure-Object Length -Sum).Sum) / 1MB)
+Write-Host ('Dung lượng chương trình (không tính kho): {0:N0} MB' -f $sizeMb)
+if ($sizeMb -gt 120) { throw ('Bản build vượt 120 MB ({0} MB)' -f $sizeMb) }
 
 Write-Host ''
 Write-Host "Hoàn tất. Thư mục portable: $appDir"
