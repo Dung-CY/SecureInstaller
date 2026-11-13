@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. Plan 1 (core + portable) is merged to `main` (2026-11-11). Plan 1.1 (UX, uninstall, bundles, automatic installer detection; Tasks 1–27 plus user feedback rounds) is on branch `feat/plan-1.1`, pending final review and merge. Plan 1 decision log: `docs/superpowers/backlog-plan-1.1.md`.
+SecureInstaller — a Windows desktop app that scans a machine and silently installs approved software from an encrypted repository. Plan 1 (core + portable) is merged to `main` (2026-11-11). Plan 1.1 (UX, uninstall, bundles, automatic installer detection; Tasks 1–27 plus user feedback rounds) is merged to `main` (2026-11-13). Next: Plan 2 (LAN server). Plan 1 decision log: `docs/superpowers/backlog-plan-1.1.md`.
 
 - Spec (source of truth, Vietnamese): `docs/spec.md`, plus Plan 1.1 additions in `docs/spec-1.1.md`
 - Plan 1 — Core + Portable mode, 20 tasks: `docs/superpowers/plans/2026-11-10-secureinstaller-portable.md`
