@@ -472,6 +472,15 @@
         </Setter>
     </Style>
 
+    <!-- Square tile with an icon above a short label (main-screen shortcuts) -->
+    <Style x:Key="TileButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="Width" Value="96"/>
+        <Setter Property="Height" Value="72"/>
+        <Setter Property="Padding" Value="6"/>
+        <Setter Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentPillBrush}"/>
+    </Style>
+
     <!-- Compact primary button for table rows -->
     <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="FontSize" Value="13"/>

@@ -265,7 +265,16 @@
                     <ListBox Grid.Row="2" ItemsSource="{Binding KeywordFiles}" Style="{StaticResource PlainList}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Mở thư mục" Style="{StaticResource SecondaryButton}"
+                                            Margin="12,0,0,0" Click="OpenKeywordFolder_Click" Tag="{Binding}"
+                                            ToolTip="Mở thư mục chứa file trong File Explorer"/>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

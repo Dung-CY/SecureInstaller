@@ -16,20 +16,48 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                <TextBlock Text="Phần mềm được phép cài" Style="{StaticResource Title}" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis"/>
-                <TextBlock Text="Tick các phần mềm cần cài rồi bấm nút cài, hoặc cài từng phần mềm ở cuối dòng." Style="{StaticResource Muted}"
-                           Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="44" Height="44" CornerRadius="10" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#2F7BE8" Offset="0"/>
+                                <GradientStop Color="#1A4FA0" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock FontSize="28" FontWeight="Bold" TextWrapping="NoWrap">
+                            <Run Text="Secure" Foreground="{StaticResource TextBrush}"/><Run Text="Installer" Foreground="{StaticResource AccentBrush}"/>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Muted}" TextWrapping="NoWrap">
+                            <Run Text="Phát triển bởi"/> <Run Text="DungCY" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
                 <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,6,0,0"
                            Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                <Button Content="Xem lại báo cáo quét" Command="{Binding ViewScanCommand}" Style="{StaticResource SecondaryButton}"
-                        Padding="14,8" Margin="0,0,8,0"/>
-                <Button Content="Quản trị" Command="{Binding OpenAdminCommand}" Style="{StaticResource SecondaryButton}"
-                        Padding="14,8"
-                        Visibility="{Binding CanOpenAdmin, Converter={StaticResource BoolToVisibility}}"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding ViewScanCommand}" Style="{StaticResource TileButton}" Margin="0,0,10,0"
+                        AutomationProperties.Name="Xem lại báo cáo quét">
+                    <StackPanel>
+                        <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="22" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="Báo cáo quét" FontSize="12" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding OpenAdminCommand}" Style="{StaticResource TileButton}"
+                        AutomationProperties.Name="Quản trị"
+                        Visibility="{Binding CanOpenAdmin, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="22" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="Quản trị" FontSize="12" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
 
