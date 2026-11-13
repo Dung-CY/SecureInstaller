@@ -146,4 +146,23 @@ public class PackageCryptoTests
             File.Delete(tmp);
         }
     }
+
+    [Fact]
+    public void Decrypt_observes_cancellation_between_chunks()
+    {
+        var key = Key();
+        var plain = new byte[3 * 1024 * 1024];
+        using var enc = new MemoryStream();
+        PackageCrypto.Encrypt(new MemoryStream(plain), enc, key);
+        enc.Position = 0;
+        using var cts = new CancellationTokenSource();
+        var outp = new CancelAfterFirstWrite(cts);
+        Assert.ThrowsAny<OperationCanceledException>(() => PackageCrypto.Decrypt(enc, outp, key, cts.Token));
+        Assert.True(outp.Length < plain.Length);
+    }
+
+    private sealed class CancelAfterFirstWrite(CancellationTokenSource cts) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count) { base.Write(buffer, offset, count); cts.Cancel(); }
+    }
 }

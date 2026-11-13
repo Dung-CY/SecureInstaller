@@ -90,4 +90,61 @@ public class ZipInstallerTests : IDisposable
         var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", null, TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
         Assert.Equal("Thiếu thư mục đích", o.Message);
     }
+
+    [Fact]
+    public async Task Zip_target_under_junction_fails_with_UnsafePath()
+    {
+        var z = MakeZip("a.txt");
+        var real = Path.Combine(_root, "real"); Directory.CreateDirectory(real);
+        var link = Path.Combine(_root, "link");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", Path.Combine(link, "t"), TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
+            Assert.Equal(InstallStatus.Failed, o.Status);
+            Assert.Equal(Installer.Core.Strings.UnsafePath, o.Message);
+            Assert.False(Directory.Exists(Path.Combine(real, "t")));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
+
+    [Fact]
+    public async Task Zip_failure_removes_files_it_created_but_not_preexisting()
+    {
+        var target = Path.Combine(_root, "t");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "cu.txt"), "old");
+        File.WriteAllText(Path.Combine(target, "b.txt"), "old-b");
+        var z = MakeZip("a.txt", "thu muc/c.txt", "b.txt", "d.txt");
+        var prog = new FailOnReport(3);   // fails after the third entry was written
+        var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", target, TimeSpan.FromMinutes(1)), prog, CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal(new[] { "b.txt", "cu.txt" }, Directory.GetFileSystemEntries(target).Select(Path.GetFileName).OrderBy(x => x));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(target, "cu.txt")));
+    }
+
+    private sealed class FailOnReport(int n) : IProgress<InstallProgress>
+    {
+        int _i;
+        public void Report(InstallProgress v) { if (++_i == n) throw new IOException("disk full"); }
+    }
+
+    [Fact]
+    public async Task Zip_refuses_to_write_through_a_junction_under_the_target()
+    {
+        var target = Path.Combine(_root, "t");
+        var outside = Path.Combine(_root, "ngoai");
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(outside);
+        var link = Path.Combine(target, "bin");
+        Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, outside);
+        try
+        {
+            var z = MakeZip("bin/evil.dll");
+            var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", target, TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
+            Assert.Equal(InstallStatus.Failed, o.Status);
+            Assert.Empty(Directory.GetFileSystemEntries(outside));
+        }
+        finally { try { Directory.Delete(link, false); } catch { } }
+    }
 }

@@ -172,6 +172,7 @@ public sealed class VaultStore
             throw new VaultTamperedException(Strings.VaultTampered);
         }
         if (catalog is null) throw new VaultTamperedException(Strings.VaultTampered);
+        VerifyBlobs(catalog);
 
         byte[]? signingKey = null;
         if (user.WrappedSigningKeyB64 is { } w)
@@ -192,6 +193,30 @@ public sealed class VaultStore
         }
 
         return new VaultSession(user.Username, signingKey != null, vk, signingKey, catalog, this);
+    }
+
+    internal static bool IsSafeFileName(string? name) =>
+        !string.IsNullOrEmpty(name) && name == Path.GetFileName(name) && name is not ("." or "..");
+
+    internal void VerifyBlobs(Catalog catalog)
+    {
+        var dir = Path.Combine(VaultDir, "packages");
+        foreach (var p in catalog.Packages)
+        {
+            if (!IsSafeFileName(p.BlobFile)) throw new VaultTamperedException(Strings.VaultTampered);
+            long len;
+            try
+            {
+                var fi = new FileInfo(Path.Combine(dir, p.BlobFile));
+                if (!fi.Exists) throw new VaultTamperedException(Strings.VaultTampered);
+                len = fi.Length;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                throw new VaultTamperedException(Strings.VaultTampered);
+            }
+            if (p.BlobSize > 0 && p.BlobSize != len) throw new VaultTamperedException(Strings.VaultTampered);
+        }
     }
 
     void Replace(UserEntry updated)

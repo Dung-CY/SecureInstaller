@@ -56,4 +56,147 @@ public class InstalledAppsScannerTests
         Assert.Empty(s.Find(new DetectRule("a", null)));
         Assert.Null(Assert.Single(s.Find(new DetectRule(null, "Foo"))).DisplayVersion);
     }
+
+    [Fact]
+    public void FindForPackage_includes_marker_entry()
+    {
+        var reg = new FakeRegistry();
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("zip1", "2.0", DateTimeOffset.UtcNow);
+        var pkg = new PackageEntry("zip1", "Zip App", "2.0", InstallerType.Zip, "a.zip", "", null, 60,
+            new DetectRule(null, "^NoSuch$"), new(), new(), new(), "b", "s", "k");
+        var r = new InstalledAppsScanner(reg, marker).FindForPackage(pkg);
+        var a = Assert.Single(r);
+        Assert.True(a.IsMarker);
+        Assert.Equal("marker:zip1", a.KeyName);
+        Assert.Equal("2.0", a.DisplayVersion);
+        Assert.Empty(new InstalledAppsScanner(reg).FindForPackage(pkg));
+    }
+
+    [Fact]
+    public void Uninstall_fields_are_read_as_strings_and_dword_ignored()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\App", new()
+        {
+            ["DisplayName"] = "App", ["UninstallString"] = "u.exe /x", ["QuietUninstallString"] = 5,
+            ["DisplayIcon"] = "i.ico",
+        });
+        var a = Assert.Single(new InstalledAppsScanner(reg).Find(new DetectRule(null, "App")));
+        Assert.Equal("u.exe /x", a.UninstallString);
+        Assert.Null(a.QuietUninstallString);
+        Assert.Equal("i.ico", a.DisplayIcon);
+        Assert.False(a.IsMarker);
+    }
+
+    [Fact]
+    public void Marker_ignored_when_detect_rule_matches()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\App", V("App", "5.0"));
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("p1", "1.0", DateTimeOffset.UtcNow);
+        var pkg = new PackageEntry("p1", "App", "5.0", InstallerType.Zip, "a.zip", "", null, 60,
+            new DetectRule(null, "^App$"), new(), new(), new(), "b", "s", "k");
+        var a = Assert.Single(new InstalledAppsScanner(reg, marker).FindForPackage(pkg));
+        Assert.False(a.IsMarker);
+        Assert.Equal("5.0", a.DisplayVersion);
+    }
+
+    [Fact]
+    public void FindForPackage_returns_marker_key_row_first_without_duplicates()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Real", V("Foo Pro", "2.0"));
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Other", V("Foo Other", "1.0"));
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("foo", "2.0", DateTimeOffset.UtcNow, "32|Real");
+        var pkg = new PackageEntry("foo", "Foo", "2.0", InstallerType.Exe, "a.exe", "", null, 60, new DetectRule(null, "^Foo"),
+            new(), new(), new(), "b", "s", "k");
+        var r = new InstalledAppsScanner(reg, marker).FindForPackage(pkg);
+        Assert.Equal(new[] { "Real", "Other" }, r.Select(a => a.KeyName));
+        Assert.All(r, a => Assert.False(a.IsMarker));
+    }
+
+    [Fact]
+    public void Snapshot_is_hklm_only_and_PickNewKey_follows_the_rules()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Old", V("Old", "1"));
+        reg.AddKey(RegistryHive.CurrentUser, RegistryView.Registry64, U + @"\User", V("User", "1"));
+        var s = new InstalledAppsScanner(reg);
+        var before = s.SnapshotMachineKeys();
+        Assert.Equal(new[] { "64|Old" }, before);
+
+        // none new: falls back to the Find(Detect) row
+        Assert.Equal("64|Old", s.PickNewKey(before, new DetectRule(null, "^Old")));
+        // one new: that key
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\A", new() { ["DisplayName"] = "Zed Helper", ["UninstallString"] = "x" });
+        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule(null, "^Foo")));
+        // several: regex match wins over the first
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\B", V("Foo App", "1"));
+        Assert.Equal("64|B", s.PickNewKey(before, new DetectRule(null, "^Foo")));
+        // several, no regex match: ambiguous, nothing recorded
+        Assert.Null(s.PickNewKey(before, new DetectRule(null, "^Nope")));
+        // several: the product code wins even without a regex
+        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule("a", null)));
+    }
+
+    static PackageEntry Pk(string id, string name, string ver, string? regex) =>
+        new(id, name, ver, InstallerType.Exe, "a.exe", "", null, 60, new DetectRule(null, regex), new(), new(), new(), "b", "s", "k");
+
+    [Fact]
+    public void Burn_bundle_install_picks_the_visible_bundle_not_the_hidden_child()
+    {
+        var reg = new FakeRegistry();
+        var s = new InstalledAppsScanner(reg);
+        var before = s.SnapshotMachineKeys();
+        const string DN = "Microsoft Windows Desktop Runtime - 8.0.11 (x64)";
+        // child MSI: hidden (SystemComponent=1), registered first
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\{5F1E0000-0000-0000-0000-000000000001}",
+            new() { ["DisplayName"] = DN, ["DisplayVersion"] = "8.0.11", ["SystemComponent"] = 1, ["UninstallString"] = "MsiExec.exe /X{5F1E0000-0000-0000-0000-000000000001}" });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\{5F1E0000-0000-0000-0000-000000000002}", new() { ["SystemComponent"] = 1 });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\{de6c0000-0000-0000-0000-000000000003}",
+            new() { ["DisplayName"] = DN, ["DisplayVersion"] = "8.0.11.34123", ["QuietUninstallString"] = "\"C:\\ProgramData\\Package Cache\\{de6c}\\runtime.exe\" /uninstall /quiet" });
+        Assert.Equal("32|{de6c0000-0000-0000-0000-000000000003}", s.PickNewKey(before, new DetectRule(null, "Desktop Runtime")));
+
+        // Find skips the hidden child, but an exact ProductCode still counts
+        var found = Assert.Single(s.Find(new DetectRule(null, "Desktop Runtime")));
+        Assert.Equal("{de6c0000-0000-0000-0000-000000000003}", found.KeyName);
+        Assert.True(Assert.Single(s.Find(new DetectRule("{5F1E0000-0000-0000-0000-000000000001}", null))).SystemComponent);
+
+        // An old marker pointing at the hidden child (demo 1.3) is ignored; the visible bundle is used instead.
+        var marker = new Installer.Core.Install.InstallMarker(reg, reg);
+        marker.Write("net", "8.0.11", DateTimeOffset.UtcNow, "64|{5F1E0000-0000-0000-0000-000000000001}");
+        var rows = new InstalledAppsScanner(reg, marker).FindForPackage(Pk("net", ".NET Desktop Runtime", "8.0.11", "Desktop Runtime"));
+        Assert.Equal("{de6c0000-0000-0000-0000-000000000003}", Assert.Single(rows).KeyName);
+    }
+
+    [Fact]
+    public void Preinstalled_app_with_a_different_display_name_is_found_by_version_and_shared_word()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Bit4id - Universal MW (x)",
+            new() { ["DisplayName"] = "Bit4id - Universal MW 1.4.10.839", ["DisplayVersion"] = "1.4.10.839", ["UninstallString"] = "\"C:\\Program Files (x86)\\Bit4id\\uninst.exe\"" });
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\Other", V("Universal Thing", "9.9"));
+        var s = new InstalledAppsScanner(reg);
+        var pkg = Pk("bit4id", "Bit4id Universal MW", "1.4.10.839", "^Bit4id Universal MW");
+        var row = Assert.Single(s.FindForPackage(pkg));
+        Assert.Equal("Bit4id - Universal MW (x)", row.KeyName);
+        Assert.False(row.IsMarker);
+        // the name/version guess is never written to the install marker
+        Assert.Null(s.PickNewKey(s.SnapshotMachineKeys(), pkg.Detect));
+        // a different version does not match
+        Assert.Empty(s.FindForPackage(pkg with { Version = "2.0" }));
+    }
+
+    [Fact]
+    public void Fallback_needs_two_shared_words_not_just_the_vendor()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Bar", V("Microsoft Bar", "16.0.1"));
+        var s = new InstalledAppsScanner(reg);
+        Assert.Empty(s.FindForPackage(Pk("foo", "Microsoft Foo Tools", "16.0.1", "^nothing")));
+        Assert.Single(s.FindForPackage(Pk("bar", "Microsoft Bar", "16.0.1", "^nothing")));
+    }
 }

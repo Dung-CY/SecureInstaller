@@ -25,4 +25,20 @@ internal static class MsiNative
 
     [DllImport("msi.dll", CharSet = CharSet.Unicode)]
     public static extern uint MsiInstallProductW(string szPackagePath, string szCommandLine);
+
+    public const int INSTALLSTATE_ABSENT = 2;
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint MsiConfigureProductExW(string szProduct, int iInstallLevel, int eInstallState, string szCommandLine);
+
+    public const uint MSIOPENPACKAGEFLAGS_IGNOREMACHINESTATE = 1;
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint MsiOpenPackageExW(string szPackagePath, uint dwOptions, out IntPtr hProduct);
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint MsiGetProductPropertyW(IntPtr hProduct, string szProperty, char[]? lpValueBuf, ref uint pcchValueBuf);
+
+    [DllImport("msi.dll")]
+    public static extern uint MsiCloseHandle(IntPtr hAny);
 }

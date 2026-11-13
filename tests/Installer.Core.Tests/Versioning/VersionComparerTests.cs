@@ -56,4 +56,11 @@ public class VersionComparerTests
         Assert.Equal(VersionStatus.Equal, VersionComparer.Check(new[] { App("1.0") }, "1.0.0").Status);
         Assert.Equal(VersionStatus.Newer, VersionComparer.Check(new[] { App("2.0") }, "1.0").Status);
     }
+
+    [Theory]
+    [InlineData("8.0.34.36622", "8.0.34", VersionStatus.Equal)]   // publisher build number
+    [InlineData("8.0.35.1", "8.0.34", VersionStatus.Newer)]
+    [InlineData("8.0.34", "8.0", VersionStatus.Newer)]            // too short to treat the rest as a build number
+    public void Build_number_suffix_counts_as_same_release(string installed, string pkg, VersionStatus expected) =>
+        Assert.Equal(expected, VersionComparer.Check(new[] { App(installed) }, pkg).Status);
 }

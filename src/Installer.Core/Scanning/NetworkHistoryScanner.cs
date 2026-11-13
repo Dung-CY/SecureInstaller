@@ -5,7 +5,7 @@ namespace Installer.Core.Scanning;
 
 public enum NetworkKind { Wireless, Wired, Vpn, Other }
 
-public record NetworkProfile(string Name, NetworkKind Kind, DateTime? FirstConnected, DateTime? LastConnected);
+public record NetworkProfile(string Name, NetworkKind Kind, DateTime? FirstConnected, DateTime? LastConnected, bool? HadInternet = null);
 
 public record NetworkHistory(List<NetworkProfile> Profiles, bool InternetNow);
 

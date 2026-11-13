@@ -14,14 +14,14 @@ public class MachineScannerTests
     }
 
     [Fact]
-    public async Task MachineScanner_reports_four_steps_in_order()
+    public async Task MachineScanner_reports_six_steps_in_order()
     {
         var wmi = new FakeWmi(); var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
         var ms = new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, new FakeProbe(true)),
             new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
         var p = new SyncProgress();
         var report = await ms.ScanAsync(Catalog.Empty(), p, CancellationToken.None);
-        Assert.Equal(new[] { "Đang quét phần cứng", "Đang đọc lịch sử mạng", "Đang kiểm tra bản quyền", "Đang tìm file theo từ khóa" }, p.Steps);
+        Assert.Equal(new[] { "Đang quét phần cứng", "Đang đọc lịch sử mạng", "Đang kiểm tra bản quyền", "Đang tìm file theo từ khóa", "Đang đọc lịch sử USB", "Đang tìm bằng chứng kết nối internet" }, p.Steps);
         Assert.True(report.Network.InternetNow);
         Assert.NotNull(report.Keywords);
     }
@@ -44,6 +44,26 @@ public class MachineScannerTests
         var wmi = new FakeWmi(); var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
         return new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, probe),
             new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
+    }
+
+    private sealed class ThrowingRegistry : Installer.Core.Platform.IRegistryReader
+    {
+        public IReadOnlyList<string> GetSubKeyNames(Microsoft.Win32.RegistryHive hive, Microsoft.Win32.RegistryView view, string path) =>
+            throw new InvalidOperationException("boom");
+        public object? GetValue(Microsoft.Win32.RegistryHive hive, Microsoft.Win32.RegistryView view, string path, string name) => null;
+    }
+
+    [Fact]
+    public async Task Usb_phase_exception_gives_empty_list_and_report_is_produced()
+    {
+        var wmi = new FakeWmi(); var reg = new FakeRegistry(); var sys = new FakeSystemInfo();
+        var usb = new UsbStorageHistoryScanner(new ThrowingRegistry(), new Installer.Core.Platform.EventLogReader(),
+            new Installer.Core.Platform.FileTextReader());
+        var ms = new MachineScanner(new HardwareScanner(wmi, sys), new NetworkHistoryScanner(reg, new FakeProbe()),
+            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner(), usb);
+        var report = await ms.ScanAsync(Catalog.Empty(), null, CancellationToken.None);
+        Assert.Empty(report.UsbHistory!);
+        Assert.NotNull(report.Windows);
     }
 
     [Fact]

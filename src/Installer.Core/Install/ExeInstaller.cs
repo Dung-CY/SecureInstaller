@@ -18,7 +18,7 @@ public sealed class ExeInstaller : IInstallerRunner
         };
         Process? proc;
         try { proc = Process.Start(psi); }
-        catch (Exception ex) { return new InstallOutcome(InstallStatus.Failed, null, ex.Message); }
+        catch (Exception ex) { return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex), ex.ToString()); }
         if (proc == null) return new InstallOutcome(InstallStatus.Failed, null, "Không khởi động được bộ cài");
 
         using (proc)
@@ -41,7 +41,7 @@ public sealed class ExeInstaller : IInstallerRunner
                 catch { }
                 return timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
                     ? new InstallOutcome(InstallStatus.Timeout, null, "Quá thời gian cài đặt")
-                    : new InstallOutcome(InstallStatus.Failed, null, "Người dùng hủy cài đặt");
+                    : new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.Cancelled);
             }
             var outcome = ExitCodeMapper.Map(proc.ExitCode);
             if (outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)

@@ -155,4 +155,55 @@ public class PostActionRunnerTests : IDisposable
         }, Extras);
         Assert.All(r, x => { Assert.False(x.Ok); Assert.Equal("Đường dẫn đích không hợp lệ", x.Error); });
     }
+
+    [Fact]
+    public void Delete_under_junction_parent_is_refused_and_target_survives()
+    {
+        var real = Path.Combine(_root, "real"); Directory.CreateDirectory(real);
+        var victim = Path.Combine(real, "v.txt"); File.WriteAllText(victim, "x");
+        var link = Path.Combine(_root, "link");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var r = PostActionRunner.Run(new[] { new PostAction("delete", null, Path.Combine(link, "v.txt")) }, Extras);
+            Assert.False(r[0].Ok);
+            Assert.Equal(Installer.Core.Strings.UnsafePath, r[0].Error);
+            Assert.True(File.Exists(victim));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
+
+    [Fact]
+    public void Copy_under_junction_parent_is_refused()
+    {
+        File.WriteAllText(Path.Combine(Extras, "a.ini"), "x");
+        var real = Path.Combine(_root, "real2"); Directory.CreateDirectory(real);
+        var link = Path.Combine(_root, "link2");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var r = PostActionRunner.Run(new[] { new PostAction("copy", "a.ini", Path.Combine(link, "a.ini")) }, Extras);
+            Assert.False(r[0].Ok);
+            Assert.Equal(Installer.Core.Strings.UnsafePath, r[0].Error);
+            Assert.False(File.Exists(Path.Combine(real, "a.ini")));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
+
+    [Fact]
+    public void Delete_of_junction_itself_removes_link_and_keeps_target_contents()
+    {
+        var real = Path.Combine(_root, "real3"); Directory.CreateDirectory(real);
+        var keep = Path.Combine(real, "k.txt"); File.WriteAllText(keep, "x");
+        var link = Path.Combine(_root, "link3");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, real);
+            var r = PostActionRunner.Run(new[] { new PostAction("delete", null, link) }, Extras);
+            Assert.True(r[0].Ok, r[0].Error);
+            Assert.False(Directory.Exists(link));
+            Assert.True(File.Exists(keep));
+        }
+        finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
+    }
 }

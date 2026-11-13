@@ -35,6 +35,29 @@ public class KeywordFileScannerTests : IDisposable
     }
 
     [Fact]
+    public void Tokens_expand_over_fake_users_root_and_drives()
+    {
+        var users = Path.Combine(_root, "Users");
+        var drive = Path.Combine(_root, "D");
+        var dirs = new[] { @"An\Desktop", @"An\OneDrive - X\Desktop", @"An\Downloads", @"Bình\Downloads",
+            @"Public\Desktop", @"Default\Desktop", @"All Users\Desktop", @"Default User\Desktop" };
+        foreach (var d in dirs)
+        {
+            Directory.CreateDirectory(Path.Combine(users, d));
+            File.WriteAllText(Path.Combine(users, d, "mat.txt"), "x");
+        }
+        Directory.CreateDirectory(drive);
+        File.WriteAllText(Path.Combine(drive, "mat.txt"), "x");
+        var sc = new KeywordFileScanner(users, () => new[] { drive });
+
+        var desk = sc.Scan(Cfg(new[] { "mat" }, new[] { "{desktop}" }), CancellationToken.None).MatchedFiles;
+        Assert.Equal(3, desk.Count);
+        Assert.DoesNotContain(desk, f => f.Contains("Default") || f.Contains("All Users"));
+        Assert.Equal(2, sc.Scan(Cfg(new[] { "mat" }, new[] { "{downloads}" }), CancellationToken.None).MatchedFiles.Count);
+        Assert.Single(sc.Scan(Cfg(new[] { "mat" }, new[] { "{data-drives}" }), CancellationToken.None).MatchedFiles);
+    }
+
+    [Fact]
     public void Missing_path_is_skipped()
     {
         File.WriteAllText(Path.Combine(_root, "mat.txt"), "x");
@@ -76,5 +99,33 @@ public class KeywordFileScannerTests : IDisposable
         File.WriteAllText(Path.Combine(_root, name), "x");
         var r = new KeywordFileScanner().Scan(Cfg(new[] { "mật".Normalize(NormalizationForm.FormC) }, new[] { _root }), CancellationToken.None);
         Assert.Single(r.MatchedFiles);
+    }
+
+    [Fact]
+    public void Keyword_scan_skips_junctions_but_enters_hidden_and_normal_dirs()
+    {
+        var outside = _root + "_ngoai";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "mat-ngoai.txt"), "x");
+        var hidden = Path.Combine(_root, "An");
+        Directory.CreateDirectory(Path.Combine(hidden, "sub"));
+        File.SetAttributes(hidden, FileAttributes.Directory | FileAttributes.Hidden);
+        File.WriteAllText(Path.Combine(hidden, "sub", "mat-an.txt"), "x");
+        var link = Path.Combine(_root, "lien-ket");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, outside);
+            Assert.True(KeywordFileScanner.ShouldSkipDir(new DirectoryInfo(link)));
+            Assert.False(KeywordFileScanner.ShouldSkipDir(new DirectoryInfo(hidden)));
+
+            var r = new KeywordFileScanner().Scan(Cfg(new[] { "mat" }, new[] { _root }), CancellationToken.None);
+
+            Assert.Equal(new[] { Path.Combine(hidden, "sub", "mat-an.txt") }, r.MatchedFiles);
+        }
+        finally
+        {
+            try { Directory.Delete(link, false); } catch { }
+            try { Directory.Delete(outside, true); } catch { }
+        }
     }
 }

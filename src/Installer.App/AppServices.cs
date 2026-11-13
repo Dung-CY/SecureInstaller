@@ -22,6 +22,7 @@ public sealed class AppServices
 
     private readonly string _root = AppContext.BaseDirectory;
     private EncryptedLog? _log;
+    private IRepositorySource? _repo;
 
     public AppServices()
     {
@@ -32,13 +33,17 @@ public sealed class AppServices
     {
         _log = new EncryptedLog(_root, session.Store.Meta.VaultId, session.VaultKey, session.Store.IsReadOnly);
         _log.SyncFallbackIntoVault();
+        _repo = new PortableRepositorySource(session, _log);
+        Main.SetVault(session.Catalog, session.Store.IsReadOnly);
 
         var wmi = new Wmi();
         var reg = new RegistryReader();
         var sys = new SystemInfo();
         var scanner = new MachineScanner(new HardwareScanner(wmi, sys),
             new NetworkHistoryScanner(reg, new ConnectivityProbe()),
-            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner());
+            new LicenseScanner(wmi, reg, sys), new KeywordFileScanner(),
+            new UsbStorageHistoryScanner(reg, new EventLogReader(), new FileTextReader()),
+            new InternetEvidenceScanner(new EventLogReader()));
 
         var vm = new ScanReportViewModel(
             async (progress, ct) =>
@@ -54,15 +59,23 @@ public sealed class AppServices
 
     private void ShowPackages(VaultSession session, ScanReport report)
     {
-        var installService = new InstallService(new PortableRepositorySource(session, _log!), new InstallerRunnerFactory());
-        var apps = new InstalledAppsScanner(new RegistryReader());
+        Main.SetVault(session.Catalog, session.Store.IsReadOnly);
+        // One marker over the real HKLM registry: InstallService writes it, the scanner reads it as a fallback,
+        // UninstallService removes it.
+        var marker = new InstallMarker(new RegistryReader(), new RegistryWriter());
+        var apps = new InstalledAppsScanner(new RegistryReader(), marker);
+        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker, scanner: apps);
+        var uninstallService = new UninstallService(_repo!, marker, _ => new ExeInstaller(), apps.KeyExists);
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
-            rule => apps.Find(rule),
+            pkg => apps.FindForPackage(pkg),
             (pkg, progress, ct) => installService.InstallAsync(pkg, session.Username, report.Hardware, progress, ct),
             (pkg, doc, ct) => installService.ExtractDocAsync(pkg, doc, ct),
             ConfirmYesNo,
             path => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }),
             Main.NavigateTo,
+            // `matches` is FindForPackage(pkg) for this package only (captured by the row).
+            (pkg, matches, progress, ct) => uninstallService.UninstallAsync(pkg, matches, session.Username, report.Hardware, progress, ct),
+            uninstallService.CanUninstall,
             session.IsAdmin ? () => ShowAdmin(session, report) : null));
     }
 
@@ -70,12 +83,25 @@ public sealed class AppServices
     {
         // Back rebuilds the package list from the current catalog, which the admin may have changed.
         Main.NavigateTo(new AdminViewModel(session, Path.Combine(_root, "logs"), EncryptedLog.DefaultFallbackDir(),
-            PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report)));
+            PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report),
+            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo, PickFile, PickFiles));
+    }
+
+    private static string? PickFile()
+    {
+        var dlg = new OpenFileDialog { Title = "Chọn file", Filter = "Tất cả các file (*.*)|*.*" };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private static IReadOnlyList<string> PickFiles()
+    {
+        var dlg = new OpenFileDialog { Title = "Chọn file", Filter = "Tất cả các file (*.*)|*.*", Multiselect = true };
+        return dlg.ShowDialog() == true ? dlg.FileNames : Array.Empty<string>();
     }
 
     private static string? PickFolder()
     {
-        var dlg = new OpenFolderDialog { Title = "Chọn thư mục gói phần mềm" };
+        var dlg = new OpenFolderDialog { Title = "Chọn thư mục phần mềm" };
         return dlg.ShowDialog() == true ? dlg.FolderName : null;
     }
 
@@ -90,8 +116,9 @@ public sealed class AppServices
 
     private void LogScan(VaultSession session, ScanReport r)
     {
-        _log?.Append(new LogEntry(DateTimeOffset.Now, session.Username, r.Hardware.Hostname, r.Hardware.BiosSerial,
+        _repo?.WriteLog(new LogEntry(DateTimeOffset.Now, session.Username, r.Hardware.Hostname, r.Hardware.BiosSerial,
             "scan", null, null, "ok", null,
-            $"Windows: {DisplayText.Of(r.Windows.Verdict)}; Office: {DisplayText.Of(r.Office.Verdict)}; File từ khóa: {r.Keywords.MatchedFiles.Count}"));
+            $"Windows: {DisplayText.Of(r.Windows.Verdict)}; Office: {DisplayText.Of(r.Office.Verdict)}; File từ khóa: {r.Keywords.MatchedFiles.Count}",
+            System.Text.Json.JsonSerializer.Serialize(r, Installer.Core.Model.Json.Options)));
     }
 }

@@ -21,6 +21,42 @@ public class VaultAdminTests : IDisposable
         return (root, s, new VaultAdmin(s));
     }
 
+    [Fact]
+    public void Script_extensions_validated_and_scripts_zipped()
+    {
+        var (_, _, a) = NewVault();
+        string Mk(string pre) => SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"exe\", \"installer_file\": \"setup.exe\", \"pre_script\": \"" + pre + "\" }");
+        var bad = Mk("evil.exe");
+        Directory.CreateDirectory(Path.Combine(bad, "scripts"));
+        File.WriteAllText(Path.Combine(bad, "scripts", "evil.exe"), "x");
+        Assert.Contains("pre_script", Assert.Throws<InvalidDataException>(() => a.AddPackage(bad)).Message);
+
+        var good = Mk("pre.cmd");
+        Directory.CreateDirectory(Path.Combine(good, "scripts"));
+        File.WriteAllText(Path.Combine(good, "scripts", "pre.cmd"), "@exit /b 0");
+        var e = a.AddPackage(good);
+        Assert.Equal("pre.cmd", e.PreScript);
+        Assert.Equal(600, e.ScriptTimeoutSec);
+    }
+
+    [Fact]
+    public void Script_name_with_cmd_metacharacters_rejected()
+    {
+        var (_, _, a) = NewVault();
+        var src = SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s3\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"exe\", \"installer_file\": \"setup.exe\", \"post_script\": \"a&b.cmd\" }");
+        Directory.CreateDirectory(Path.Combine(src, "scripts"));
+        File.WriteAllText(Path.Combine(src, "scripts", "a&b.cmd"), "@exit /b 0");
+        Assert.Contains("post_script", Assert.Throws<InvalidDataException>(() => a.AddPackage(src)).Message);
+    }
+
+    [Fact]
+    public void Script_type_requires_installer_file_in_scripts_folder()
+    {
+        var (_, _, a) = NewVault();
+        var src = SamplePackage.Create(_tmp, manifestOverride: "{ \"id\": \"s2\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"script\", \"installer_file\": \"setup.exe\" }");
+        Assert.Throws<InvalidDataException>(() => a.AddPackage(src)); // setup.exe is in installer\, not scripts\
+    }
+
     string Blob(string root, PackageEntry e) => Path.Combine(root, "vault", "packages", e.BlobFile);
 
     [Fact]
@@ -68,7 +104,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, s, a) = NewVault();
         a.AddPackage(SamplePackage.Create(_tmp));
-        Assert.Throws<InvalidOperationException>(() => a.AddPackage(SamplePackage.Create(_tmp)));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.AddPackage(SamplePackage.Create(_tmp)));
         Assert.Equal(1, s.Catalog.Version);
         Assert.Single(Directory.GetFiles(Path.Combine(root, "vault", "packages")));
     }
@@ -106,7 +142,7 @@ public class VaultAdminTests : IDisposable
         Assert.False(Directory.Exists(PackageBuilder.DocsDirFor(e, root)));
         Assert.Empty(s.Catalog.Packages);
         Assert.Equal(2, s.Catalog.Version);
-        Assert.Throws<InvalidOperationException>(() => a.RemovePackage("demo", null));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.RemovePackage("demo", null));
     }
 
     [Fact]
@@ -123,7 +159,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, _, a) = NewVault();
         a.AddUser("bob", "pw-b", UserRole.User);
-        Assert.Throws<InvalidOperationException>(() => a.AddUser("BOB", "x", UserRole.User));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.AddUser("BOB", "x", UserRole.User));
         var bob = VaultStore.Open(root).Unlock("bob", "pw-b", T0);
         Assert.False(bob.IsAdmin);
         a.SetPassword("bob", "pw-new");
@@ -151,7 +187,7 @@ public class VaultAdminTests : IDisposable
     {
         var (root, _, a) = NewVault();
         a.AddUser("bob", "pw-b", UserRole.User);
-        Assert.Throws<InvalidOperationException>(() => a.RemoveUser("admin"));
+        Assert.Throws<Installer.Core.Errors.UserMessageException>(() => a.RemoveUser("admin"));
         a.RemoveUser("bob");
         Assert.Single(VaultStore.Open(root).Meta.Users);
     }
@@ -265,5 +301,19 @@ public class VaultAdminTests : IDisposable
         var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
         Assert.Equal(1, s2.Catalog.Version);
         Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+    }
+
+    [Theory]
+    [InlineData("INSTALLDIR=\"C:\\My -x\" ALLUSERS=1", true)]
+    [InlineData("TARGET=\"D:\\Dự án /qn\"", true)]
+    [InlineData("ALLUSERS=1 /qn", false)]
+    [InlineData("-quiet", false)]
+    public void Msi_silent_args_quote_aware(string args, bool ok)
+    {
+        var (_, _, a) = NewVault();
+        var m = new { id = "m", name = "M", version = "1.0", installer_type = "msi", installer_file = "setup.exe", silent_args = args };
+        var src = SamplePackage.Create(_tmp, manifestOverride: System.Text.Json.JsonSerializer.Serialize(m));
+        if (ok) a.AddPackage(src);
+        else Assert.Throws<InvalidDataException>(() => a.AddPackage(src));
     }
 }

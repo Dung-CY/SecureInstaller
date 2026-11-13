@@ -1,0 +1,441 @@
+<UserControl x:Class="Installer.App.Views.PackageEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="Label" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+        <Style x:Key="Field" TargetType="StackPanel">
+            <Setter Property="Margin" Value="0,0,0,14"/>
+        </Style>
+        <Style x:Key="FormCard" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Setter Property="Padding" Value="20,16,20,6"/>
+        </Style>
+        <Style x:Key="CardHeading" TargetType="TextBlock" BasedOn="{StaticResource SectionHeading}">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+        <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,20,10"/>
+        </Style>
+
+        <!-- One picked file: name first (what the admin recognises), folder muted, remove on the right -->
+        <DataTemplate x:Key="FileRow">
+            <Border BorderBrush="{StaticResource SubtleBrush}" BorderThickness="0,0,0,1" Padding="0,6">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Bỏ" Style="{StaticResource SmallButton}" Margin="8,0,0,0"
+                            Command="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            AutomationProperties.Name="{Binding StringFormat=Bỏ {0}}"/>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Converter={StaticResource FileNamePart}}" FontSize="13" FontWeight="SemiBold"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding}"/>
+                        <TextBlock Text="{Binding Converter={StaticResource FileNamePart}, ConverterParameter=dir}"
+                                   Style="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- A file already stored in the package: Giữ (default) / Thay / Bỏ; the active choice is filled -->
+        <Style x:Key="ChoiceButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="MinWidth" Value="44"/>
+            <Style.Triggers><DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                <Setter Property="FontWeight" Value="Bold"/><Setter Property="Background" Value="{StaticResource AccentPillBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/></DataTrigger></Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="ExistingRow">
+            <Border BorderBrush="{StaticResource SubtleBrush}" BorderThickness="0,0,0,1" Padding="0,6">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Giữ" Command="{Binding KeepCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsKeep}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Giữ {0}}"/>
+                        <Button Content="Thay" Command="{Binding ReplaceCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsReplace}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Thay {0}}"/>
+                        <Button Content="Bỏ" Command="{Binding RemoveCommand}" Style="{StaticResource ChoiceButton}" Tag="{Binding IsRemoved}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Bỏ {0}}"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}">
+                            <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style.Triggers><DataTrigger Binding="{Binding IsRemoved}" Value="True">
+                                    <Setter Property="TextDecorations" Value="Strikethrough"/><Setter Property="Opacity" Value="0.5"/>
+                                </DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis">
+                            <Run Text="{Binding Kind, Mode=OneWay}"/><Run Text=" "/><Run Text="{Binding ReplacementName, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Optional single file (icon, scripts): name or "Chưa chọn", pick + clear -->
+        <Style x:Key="OptionalFileText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="24,18,24,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource Title}"/>
+                <TextBlock Text="Chọn file cài, kiểm tra thông tin rồi lưu vào kho. Không cần viết manifest."
+                           Style="{StaticResource Muted}" FontSize="13" Margin="0,2,0,0"/>
+                <Border Background="{StaticResource WarnBgBrush}" Padding="10,6" Margin="0,8,0,0" CornerRadius="4"
+                        HorizontalAlignment="Left" Visibility="{Binding EditHint, Converter={StaticResource NullToCollapsed}}">
+                    <TextBlock Text="{Binding EditHint}" Foreground="{StaticResource WarnBrush}" FontSize="13"/>
+                </Border>
+            </StackPanel>
+            <Button Grid.Column="1" Content="Quay lại" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryButton}"
+                    VerticalAlignment="Top" Padding="14,8"/>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,4,16" IsEnabled="{Binding IsIdle}">
+
+                <!-- The installer: the one thing the form is about, so it leads -->
+                <Grid Margin="0,0,0,16" MinHeight="84">
+                    <Rectangle RadiusX="8" RadiusY="8" Fill="{StaticResource AccentSoftBrush}" Stroke="#9DB8E0"
+                               StrokeThickness="1.5" StrokeDashArray="5 3" SnapsToDevicePixels="True"/>
+                    <DockPanel Margin="18,14">
+                        <Border DockPanel.Dock="Left" Width="56" Height="56" CornerRadius="8" Margin="0,0,16,0"
+                                Background="{StaticResource CardBrush}" BorderBrush="{StaticResource AccentPillBrush}"
+                                BorderThickness="1">
+                            <Grid>
+                                <TextBlock Text="{Binding TypeLabel}" FontSize="15" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                                <!-- Blank-page glyph until a file is chosen -->
+                                <Path Data="M 0 0 L 9 0 L 14 5 L 14 18 L 0 18 Z M 9 0 L 9 5 L 14 5" Stroke="{StaticResource AccentBrush}"
+                                      StrokeThickness="1.5" StrokeLineJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path.Style>
+                                        <Style TargetType="Path">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TypeLabel}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                            </Grid>
+                        </Border>
+                        <Button DockPanel.Dock="Right" Content="Chọn file cài…" Command="{Binding PickInstallerCommand}"
+                                VerticalAlignment="Center" Padding="16,8" Margin="16,0,0,0"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="17" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding InstallerPath}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Text" Value="{Binding InstallerFileName}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding InstallerFileName}" Value="{x:Null}">
+                                                <Setter Property="Text" Value="Chưa chọn file cài"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock FontSize="13" Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       Style="{StaticResource Muted}" Text="{Binding InstallerSubtitle}"/>
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Foreground="{StaticResource AccentBrush}" Text="{Binding KindText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding KindText}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{StaticResource WarnBrush}" Text="{Binding KindWarning}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding KindWarning}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </DockPanel>
+                </Grid>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.1*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: what goes into the catalog -->
+                    <Border Grid.Column="0" Style="{StaticResource FormCard}" VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="Thông tin phần mềm" Style="{StaticResource CardHeading}"/>
+                            <StackPanel Style="{StaticResource Field}">
+                                <TextBlock Text="Tên phần mềm" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Tên phần mềm"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Style="{StaticResource Field}">
+                                    <TextBlock Text="Mã phần mềm" Style="{StaticResource Label}"/>
+                                    <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                             IsReadOnly="{Binding IsEdit}" AutomationProperties.Name="Mã phần mềm"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Style="{StaticResource Field}">
+                                    <TextBlock Text="Phiên bản" Style="{StaticResource Label}"/>
+                                    <TextBox Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Phiên bản"/>
+                                </StackPanel>
+                            </Grid>
+                            <Expander Header="Nâng cao" IsExpanded="False" Margin="0,0,0,12">
+                                <StackPanel Margin="0,10,0,0">
+                            <StackPanel Style="{StaticResource Field}">
+                                <TextBlock Text="Tham số cài ngầm" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding SilentArgs, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                         AutomationProperties.Name="Tham số cài ngầm"/>
+                                <TextBlock>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Hint}">
+                                            <Setter Property="Text" Value="Ví dụ: /S hoặc /quiet /norestart, tùy bộ cài."/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMsi}" Value="True">
+                                                    <Setter Property="Text" Value="Chỉ thuộc tính dạng TÊN=giá_trị; app tự cài ngầm phần mềm MSI."/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Style="{StaticResource Field}">
+                                    <TextBlock Text="Thời gian chờ (giây)" Style="{StaticResource Label}" TextWrapping="NoWrap"/>
+                                    <TextBox Text="{Binding TimeoutText, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Thời gian chờ (giây)"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Style="{StaticResource Field}">
+                                    <TextBlock Text="Thư mục cài (không bắt buộc)" Style="{StaticResource Label}"/>
+                                    <TextBox Text="{Binding TargetDir, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Thư mục cài"/>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel Style="{StaticResource Field}">
+                                <TextBlock Text="Nhận biết theo tên hiển thị (biểu thức chính quy)" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding DisplayNameRegex, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                         AutomationProperties.Name="Nhận biết theo tên hiển thị"/>
+                            </StackPanel>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Right: files that travel with the installer -->
+                    <Border Grid.Column="2" Style="{StaticResource FormCard}" VerticalAlignment="Top">
+                        <StackPanel>
+                            <StackPanel Visibility="{Binding IsEdit, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,16">
+                                <TextBlock Text="File hiện có" Style="{StaticResource SectionHeading}" Margin="0,0,0,4"/>
+                                <ItemsControl ItemsSource="{Binding ExistingFiles}" ItemTemplate="{StaticResource ExistingRow}"
+                                              AutomationProperties.Name="File hiện có"/>
+                            </StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <Button DockPanel.Dock="Right" Content="Thêm file…" Command="{Binding AddExtraFilesCommand}"
+                                        Style="{StaticResource SmallButton}"/>
+                                <Button DockPanel.Dock="Right" Content="Thêm thư mục" Command="{Binding AddExtraFolderCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="0,0,6,0"/>
+                                <TextBlock Text="File đi kèm" Style="{StaticResource SectionHeading}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <TextBlock Text="Được đặt cùng thư mục với file cài trước khi chạy." Style="{StaticResource Muted}"
+                                       Margin="0,0,0,4"/>
+                            <ItemsControl ItemsSource="{Binding ExtraFiles}" ItemTemplate="{StaticResource FileRow}"
+                                          Tag="{Binding RemoveExtraFileCommand}" Margin="0,0,0,16"
+                                          AutomationProperties.Name="File đi kèm"/>
+                            <ItemsControl ItemsSource="{Binding ExtraFolders}" ItemTemplate="{StaticResource FileRow}"
+                                          Tag="{Binding RemoveExtraFolderCommand}" Margin="0,-12,0,16"
+                                          AutomationProperties.Name="Thư mục đi kèm"/>
+
+                            <DockPanel Margin="0,0,0,4">
+                                <Button DockPanel.Dock="Right" Content="Thêm tài liệu…" Command="{Binding AddDocsCommand}"
+                                        Style="{StaticResource SmallButton}"/>
+                                <TextBlock Text="Tài liệu hướng dẫn" Style="{StaticResource SectionHeading}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding DocFiles}" ItemTemplate="{StaticResource FileRow}"
+                                          Tag="{Binding RemoveDocCommand}" Margin="0,0,0,16"
+                                          AutomationProperties.Name="Tài liệu hướng dẫn"/>
+
+                            <TextBlock Text="Icon và script" Style="{StaticResource SectionHeading}" Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="Icon (PNG ≤ 24 KB)" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,8" TextWrapping="NoWrap"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding IconPath}"
+                                           Text="{Binding IconText}" Style="{StaticResource OptionalFileText}"/>
+                                <Button Grid.Row="0" Grid.Column="2" Content="Chọn…" Command="{Binding PickIconCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn icon"/>
+                                <Button Grid.Row="0" Grid.Column="3" Content="Bỏ" Command="{Binding ClearIconCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ icon"/>
+
+                                <TextBlock Grid.Row="1" Text="Script trước khi cài" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,8" TextWrapping="NoWrap"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding PreScriptPath}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource OptionalFileText}">
+                                            <Setter Property="Text" Value="{Binding PreScriptPath, Converter={StaticResource FileNamePart}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PreScriptPath}" Value="{x:Null}">
+                                                    <Setter Property="Text" Value="Không có"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Grid.Row="1" Grid.Column="2" Content="Chọn…" Command="{Binding PickPreScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn script trước khi cài"/>
+                                <Button Grid.Row="1" Grid.Column="3" Content="Bỏ" Command="{Binding ClearPreScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ script trước khi cài"/>
+
+                                <TextBlock Grid.Row="2" Text="Script sau khi cài" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,8" TextWrapping="NoWrap"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding PostScriptPath}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource OptionalFileText}">
+                                            <Setter Property="Text" Value="{Binding PostScriptPath, Converter={StaticResource FileNamePart}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PostScriptPath}" Value="{x:Null}">
+                                                    <Setter Property="Text" Value="Không có"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Grid.Row="2" Grid.Column="2" Content="Chọn…" Command="{Binding PickPostScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn script sau khi cài"/>
+                                <Button Grid.Row="2" Grid.Column="3" Content="Bỏ" Command="{Binding ClearPostScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ script sau khi cài"/>
+
+                                <TextBlock Grid.Row="3" Text="Script gỡ" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,8" TextWrapping="NoWrap"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" ToolTip="{Binding UninstallScriptPath}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource OptionalFileText}">
+                                            <Setter Property="Text" Value="{Binding UninstallScriptPath, Converter={StaticResource FileNamePart}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding UninstallScriptPath}" Value="{x:Null}">
+                                                    <Setter Property="Text" Value="Không có"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Grid.Row="3" Grid.Column="2" Content="Chọn…" Command="{Binding PickUninstallScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="8,0,0,8" AutomationProperties.Name="Chọn script gỡ"/>
+                                <Button Grid.Row="3" Grid.Column="3" Content="Bỏ" Command="{Binding ClearUninstallScriptCommand}"
+                                        Style="{StaticResource SmallButton}" Margin="6,0,0,8" AutomationProperties.Name="Bỏ script gỡ"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,14">
+                                <TextBlock Text="Thời gian chờ script (giây)" Style="{StaticResource Label}" VerticalAlignment="Center"
+                                           Margin="0,0,12,0"/>
+                                <TextBox Text="{Binding ScriptTimeoutText, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                                         AutomationProperties.Name="Thời gian chờ script (giây)"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Rules -->
+                <Border Style="{StaticResource FormCard}" Margin="0,16,0,0">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="Không cho cài khi" Style="{StaticResource CardHeading}"/>
+                            <WrapPanel>
+                                <CheckBox Content="Windows nghi bị crack" IsChecked="{Binding BlockIfWindowsCracked}"/>
+                                <CheckBox Content="Office nghi bị crack" IsChecked="{Binding BlockIfOfficeCracked}"/>
+                                <CheckBox Content="Máy đã có bản bằng hoặc mới hơn" IsChecked="{Binding BlockIfInstalledVersionGte}"/>
+                                <CheckBox Content="Tìm thấy file từ khóa" IsChecked="{Binding BlockIfKeywordFile}"/>
+                                <CheckBox Content="Máy không có internet" IsChecked="{Binding RequireInternet}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer: errors sit next to the button that caused them -->
+        <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0" Padding="0,12,0,16"
+                Margin="-24,0">
+            <DockPanel Margin="24,0">
+                <Button DockPanel.Dock="Right" Content="Lưu phần mềm" Command="{Binding SaveCommand}" Padding="18,8"/>
+                <Button DockPanel.Dock="Right" Content="Hủy" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryButton}"
+                        Padding="14,8" Margin="0,0,8,0"/>
+                <CheckBox DockPanel.Dock="Left" Content="Giữ phiên bản cũ" IsChecked="{Binding KeepOld}" Margin="0,0,16,0" IsEnabled="{Binding KeepOldEnabled}" ToolTip="{Binding KeepOldHint}"
+                          Visibility="{Binding IsEdit, Converter={StaticResource BoolToVisibility}}"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" FontSize="13"
+                               Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
+                    <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource Muted}" FontSize="13"
+                               Visibility="{Binding BusyMessage, Converter={StaticResource NullToCollapsed}}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

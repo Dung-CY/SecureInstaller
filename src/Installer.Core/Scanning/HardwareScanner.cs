@@ -10,9 +10,9 @@ public record HardwareInfo(string Hostname, string? Manufacturer, string? Model,
 
 public sealed class HardwareScanner
 {
-    private static readonly string[] PeripheralPrefixes = { @"USB\", @"HID\", @"BTHENUM\", @"SWD\PRINTENUM\" };
+    private static readonly string[] PeripheralPrefixes = { @"USB\", @"USBSTOR\", @"HID\", @"BTHENUM\", @"SWD\PRINTENUM\" };
     private static readonly HashSet<string> PeripheralClasses =
-        new(new[] { "Printer", "Camera", "Image", "Bluetooth", "Keyboard", "Mouse" }, StringComparer.OrdinalIgnoreCase);
+        new(new[] { "Printer", "Camera", "Image", "Bluetooth", "Keyboard", "Mouse", "MEDIA" }, StringComparer.OrdinalIgnoreCase);
 
     private readonly IWmi _wmi;
     private readonly ISystemInfo _sys;

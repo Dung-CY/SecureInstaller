@@ -1,0 +1,9 @@
+{
+  "id": "demo-script",
+  "name": "Script thử nghiệm",
+  "version": "1.0.0",
+  "installer_type": "script",
+  "installer_kind": "script",
+  "installer_file": "install.ps1",
+  "rules": []
+}

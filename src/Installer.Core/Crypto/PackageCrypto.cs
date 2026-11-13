@@ -70,7 +70,10 @@ public static class PackageCrypto
     /// method returns normally. If <see cref="PackageCorruptException"/> (or any exception) is thrown, the
     /// output may already hold a valid-looking prefix; the caller must discard or delete whatever was written.
     /// </remarks>
-    public static void Decrypt(Stream cipher, Stream output, byte[] key32)
+    public static void Decrypt(Stream cipher, Stream output, byte[] key32) => Decrypt(cipher, output, key32, CancellationToken.None);
+
+    /// <summary>Same as the 3-argument overload; <paramref name="cancel"/> is checked before each chunk.</summary>
+    public static void Decrypt(Stream cipher, Stream output, byte[] key32, CancellationToken cancel)
     {
         CheckKey(key32);
         try
@@ -93,6 +96,7 @@ public static class PackageCrypto
 
             while (true)
             {
+                cancel.ThrowIfCancellationRequested();
                 int got = ReadFull(cipher, lenBuf);
                 if (got != 4)
                     throw new PackageCorruptException("Package truncated: final chunk missing.");

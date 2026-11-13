@@ -3,7 +3,7 @@ using Microsoft.Win32;
 
 namespace Installer.Core.Tests.Fakes;
 
-public sealed class FakeRegistry : IRegistryReader
+public sealed class FakeRegistry : IRegistryReader, IRegistryWriter
 {
     public sealed class Key
     {
@@ -43,4 +43,23 @@ public sealed class FakeRegistry : IRegistryReader
 
     public object? GetValue(RegistryHive hive, RegistryView view, string path, string name) =>
         _keys.TryGetValue((hive, view, Norm(path)), out var k) && k.Values.TryGetValue(name, out var v) ? v : null;
+
+    public bool ThrowOnWrite { get; set; }
+
+    public void SetString(RegistryHive hive, RegistryView view, string path, string name, string value)
+    {
+        if (ThrowOnWrite) throw new UnauthorizedAccessException("fake write denied");
+        Ensure(hive, view, path).Values[name] = value;
+    }
+
+    public void DeleteKey(RegistryHive hive, RegistryView view, string path)
+    {
+        var n = Norm(path);
+        foreach (var id in _keys.Keys.Where(k => k.Item1 == hive && k.Item2 == view && (k.Item3 == n || k.Item3.StartsWith(n + "\\"))).ToList())
+            _keys.Remove(id);
+        var trimmed = path.Trim('\\');
+        var i = trimmed.LastIndexOf('\\');
+        if (i > 0 && _keys.TryGetValue((hive, view, Norm(trimmed[..i])), out var parent))
+            parent.SubKeys.RemoveAll(x => string.Equals(x, trimmed[(i + 1)..], StringComparison.OrdinalIgnoreCase));
+    }
 }

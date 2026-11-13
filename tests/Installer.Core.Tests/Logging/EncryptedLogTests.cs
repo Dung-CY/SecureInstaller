@@ -50,6 +50,21 @@ public class EncryptedLogTests : IClassFixture<LogVaultFixture>
     }
 
     [Fact]
+    public void Fallback_log_dir_created_protected()
+    {
+        var root = NewDir("root");
+        var fb = Path.Combine(Path.GetTempPath(), "SI_fb_" + Guid.NewGuid().ToString("N"), "logs");
+        try
+        {
+            var log = new EncryptedLog(root, _f.VaultId, _f.Vk, true, fb);
+            log.Append(E(1));
+            Assert.Single(EncryptedLog.ReadAll(fb, _f.VaultId, _f.Vk));
+            Assert.True(new DirectoryInfo(fb).GetAccessControl().AreAccessRulesProtected);
+        }
+        finally { try { Directory.Delete(Path.GetDirectoryName(fb)!, true); } catch { } }
+    }
+
+    [Fact]
     public void Readonly_vault_writes_to_fallback()
     {
         var root = NewDir("root"); var fb = NewDir("fb");
@@ -164,7 +179,7 @@ public class EncryptedLogTests : IClassFixture<LogVaultFixture>
         Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray());
         var text = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
         var lines = text.Split("\r\n");
-        Assert.Equal("Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Gói,Phiên bản,Trạng thái,Mã thoát,Chi tiết", lines[0]);
+        Assert.Equal("Thời gian,Người dùng,Máy,Serial BIOS,Hành động,Phần mềm,Phiên bản,Trạng thái,Mã thoát,Chi tiết", lines[0]);
         Assert.EndsWith(",-1,'=cmd", lines[1]);
         Assert.EndsWith(",0,\"a, \"\"b\"\" ư\"", lines[2]);
         Assert.Equal("", lines[3]);

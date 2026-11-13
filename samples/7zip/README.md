@@ -17,10 +17,10 @@ Các trường:
 - `id`, `version`: chỉ gồm chữ, số, `.`, `_`, `-`.
 - `installer_type`: `msi`, `exe` hoặc `zip`.
 - `installer_file`: tên tệp nằm trong `installer\`.
-- `silent_args`: tham số cài ngầm. EXE thường là `/S`. Với MSI, `silent_args` chỉ được chứa thuộc tính dạng `TÊN=giá_trị` (ví dụ `INSTALLDIR="C:\Tools\7-Zip"`); KHÔNG dùng `/qn`, `/norestart`... vì trình cài MSI đã tự chạy ngầm và các tham số này gây lỗi 1639. Để trống (`""`) nếu không cần thuộc tính nào.
+- `silent_args`: tham số cài ngầm. EXE thường là `/S`. Với MSI, `silent_args` chỉ được chứa thuộc tính dạng `TÊN=giá_trị` (ví dụ `"silent_args": "INSTALLDIR=\"C:\\Tools\\7-Zip\""` — trong JSON, `\` phải viết thành `\\` và `"` thành `\"`); KHÔNG dùng `/qn`, `/norestart`... vì trình cài MSI đã tự chạy ngầm và các tham số này gây lỗi 1639. Để trống (`""`) nếu không cần thuộc tính nào.
 - `timeout_sec`: thời gian chờ tối đa (mặc định 1800).
 - `detect.display_name_regex`: so khớp DisplayName trong Programs and Features để biết đã cài chưa. Có thể thêm `product_code`.
-- `post_actions`: ví dụ `{ "type": "copy", "src": "extras/a.ini", "dst": "C:\App\a.ini" }`.
+- `post_actions`: ví dụ `{ "type": "copy", "src": "extras/a.ini", "dst": "C:\\App\\a.ini" }`.
 - `rules`: ví dụ `{ "type": "block_if_windows_cracked" }`.
 
 Thêm vào kho:

@@ -17,6 +17,7 @@ public static class PackageBuilder
         public string? Name { get; set; }
         public string? Version { get; set; }
         public InstallerType? InstallerType { get; set; }
+        public InstallerKind? InstallerKind { get; set; }
         public string? InstallerFile { get; set; }
         public string? SilentArgs { get; set; }
         public string? TargetDir { get; set; }
@@ -25,6 +26,11 @@ public static class PackageBuilder
         public List<string>? Docs { get; set; }
         public List<PostAction>? PostActions { get; set; }
         public List<RuleSpec>? Rules { get; set; }
+        public UninstallSpec? Uninstall { get; set; }
+        public string? PreScript { get; set; }
+        public string? PostScript { get; set; }
+        public int? ScriptTimeoutSec { get; set; }
+        public string? UninstallScript { get; set; }
     }
 
     internal sealed record Manifest(PackageEntry Entry, List<string> DocNames);
@@ -47,13 +53,31 @@ public static class PackageBuilder
         if (!SafeName.IsMatch(m.Version)) throw new InvalidDataException("Trường version chứa ký tự không hợp lệ");
 
         if (m.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(m.SilentArgs) &&
-            m.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
-            throw new InvalidDataException("silent_args của gói MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
+            MsiTokens(m.SilentArgs).Any(t => t[0] is '/' or '-'))
+            throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
 
-        var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, "installer", m.InstallerFile));
-        var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, "installer")) + Path.DirectorySeparatorChar;
+        if (m.Uninstall is { } u)
+        {
+            if (u.Type is not ("msi" or "command" or "zip"))
+                throw new InvalidDataException("uninstall.type phải là msi, command hoặc zip");
+            if (u.Type == "command" && string.IsNullOrWhiteSpace(u.Command))
+                throw new InvalidDataException("uninstall.command là bắt buộc khi type là command");
+        }
+
+        var isScript = m.InstallerType == InstallerType.Script;
+        var instSub = isScript ? "scripts" : "installer";
+        var installerPath = Path.GetFullPath(Path.Combine(sourceFolder, instSub, m.InstallerFile));
+        var installerDir = Path.GetFullPath(Path.Combine(sourceFolder, instSub)) + Path.DirectorySeparatorChar;
         if (!installerPath.StartsWith(installerDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(installerPath))
-            throw new InvalidDataException($"Không tìm thấy installer_file: installer\\{m.InstallerFile}");
+            throw new InvalidDataException($"Không tìm thấy installer_file: {instSub}\\{m.InstallerFile}");
+        if (isScript) CheckScript("installer_file", m.InstallerFile);
+        foreach (var (field, name) in new[] { ("pre_script", m.PreScript), ("post_script", m.PostScript), ("uninstall_script", m.UninstallScript) })
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            CheckScript(field, name);
+            if (name != Path.GetFileName(name) || !File.Exists(Path.Combine(sourceFolder, "scripts", name)))
+                throw new InvalidDataException($"Không tìm thấy {field}: scripts\\{name}");
+        }
 
         var docsDir = Path.Combine(sourceFolder, "docs");
         List<string> docs;
@@ -73,8 +97,53 @@ public static class PackageBuilder
 
         var entry = new PackageEntry(m.Id, m.Name, m.Version, m.InstallerType.Value, m.InstallerFile,
             m.SilentArgs ?? "", m.TargetDir, m.TimeoutSec ?? 1800, m.Detect ?? new DetectRule(null, null),
-            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "");
+            docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall,
+            string.IsNullOrEmpty(m.PreScript) ? null : m.PreScript, string.IsNullOrEmpty(m.PostScript) ? null : m.PostScript,
+            m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown,
+            string.IsNullOrEmpty(m.UninstallScript) ? null : m.UninstallScript);
         return new Manifest(entry, docs);
+    }
+
+    /// <summary>Splits on whitespace outside double quotes, so INSTALLDIR="C:\My -x" stays one token.</summary>
+    internal static IEnumerable<string> MsiTokens(string args)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool quoted = false;
+        foreach (var ch in args + " ")
+        {
+            if (ch == '"') quoted = !quoted;
+            if (char.IsWhiteSpace(ch) && !quoted)
+            {
+                if (sb.Length > 0) yield return sb.ToString();
+                sb.Clear();
+            }
+            else sb.Append(ch);
+        }
+    }
+
+    static void CheckScript(string field, string name)
+    {
+        if (!Installer.Core.Install.ScriptRunner.Extensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{field} chỉ được là .ps1, .cmd hoặc .bat");
+        if (name != Path.GetFileName(name) || name.IndexOfAny("&^%!()@<>|;,=".ToCharArray()) >= 0)
+            throw new InvalidDataException($"{field}: tên file script không được chứa các ký tự & ^ % ! ( ) @ < > | ; , =");
+    }
+
+    /// <summary>Relative paths of the extra files: installer\ (scripts\ for a script package) minus the installer and hooks, plus extras\.</summary>
+    internal static List<string> ExtraNames(string root, PackageEntry e)
+    {
+        var isScript = e.InstallerType == InstallerType.Script;
+        var skip = isScript ? new[] { e.InstallerFile, e.PreScript, e.PostScript, e.UninstallScript } : new[] { e.InstallerFile };
+        IEnumerable<string> Rel(string sub)
+        {
+            var dir = Path.Combine(root, sub);
+            return !Directory.Exists(dir) ? Enumerable.Empty<string>()
+                : Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(dir, f).Replace('\\', '/'))
+                    .Where(r => !skip.Contains(r, StringComparer.OrdinalIgnoreCase));
+        }
+        return Rel(isScript ? "scripts" : "installer").Concat(Rel("extras"))
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.Ordinal).ToList();
     }
 
     const string BlobSuffix = ".pkg.enc";
@@ -86,9 +155,32 @@ public static class PackageBuilder
         return Path.Combine(vaultRoot, "vault", "docs", stem);
     }
 
-    public static PackageEntry Build(string sourceFolder, string vaultRoot)
+    const int MaxIconBytes = 24 * 1024;
+
+    static string? ResolveIcon(string sourceFolder, PackageEntry entry, Func<string, byte[]?>? iconFromExe)
+    {
+        var iconPath = Path.Combine(sourceFolder, "icon.png");
+        if (File.Exists(iconPath))
+        {
+            var bytes = File.ReadAllBytes(iconPath);
+            if (bytes.Length > MaxIconBytes || bytes.Length < 8 ||
+                !bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }))
+                throw new InvalidDataException("icon.png phải là ảnh PNG ≤ 24 KB");
+            return Convert.ToBase64String(bytes);
+        }
+        if (entry.InstallerType == InstallerType.Exe && iconFromExe is not null)
+        {
+            byte[]? png = null;
+            try { png = iconFromExe(Path.Combine(sourceFolder, "installer", entry.InstallerFile)); } catch { }
+            if (png is { Length: > 0 } && png.Length <= MaxIconBytes) return Convert.ToBase64String(png);
+        }
+        return null;
+    }
+
+    public static PackageEntry Build(string sourceFolder, string vaultRoot, Func<string, byte[]?>? iconFromExe = null)
     {
         var entry = ReadManifest(sourceFolder).Entry;
+        var iconB64 = ResolveIcon(sourceFolder, entry, iconFromExe);
         var vaultDir = Path.Combine(vaultRoot, "vault");
         var pkgDir = Path.Combine(vaultDir, "packages");
         var stem = $"{entry.Id}-{entry.Version}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
@@ -98,6 +190,7 @@ public static class PackageBuilder
         var blobPath = Path.Combine(pkgDir, blobName);
         var tmpZip = Path.Combine(Path.GetTempPath(), "SI_zip_" + Guid.NewGuid().ToString("N") + ".zip");
         var key = KeyDerivation.NewKey();
+        var docsKey = KeyDerivation.NewKey();
         var ok = false;
         var created = false;
         try
@@ -105,7 +198,7 @@ public static class PackageBuilder
             using (var zipFs = new FileStream(tmpZip, FileMode.CreateNew, FileAccess.ReadWrite))
             using (var zip = new ZipArchive(zipFs, ZipArchiveMode.Create))
             {
-                foreach (var top in new[] { "installer", "extras" })
+                foreach (var top in new[] { "installer", "extras", "scripts" })
                 {
                     var dir = Path.Combine(sourceFolder, top);
                     if (!Directory.Exists(dir)) continue;
@@ -130,15 +223,21 @@ public static class PackageBuilder
                 {
                     using var plain = File.OpenRead(Path.Combine(sourceFolder, "docs", d));
                     using var output = new FileStream(Path.Combine(docsOut, d + ".enc"), FileMode.CreateNew, FileAccess.Write);
-                    PackageCrypto.Encrypt(plain, output, key);
+                    PackageCrypto.Encrypt(plain, output, docsKey);
                 }
             }
 
             string sha;
+            long blobSize;
             using (var fs = File.OpenRead(blobPath))
+            {
+                blobSize = fs.Length;
                 sha = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+            }
             ok = true;
-            return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key) };
+            return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key),
+                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey), IconPngB64 = iconB64,
+                Extras = ExtraNames(sourceFolder, entry) };
         }
         finally
         {

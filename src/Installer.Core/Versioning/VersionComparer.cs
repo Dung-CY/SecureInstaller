@@ -30,6 +30,16 @@ public static class VersionComparer
         return 0;
     }
 
+    /// <summary>
+    /// Installers often add a build number Windows shows but the package version omits (8.0.34 vs 8.0.34.36622):
+    /// that is the same release. Only applies when the package names at least major.minor.patch.
+    /// </summary>
+    private static bool IsBuildSuffix(string installed, string package)
+    {
+        var pi = Parts(installed); var pp = Parts(package);
+        return pp.Count >= 3 && pi.Count > pp.Count && pp.Select((x, i) => CompareNum(x, pi[i]) == 0).All(b => b);
+    }
+
     public static VersionCheck Check(IReadOnlyList<InstalledApp> installed, string packageVersion)
     {
         if (installed.Count == 0)
@@ -44,7 +54,7 @@ public static class VersionComparer
         if (best is null)
             return new VersionCheck(VersionStatus.Incomparable, installed[0].DisplayVersion, packageVersion, installed);
 
-        var c = Compare(best.DisplayVersion!, packageVersion)!.Value;
+        var c = IsBuildSuffix(best.DisplayVersion!, packageVersion) ? 0 : Compare(best.DisplayVersion!, packageVersion)!.Value;
         var status = c < 0 ? VersionStatus.Older : c == 0 ? VersionStatus.Equal : VersionStatus.Newer;
         return new VersionCheck(status, best.DisplayVersion, packageVersion, installed);
     }

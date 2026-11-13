@@ -1,5 +1,4 @@
-using System.Security.AccessControl;
-using System.Security.Principal;
+using Installer.Core.Platform;
 
 namespace Installer.Core.Install;
 
@@ -11,32 +10,21 @@ public sealed class TempWorkspace : IDisposable
 
     private TempWorkspace(string path) => Path = path;
 
-    public static TempWorkspace Create()
-    {
-        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SI_" + Guid.NewGuid().ToString("N"));
-        var security = new DirectorySecurity();
-        security.SetAccessRuleProtection(true, false);
-        var sids = new SecurityIdentifier?[]
-        {
-            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
-            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-            // Elevated: no user rule, so a non-elevated same-user process cannot tamper with decrypted installers.
-            IsElevated() ? null : WindowsIdentity.GetCurrent().User,
-        };
-        foreach (var sid in sids.Where(s => s != null).Distinct())
-        {
-            security.AddAccessRule(new FileSystemAccessRule(sid!, FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
-                PropagationFlags.None, AccessControlType.Allow));
-        }
-        new DirectoryInfo(path).Create(security);
-        return new TempWorkspace(path);
-    }
+    public static string DefaultBase => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SecureInstaller", "work");
 
-    internal static bool IsElevated()
+    public static TempWorkspace Create(string? baseDir = null, Func<bool>? isElevated = null)
     {
-        using var id = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
+        var baseP = baseDir ?? DefaultBase;
+        bool elevated = (isElevated ?? SecureDirectory.IsElevated)();
+        SecureDirectory.CreateProtected(baseP, elevated);
+        var path = System.IO.Path.Combine(baseP, Guid.NewGuid().ToString("N"));
+        SecureDirectory.CreateProtected(path, elevated);
+        var ws = new TempWorkspace(path);
+        // Fail closed: report the problem but never delete anything on a verification failure.
+        if (!SecureDirectory.VerifyChain(path, elevated))
+            throw new Errors.WorkspaceUnsafeException(Strings.WorkspaceUnsafe);
+        return ws;
     }
 
     public void Dispose()
@@ -111,23 +99,33 @@ public sealed class TempWorkspace : IDisposable
         catch { }
     }
 
-    private static readonly System.Text.RegularExpressions.Regex WorkspaceName =
-        new("^SI_[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex NewName =
+        new("^[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    private static bool IsWorkspaceName(string name) => name == "SI_docs" || WorkspaceName.IsMatch(name);
+    /// <summary>Removes stale workspaces in the base older than the given age, only if the base chain verifies. Never throws.</summary>
+    public static int SweepStale(TimeSpan olderThan, string? baseDir = null, Func<string, bool>? verify = null, Func<bool>? isElevated = null)
+    {
+        try
+        {
+            var root = baseDir ?? DefaultBase;
+            bool elevated = (isElevated ?? SecureDirectory.IsElevated)();
+            if (!(verify ?? (p => SecureDirectory.VerifyChain(p, elevated)))(root)) return 0;
+            return Sweep(root, DateTime.UtcNow - olderThan);
+        }
+        catch { return 0; }
+    }
 
-    /// <summary>Removes stale %TEMP%\SI_* workspaces older than the given age. Never throws.</summary>
-    public static int SweepStale(TimeSpan olderThan)
+    private static int Sweep(string root, DateTime cutoff)
     {
         int count = 0;
         try
         {
-            var cutoff = DateTime.UtcNow - olderThan;
-            foreach (var d in Directory.EnumerateDirectories(System.IO.Path.GetTempPath(), "SI_*"))
+            foreach (var d in Directory.EnumerateDirectories(root))
             {
                 try
                 {
-                    if (!IsWorkspaceName(System.IO.Path.GetFileName(d))) continue;
+                    if (!NewName.IsMatch(System.IO.Path.GetFileName(d))) continue;
+                    if (IsReparsePoint(d)) continue;
                     if (Directory.GetLastWriteTimeUtc(d) < cutoff && TryDelete(d, false)) count++;
                 }
                 catch { }

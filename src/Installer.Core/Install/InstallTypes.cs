@@ -8,7 +8,7 @@ public record InstallProgress(int? Percent, string Step);
 
 public record InstallRequest(InstallerType Type, string InstallerPath, string SilentArgs, string? TargetDir, TimeSpan Timeout);
 
-public record InstallOutcome(InstallStatus Status, int? ExitCode, string Message);
+public record InstallOutcome(InstallStatus Status, int? ExitCode, string Message, string? Detail = null);
 
 public interface IInstallerRunner
 {
@@ -28,6 +28,7 @@ public sealed class InstallerRunnerFactory
         InstallerType.Msi => new MsiInstaller(),
         InstallerType.Exe => new ExeInstaller(),
         InstallerType.Zip => new ZipInstaller(),
+        InstallerType.Script => new ScriptRunner(),
         _ => throw new ArgumentOutOfRangeException(nameof(t)),
     };
 }

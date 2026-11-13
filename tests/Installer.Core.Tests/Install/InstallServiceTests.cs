@@ -1,3 +1,6 @@
+using Installer.Core.Platform;
+using Installer.Core.Versioning;
+using Microsoft.Win32;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -45,7 +48,7 @@ public class InstallServiceTests : IDisposable
     sealed class Tracker { public TempWorkspace? Ws; }
 
     static InstallService Svc(IRepositorySource repo, FakeRunner r, Tracker t) =>
-        new(repo, new InstallerRunnerFactory(_ => r), () => t.Ws = TempWorkspace.Create());
+        new(repo, new InstallerRunnerFactory(_ => r), () => t.Ws = TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")));
 
     static string CopyAction(string src, string dst) =>
         "{\"type\":\"copy\",\"src\":" + JsonSerializer.Serialize(src) + ",\"dst\":" + JsonSerializer.Serialize(dst) + "}";
@@ -56,6 +59,9 @@ public class InstallServiceTests : IDisposable
         public byte[] Blob = Array.Empty<byte>();
         public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult<Stream>(new MemoryStream(Blob));
         public Task<Stream> OpenDocBlobAsync(PackageEntry pkg, string docName, CancellationToken ct) => throw new NotSupportedException();
+        public byte[] Key = Array.Empty<byte>();
+        public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Key);
+        public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) => Task.FromResult(Key);
         public void WriteLog(LogEntry entry) { }
     }
 
@@ -114,7 +120,7 @@ public class InstallServiceTests : IDisposable
         var fixedPkg = pkg with { Sha256 = Convert.ToHexString(SHA256.HashData(cut)).ToLowerInvariant() };
         var runner = new FakeRunner();
         var t = new Tracker();
-        var res = await Svc(new Wrap { Catalog = e.Session.Catalog, Blob = cut }, runner, t)
+        var res = await Svc(new Wrap { Catalog = e.Session.Catalog, Blob = cut, Key = Convert.FromBase64String(pkg.KeyB64) }, runner, t)
             .InstallAsync(fixedPkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal(InstallStatus.Failed, res.Status);
         Assert.Equal(Strings.PackageCorrupt, res.Message);
@@ -151,6 +157,30 @@ public class InstallServiceTests : IDisposable
         Assert.Contains("m.ini", Assert.Single(ReadLogs(e)).Detail);
     }
 
+    sealed class ThrowingRepo : IRepositorySource
+    {
+        public Task<Stream> OpenPackageBlobAsync(PackageEntry pkg, CancellationToken ct) => throw new IOException("D:/secret/vault/x");
+        public Task<Stream> OpenDocBlobAsync(PackageEntry pkg, string docName, CancellationToken ct) => throw new NotSupportedException();
+        public Task<byte[]> GetPackageKeyAsync(PackageEntry pkg, CancellationToken ct) => throw new NotSupportedException();
+        public Task<byte[]> GetDocsKeyAsync(PackageEntry pkg, CancellationToken ct) => throw new NotSupportedException();
+        public Catalog Catalog => throw new NotSupportedException();
+        public readonly List<LogEntry> Logs = new();
+        public void WriteLog(LogEntry entry) => Logs.Add(entry);
+    }
+
+    [Fact]
+    public async Task Install_io_failure_shows_IoError_and_no_path()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp));
+        var repo = new ThrowingRepo();
+        var res = await Svc(repo, new FakeRunner(), new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(Strings.IoError, res.Message);
+        Assert.DoesNotContain("secret", res.Message);
+        Assert.Contains("D:/secret/vault/x", Assert.Single(repo.Logs).Detail);
+    }
+
     [Fact]
     public async Task Runner_throws_workspace_still_deleted()
     {
@@ -161,9 +191,22 @@ public class InstallServiceTests : IDisposable
         var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, t)
             .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
         Assert.Equal(InstallStatus.Failed, res.Status);
-        Assert.Equal("kaboom", res.Message);
+        Assert.Equal(Strings.Unexpected, res.Message);
+        Assert.Contains("kaboom", Assert.Single(ReadLogs(e)).Detail);
         Assert.True(t.Ws!.Deleted);
         Assert.Equal("Failed", Assert.Single(ReadLogs(e)).Status);
+    }
+
+    [Fact]
+    public async Task Runner_exception_detail_reaches_log()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp));
+        var runner = new FakeRunner { Outcome = new InstallOutcome(InstallStatus.Failed, null, "Lỗi", "RAW-DETAIL-XYZ") };
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal("Lỗi", res.Message);
+        Assert.Contains("RAW-DETAIL-XYZ", Assert.Single(ReadLogs(e)).Detail);
     }
 
     [Fact]
@@ -217,5 +260,238 @@ public class InstallServiceTests : IDisposable
             await Assert.ThrowsAsync<ArgumentException>(() => svc.ExtractDocAsync(pkg, "..\\x", CancellationToken.None));
         }
         finally { InstallService.CleanupDocs(); }
+    }
+
+    [Fact]
+    public async Task InstallService_uses_repository_key_not_catalog()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target")));
+        var real = new PortableRepositorySource(e.Session, e.Log);
+        var wrap = new Wrap
+        {
+            Catalog = e.Session.Catalog,
+            Key = Convert.FromBase64String(pkg.KeyB64),
+            Blob = await ReadAll(await real.OpenPackageBlobAsync(pkg, CancellationToken.None))
+        };
+        var runner = new FakeRunner();
+        var res = await Svc(wrap, runner, new Tracker())
+            .InstallAsync(pkg with { KeyB64 = "garbage" }, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+    }
+
+    static async Task<byte[]> ReadAll(Stream s)
+    {
+        await using (s) { var ms = new MemoryStream(); await s.CopyToAsync(ms); return ms.ToArray(); }
+    }
+
+    [Fact]
+    public async Task Legacy_docs_without_docs_key_still_open()
+    {
+        var e = NewVault();
+        var admin = new VaultAdmin(e.Session);
+        var built = admin.AddPackage(SamplePackage.Create(_tmp));
+        // Re-encrypt the doc with the package key and drop DocsKeyB64, as a Plan-1 package would be.
+        var docPath = Path.Combine(PackageBuilder.DocsDirFor(built, e.Root), "HuongDan.docx.enc");
+        File.Delete(docPath);
+        using (var plain = new MemoryStream(Encoding.UTF8.GetBytes("huong dan")))
+        using (var o = File.Create(docPath))
+            Installer.Core.Crypto.PackageCrypto.Encrypt(plain, o, Convert.FromBase64String(built.KeyB64));
+        var legacy = built with { DocsKeyB64 = null };
+        var svc = Svc(new PortableRepositorySource(e.Session, e.Log), new FakeRunner(), new Tracker());
+        var path = await svc.ExtractDocAsync(legacy, "HuongDan.docx", CancellationToken.None);
+        try { Assert.Equal("huong dan", File.ReadAllText(path, Encoding.UTF8)); }
+        finally { InstallService.CleanupDocs(); }
+    }
+
+    [Fact]
+    public async Task Successful_install_writes_marker_failed_does_not()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target"), "[]"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        InstallService Mk(FakeRunner r) => new(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => r),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+
+        var bad = await Mk(new FakeRunner { Outcome = new InstallOutcome(InstallStatus.Failed, 5, "boom") })
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, bad.Status);
+        Assert.Empty(marker.ReadAll());
+
+        var ok = await Mk(new FakeRunner()).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, ok.Status);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+
+        reg.ThrowOnWrite = true;
+        var soft = await Mk(new FakeRunner()).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, soft.Status);
+        Assert.Contains("Không ghi được dấu cài đặt", ReadLogs(e).Last().Detail);
+    }
+
+    string ScriptPkg(string id, string? pre, string? post, string type = "exe", string file = "setup.exe", string? installerScript = null)
+    {
+        var m = "{ \"id\": \"" + id + "\", \"name\": \"S\", \"version\": \"1.0\", \"installer_type\": \"" + type + "\", \"installer_file\": \"" + file + "\""
+            + (pre != null ? ", \"pre_script\": \"" + pre + "\"" : "") + (post != null ? ", \"post_script\": \"" + post + "\"" : "") + " }";
+        var dir = SamplePackage.Create(_tmp, id, manifestOverride: m, withInstaller: type != "script");
+        Directory.CreateDirectory(Path.Combine(dir, "scripts"));
+        if (pre != null) File.WriteAllText(Path.Combine(dir, "scripts", pre), pre.EndsWith("ok.cmd") ? "@exit /b 0" : "@echo PRE-BOOM\r\n@exit /b 7");
+        if (post != null) File.WriteAllText(Path.Combine(dir, "scripts", post), post.EndsWith("ok.cmd") ? "@exit /b 0" : "@echo POST-BOOM\r\n@exit /b 9");
+        if (installerScript != null) File.WriteAllText(Path.Combine(dir, "scripts", installerScript), "@exit /b 0");
+        return dir;
+    }
+
+    [Fact]
+    public async Task Pre_script_failure_stops_install_runner_not_called()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("pre1", "pre-bad.cmd", null));
+        var runner = new FakeRunner();
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, res.Status);
+        Assert.Equal("Script trước khi cài lỗi", res.Message);
+        Assert.Empty(runner.Requests);
+        Assert.Contains("PRE-BOOM", Assert.Single(ReadLogs(e)).Detail);
+    }
+
+    [Fact]
+    public async Task Successful_hook_output_goes_to_log_detail_with_prefix()
+    {
+        var e = NewVault();
+        var dir = ScriptPkg("hk1", "pre-ok.cmd", "post-ok.cmd");
+        File.WriteAllText(Path.Combine(dir, "scripts", "pre-ok.cmd"), "@echo PRE-HELLO");
+        File.WriteAllText(Path.Combine(dir, "scripts", "post-ok.cmd"), "@echo POST-HELLO");
+        var pkg = new VaultAdmin(e.Session).AddPackage(dir);
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), new FakeRunner(), new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        var log = Assert.Single(ReadLogs(e));
+        Assert.Equal("Success", log.Status);
+        Assert.Contains("pre_script: PRE-HELLO", log.Detail);
+        Assert.Contains("post_script: POST-HELLO", log.Detail);
+    }
+
+    [Fact]
+    public async Task Post_script_failure_keeps_success_with_warning()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("post1", "pre-ok.cmd", "post-bad.cmd"));
+        var runner = new FakeRunner();
+        var res = await Svc(new PortableRepositorySource(e.Session, e.Log), runner, new Tracker())
+            .InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.EndsWith(" (Cấu hình sau cài lỗi)", res.Message);
+        Assert.Single(runner.Requests);
+        var log = Assert.Single(ReadLogs(e));
+        Assert.Equal("Success", log.Status);
+        Assert.Contains("POST-BOOM", log.Detail);
+    }
+
+    [Fact]
+    public async Task Script_type_package_installs_via_runner_and_writes_marker()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(ScriptPkg("sc1", null, null, "script", "cfg.cmd", "cfg.cmd"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        var runner = new FakeRunner();
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        var req = Assert.Single(runner.Requests);
+        Assert.Equal(InstallerType.Script, req.Type);
+        Assert.EndsWith(Path.Combine("pkg", "scripts", "cfg.cmd"), req.InstallerPath);
+        Assert.True(runner.InstallerExistedAtCall);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+    }
+
+    [Fact]
+    public async Task Marker_written_on_reboot_required()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "target"), "[]"));
+        var reg = new FakeRegistry();
+        var marker = new InstallMarker(reg, reg);
+        var runner = new FakeRunner { Outcome = new InstallOutcome(InstallStatus.RebootRequired, 3010, "reboot") };
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker);
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.RebootRequired, res.Status);
+        Assert.Equal(pkg.Version, marker.ReadAll()[pkg.Id]);
+    }
+
+    sealed class HookRunner(Action onRun) : IInstallerRunner
+    {
+        public Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
+        {
+            onRun();
+            return Task.FromResult(new InstallOutcome(InstallStatus.Success, 0, "OK"));
+        }
+    }
+
+    const string UKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+
+    [Fact]
+    public async Task Exe_install_records_the_new_uninstall_key_in_the_marker()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp)) with { Detect = new DetectRule(null, "^Demo") };
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, UKey + @"\Pre", new() { ["DisplayName"] = "Demo old" });
+        var marker = new InstallMarker(reg, reg);
+        var runner = new HookRunner(() => reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, UKey + @"\Demo_is1",
+            new() { ["DisplayName"] = "Demo 1.0" }));
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker, new InstalledAppsScanner(reg, marker));
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.Equal("32|Demo_is1", marker.ReadUninstallKey(pkg.Id));
+    }
+
+    [Fact]
+    public async Task Reinstall_without_new_key_uses_the_find_row_and_snapshot_failure_does_not_fail_install()
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.Create(_tmp)) with { Detect = new DetectRule(null, "^Demo") };
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, UKey + @"\Demo", new() { ["DisplayName"] = "Demo 0.9" });
+        var marker = new InstallMarker(reg, reg);
+        InstallService Mk(InstalledAppsScanner sc) => new(new PortableRepositorySource(e.Session, e.Log),
+            new InstallerRunnerFactory(_ => new FakeRunner()), () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work")), marker, sc);
+        var res = await Mk(new InstalledAppsScanner(reg, marker)).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res.Status);
+        Assert.Equal("64|Demo", marker.ReadUninstallKey(pkg.Id));
+
+        var res2 = await Mk(new InstalledAppsScanner(new ThrowingReader(), marker)).InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+        Assert.Equal(InstallStatus.Success, res2.Status);
+    }
+
+    sealed class ThrowingReader : IRegistryReader
+    {
+        public IReadOnlyList<string> GetSubKeyNames(RegistryHive hive, RegistryView view, string path) => throw new IOException("boom");
+        public object? GetValue(RegistryHive hive, RegistryView view, string path, string name) => throw new IOException("boom");
+    }
+
+    [Theory]
+    [InlineData("../thoat.txt")]
+    [InlineData("a.txt:luong")]
+    public void ExtractZip_rejects_entries_escaping_the_workspace(string entry)
+    {
+        var zip = Path.Combine(_tmp, "z.zip");
+        using (var za = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            using (var w = new StreamWriter(za.CreateEntry(entry).Open())) w.Write("x");
+        Assert.Throws<IOException>(() => InstallService.ExtractZip(zip, Path.Combine(_tmp, "ra"), CancellationToken.None));
+        Assert.False(File.Exists(Path.Combine(_tmp, "thoat.txt")));
+    }
+
+    [Fact]
+    public void ExtractZip_observes_cancellation()
+    {
+        var zip = Path.Combine(_tmp, "z.zip");
+        using (var za = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create)) za.CreateEntry("a.txt");
+        using var cts = new CancellationTokenSource(); cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => InstallService.ExtractZip(zip, Path.Combine(_tmp, "ra"), cts.Token));
     }
 }

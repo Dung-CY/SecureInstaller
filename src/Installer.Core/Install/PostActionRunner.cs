@@ -1,4 +1,6 @@
+using Installer.Core.Errors;
 using Installer.Core.Model;
+using Installer.Core.Platform;
 
 namespace Installer.Core.Install;
 
@@ -23,6 +25,7 @@ public static class PostActionRunner
                 else if (string.Equals(a.Type, "delete", StringComparison.OrdinalIgnoreCase)) err = Delete(a);
                 else err = ErrType;
             }
+            catch (UnsafePathException) { err = Strings.UnsafePath; }
             catch (Exception ex) { err = ex.Message; }
             results.Add(new PostActionResult(a, err == null, err));
         }
@@ -41,6 +44,7 @@ public static class PostActionRunner
         if (dst == null) return ErrDst;
         var parent = Path.GetDirectoryName(Path.GetFullPath(dst));
         if (parent == null) return ErrDst;
+        SafePath.EnsureNoReparseAncestors(Path.GetFullPath(dst));
         Directory.CreateDirectory(parent);
         File.Copy(full, dst, true);
         return null;
@@ -52,6 +56,7 @@ public static class PostActionRunner
         if (dst == null) return ErrDst;
         var norm = Normalize(dst);
         if (IsProtectedPath(norm)) return ErrSys;
+        SafePath.EnsureNoReparseAncestors(Path.GetDirectoryName(norm)!);
         if (Directory.Exists(norm)) Directory.Delete(norm, true);
         else if (File.Exists(norm)) File.Delete(norm);
         return null;

@@ -1,0 +1,6 @@
+{
+  "id": "van-phong-co-ban",
+  "name": "Văn phòng cơ bản",
+  "description": "7-Zip và Notepad++",
+  "items": [ { "package_id": "7zip" }, { "package_id": "notepadpp" } ]
+}

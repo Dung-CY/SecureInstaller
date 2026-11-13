@@ -18,9 +18,12 @@ public static class Program
           SecureInstaller.Packager add-package <root> <folder> --user <u> [--password <pw>]
           SecureInstaller.Packager update-package <root> <id> <folder> [--keep-old] --user <u> [--password <pw>]
           SecureInstaller.Packager remove-package <root> <id> [--version <v>] --user <u> [--password <pw>]
+          SecureInstaller.Packager add-bundle <root> <bundle.json> --user <u> [--password <pw>]
+          SecureInstaller.Packager remove-bundle <root> <id> --user <u> [--password <pw>]
           SecureInstaller.Packager add-user <root> <name> --role user|admin --new-password <pw> --user <u> [--password <pw>]
           SecureInstaller.Packager remove-user <root> <name> --user <u> [--password <pw>]
           SecureInstaller.Packager export-logs <root> <out.csv> --user <u> [--password <pw>]
+          SecureInstaller.Packager list <root> --user <u> [--password <pw>]
           SecureInstaller.Packager fingerprint <root>
         """;
 
@@ -85,7 +88,7 @@ public static class Program
                 Need(2);
                 var admin = OpenAdmin(p, pos[0]);
                 var e = admin.AddPackage(pos[1]);
-                Console.WriteLine($"Đã thêm gói {e.Id} {e.Version}");
+                Console.WriteLine($"Đã thêm phần mềm {e.Id} {e.Version}");
                 return 0;
             }
             case "update-package":
@@ -94,7 +97,7 @@ public static class Program
                 var keepOld = p.Options.ContainsKey("keep-old");
                 var admin = OpenAdmin(p, pos[0]);
                 var e = admin.UpdatePackage(pos[1], pos[2], keepOld);
-                Console.WriteLine($"Đã cập nhật gói {e.Id} {e.Version}");
+                Console.WriteLine($"Đã cập nhật phần mềm {e.Id} {e.Version}");
                 return 0;
             }
             case "remove-package":
@@ -102,7 +105,33 @@ public static class Program
                 Need(2);
                 var admin = OpenAdmin(p, pos[0]);
                 admin.RemovePackage(pos[1], Opt(p, "version"));
-                Console.WriteLine($"Đã xóa gói {pos[1]}");
+                Console.WriteLine($"Đã xóa phần mềm {pos[1]}");
+                return 0;
+            }
+            case "add-bundle":
+            {
+                Need(2);
+                Bundle b;
+                try
+                {
+                    b = System.Text.Json.JsonSerializer.Deserialize<Bundle>(File.ReadAllText(pos[1], Encoding.UTF8), Json.Options)
+                        ?? throw new InvalidDataException("bundle.json trống");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { throw new InvalidDataException("Không đọc được tệp bộ cài đặt: " + ex.Message); }
+                catch (System.Text.Json.JsonException ex) { throw new InvalidDataException("bundle.json không hợp lệ: " + ex.Message); }
+                var admin = OpenAdmin(p, pos[0]);
+                var exists = admin.HasBundle(b.Id);
+                if (exists) admin.UpdateBundle(b); else admin.AddBundle(b);
+                Console.WriteLine($"Đã lưu bộ cài đặt {b.Name}");
+                return 0;
+            }
+            case "remove-bundle":
+            {
+                Need(2);
+                var admin = OpenAdmin(p, pos[0]);
+                admin.RemoveBundle(pos[1]);
+                Console.WriteLine($"Đã xóa bộ cài đặt {pos[1]}");
                 return 0;
             }
             case "add-user":
@@ -129,6 +158,14 @@ public static class Program
                 Console.WriteLine($"Đã xóa người dùng {pos[1]}");
                 return 0;
             }
+            case "list":
+            {
+                Need(1);
+                var cat = OpenSession(p, pos[0]).Catalog;
+                foreach (var e in cat.Packages) Console.WriteLine($"{e.Id}\t{e.Version}\t{e.Kind}\t{e.SilentArgs}\t{e.Detect.ProductCode}\t{e.Detect.DisplayNameRegex}");
+                foreach (var b in cat.Bundles ?? new()) Console.WriteLine($"bundle\t{b.Id}\t{b.Name}\t{b.Items.Count}");
+                return 0;
+            }
             case "fingerprint":
                 Need(1);
                 Console.WriteLine(VaultStore.Fingerprint(VaultStore.Open(pos[0]).Meta.SigningPublicKeyB64));
@@ -152,7 +189,7 @@ public static class Program
     private static string? Opt(ParsedArgs p, string name) =>
         p.Options.TryGetValue(name, out var v) ? v : null;
 
-    private static VaultAdmin OpenAdmin(ParsedArgs p, string root) => new VaultAdmin(OpenSession(p, root));
+    private static VaultAdmin OpenAdmin(ParsedArgs p, string root) => new VaultAdmin(OpenSession(p, root), path => Installer.Core.Platform.IconExtractor.ExtractPng(path));
 
     private static VaultSession OpenSession(ParsedArgs p, string root)
     {
