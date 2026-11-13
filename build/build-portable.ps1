@@ -9,6 +9,8 @@ param(
     [switch]$InitVault,
     [string]$Admin = 'admin',
     [switch]$WithDemo,
+    # Bộ phần mềm demo: 'test' (đủ loại bộ cài để kiểm thử) hoặc 'office' (Chrome, Edge, LibreOffice, UniKey, 7-Zip).
+    [ValidateSet('test', 'office')][string]$DemoSet = 'test',
     [string]$Configuration = 'Release',
     # Chỉ dùng cho CI/thử nghiệm: mật khẩu truyền qua tham số sẽ hiện trong danh sách tiến trình.
     [string]$AdminPassword,
@@ -93,6 +95,7 @@ function Add-DemoInstaller($i, [string]$file) {
         installer_kind = $kind.ToLowerInvariant(); detect = @{ display_name_regex = $i.display_regex }
     }
     if ($kind -eq 'Msi') { $m.installer_type = 'msi'; $m.detect.product_code = Get-MsiProductCode $file }
+    elseif ($kind -eq 'Zip') { $m.installer_type = 'zip'; $m.target_dir = $i.target_dir }
     else {
         $m.installer_type = 'exe'
         $m.silent_args = switch ($kind) { 'Inno' { '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' } 'Nsis' { '/S' } 'Burn' { '/quiet /norestart' } }
@@ -114,7 +117,7 @@ try {
         & $packager init $appDir --user $Admin --password $plain
         if ($LASTEXITCODE -ne 0) { throw "Packager init thất bại (mã $LASTEXITCODE)" }
 
-        if ($WithDemo) {
+        if ($WithDemo -and $DemoSet -eq 'test') {
             $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('SI_demo_' + [guid]::NewGuid().ToString('N'))
             try {
                 Copy-Item -LiteralPath (Join-Path $repo 'samples\demo-zip') -Destination $tmp -Recurse
@@ -138,15 +141,21 @@ try {
 
             & $packager add-package $appDir (Join-Path $repo 'samples\demo-script') --user $Admin --password $plain
             if ($LASTEXITCODE -ne 0) { throw "Packager add-package thất bại cho demo-script (mã $LASTEXITCODE)" }
+        }
+
+        if ($WithDemo) {
+            $prefix = if ($DemoSet -eq 'office') { 'office' } else { 'demo' }
+            $listFile = Join-Path $repo "samples\$prefix-installers.json"
+            $bundleFile = Join-Path $repo "samples\$prefix-bundle.json"
 
             # Bộ cài thật từ nhà phát hành; không có mạng thì chỉ giữ các gói offline ở trên.
             $online = $true
-            try { & (Join-Path $PSScriptRoot 'fetch-demo-installers.ps1') -Out $DemoCache }
+            try { & (Join-Path $PSScriptRoot 'fetch-demo-installers.ps1') -Out $DemoCache -ListFile $listFile }
             catch { $online = $false; Write-Warning "Không tải được bộ cài demo ($($_.Exception.Message)). Chỉ thêm các phần mềm offline." }
             if ($online) {
-                $list = Get-Content (Join-Path $repo 'samples\demo-installers.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                $list = Get-Content $listFile -Raw -Encoding UTF8 | ConvertFrom-Json
                 foreach ($i in $list) { Add-DemoInstaller $i (Join-Path $DemoCache $i.file) }
-                & $packager add-bundle $appDir (Join-Path $repo 'samples\demo-bundle.json') --user $Admin --password $plain
+                & $packager add-bundle $appDir $bundleFile --user $Admin --password $plain
                 if ($LASTEXITCODE -ne 0) { throw "Packager add-bundle thất bại (mã $LASTEXITCODE)" }
             }
 
