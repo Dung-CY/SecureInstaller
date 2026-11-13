@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Installer.Core.Crypto;
@@ -155,6 +156,20 @@ public static class PackageBuilder
         return Path.Combine(vaultRoot, "vault", "docs", stem);
     }
 
+    /// <summary>Doc file name keyed by the package's docs key, so it hides the document name and needs no catalog field.</summary>
+    static string DocFileName(string docsKeyB64, string docName) =>
+        Convert.ToHexString(HMACSHA256.HashData(Convert.FromBase64String(docsKeyB64), Encoding.UTF8.GetBytes(docName.ToUpperInvariant())))
+            .ToLowerInvariant()[..32] + ".enc";
+
+    /// <summary>Path of an encrypted doc; vaults built before random names used "&lt;doc name&gt;.enc".</summary>
+    public static string DocFileFor(PackageEntry e, string vaultRoot, string docName)
+    {
+        var dir = DocsDirFor(e, vaultRoot);
+        var hidden = Path.Combine(dir, DocFileName(e.DocsKeyB64 ?? e.KeyB64, docName));
+        var legacy = Path.Combine(dir, docName + ".enc");
+        return !File.Exists(hidden) && File.Exists(legacy) ? legacy : hidden;
+    }
+
     const int MaxIconBytes = 24 * 1024;
 
     static string? ResolveIcon(string sourceFolder, PackageEntry entry, Func<string, byte[]?>? iconFromExe)
@@ -183,7 +198,8 @@ public static class PackageBuilder
         var iconB64 = ResolveIcon(sourceFolder, entry, iconFromExe);
         var vaultDir = Path.Combine(vaultRoot, "vault");
         var pkgDir = Path.Combine(vaultDir, "packages");
-        var stem = $"{entry.Id}-{entry.Version}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        // Random names: someone browsing the vault folder cannot tell which software or version a file holds.
+        var stem = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var docsOut = Path.Combine(vaultDir, "docs", stem);
         Directory.CreateDirectory(pkgDir);
         var blobName = stem + ".pkg.enc";
@@ -191,6 +207,7 @@ public static class PackageBuilder
         var tmpZip = Path.Combine(Path.GetTempPath(), "SI_zip_" + Guid.NewGuid().ToString("N") + ".zip");
         var key = KeyDerivation.NewKey();
         var docsKey = KeyDerivation.NewKey();
+        var docsKeyB64 = Convert.ToBase64String(docsKey);
         var ok = false;
         var created = false;
         try
@@ -222,7 +239,7 @@ public static class PackageBuilder
                 foreach (var d in entry.Docs)
                 {
                     using var plain = File.OpenRead(Path.Combine(sourceFolder, "docs", d));
-                    using var output = new FileStream(Path.Combine(docsOut, d + ".enc"), FileMode.CreateNew, FileAccess.Write);
+                    using var output = new FileStream(Path.Combine(docsOut, DocFileName(docsKeyB64, d)), FileMode.CreateNew, FileAccess.Write);
                     PackageCrypto.Encrypt(plain, output, docsKey);
                 }
             }
@@ -236,7 +253,7 @@ public static class PackageBuilder
             }
             ok = true;
             return entry with { BlobFile = blobName, Sha256 = sha, KeyB64 = Convert.ToBase64String(key),
-                BlobSize = blobSize, DocsKeyB64 = Convert.ToBase64String(docsKey), IconPngB64 = iconB64,
+                BlobSize = blobSize, DocsKeyB64 = docsKeyB64, IconPngB64 = iconB64,
                 Extras = ExtraNames(sourceFolder, entry) };
         }
         finally

@@ -76,10 +76,14 @@ public class VaultAdminTests : IDisposable
         var (root, s, a) = NewVault();
         var e = a.AddPackage(SamplePackage.Create(_tmp));
         Assert.Equal(1, s.Catalog.Version);
-        Assert.Matches(@"^demo-1\.0-[0-9a-f]{8}\.pkg\.enc$", e.BlobFile);
+        Assert.Matches(@"^[0-9a-f]{32}\.pkg\.enc$", e.BlobFile); // reveals neither the software nor its version
         Assert.True(File.Exists(Blob(root, e)));
         Assert.Equal(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Blob(root, e)))).ToLowerInvariant(), e.Sha256);
-        Assert.True(File.Exists(Path.Combine(PackageBuilder.DocsDirFor(e, root), "HuongDan.docx.enc")));
+        var docFile = PackageBuilder.DocFileFor(e, root, "HuongDan.docx");
+        Assert.True(File.Exists(docFile));
+        Assert.Matches(@"^[0-9a-f]{32}\.enc$", Path.GetFileName(docFile));
+        Assert.DoesNotContain(Directory.GetFiles(Path.Combine(root, "vault"), "*", SearchOption.AllDirectories),
+            f => f.Contains("demo", StringComparison.OrdinalIgnoreCase) || f.Contains("HuongDan", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(new[] { "HuongDan.docx" }, e.Docs);
         Assert.Equal(1800, e.TimeoutSec);
         var s2 = VaultStore.Open(root).Unlock("admin", "pw-1", T0);
