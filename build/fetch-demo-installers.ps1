@@ -1,8 +1,8 @@
-# Downloads the official demo installers listed in samples\demo-installers.json and verifies their SHA-256.
+﻿# Downloads the official demo installers listed in samples\demo-installers.json and verifies their SHA-256.
 # The files are only ever read as bytes by tests; nothing here executes them.
-param([Parameter(Mandatory)][string]$Out)
+param([Parameter(Mandatory)][string]$Out, [string]$ListFile = (Join-Path $PSScriptRoot '..\samples\demo-installers.json'))
 $ErrorActionPreference = 'Stop'
-$list = Get-Content (Join-Path $PSScriptRoot '..\samples\demo-installers.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$list = Get-Content $ListFile -Raw -Encoding UTF8 | ConvertFrom-Json
 New-Item -ItemType Directory -Force $Out | Out-Null
 $total = 0
 foreach ($i in $list) {

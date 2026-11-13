@@ -1,0 +1,6 @@
+{
+  "id": "may-van-phong",
+  "name": "Máy văn phòng",
+  "description": "LibreOffice, Chrome, UniKey và 7-Zip",
+  "items": [ { "package_id": "libreoffice" }, { "package_id": "chrome" }, { "package_id": "unikey" }, { "package_id": "7zip" } ]
+}
