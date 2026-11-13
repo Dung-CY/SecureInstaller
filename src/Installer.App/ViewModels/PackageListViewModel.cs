@@ -16,6 +16,7 @@ public partial class PackageListViewModel : ObservableObject
     public const string UninstallQueueTitle = "Gỡ cài đặt";
 
     private readonly Catalog _catalog;
+    internal Catalog Catalog => _catalog;
     private readonly ScanReport _scan;
     private readonly Func<PackageEntry, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _install;
     private readonly Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> _uninstall;
@@ -45,6 +46,7 @@ public partial class PackageListViewModel : ObservableObject
             .ThenBy(p => p.Version, byVersionDesc);
         foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, canUninstall, this));
         Bundles = catalog.Bundles ?? new();
+        BundleCards = Bundles.Select(b => new BundleCardViewModel(b, this)).ToList();
     }
 
     public bool CanOpenAdmin { get; }
@@ -56,15 +58,34 @@ public partial class PackageListViewModel : ObservableObject
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(InstallSelectedCommand)), NotifyCanExecuteChangedFor(nameof(ViewScanCommand))]
     private bool _isInstalling;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallSelectedLabel)), NotifyCanExecuteChangedFor(nameof(InstallSelectedCommand))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallSelectedLabel), nameof(HasSelection), nameof(SelectedCountText)),
+     NotifyCanExecuteChangedFor(nameof(InstallSelectedCommand))]
     private int _selectedCount;
 
     public string InstallSelectedLabel => $"Cài các mục đã chọn ({SelectedCount})";
+    public string SelectedCountText => $"Đã chọn {SelectedCount} phần mềm";
+    /// <summary>The bottom action bar is shown only while at least one row is ticked.</summary>
+    public bool HasSelection => SelectedCount > 0;
+
+    private static bool IsInstallable(PackageRowViewModel r) => r.Allowed && r.Status is VersionStatus.NotInstalled or VersionStatus.Older;
+
+    /// <summary>Header checkbox: true when every installable row is ticked. Setting true ticks them all; false clears every tick.</summary>
+    public bool AllInstallableSelected
+    {
+        get { var inst = Rows.Where(IsInstallable).ToList(); return inst.Count > 0 && inst.All(r => r.IsSelected); }
+        set
+        {
+            if (IsInstalling) { OnPropertyChanged(); return; }
+            foreach (var r in Rows) r.IsSelected = value && IsInstallable(r);
+            OnPropertyChanged();
+        }
+    }
 
     partial void OnIsInstallingChanged(bool value)
     {
         ClearSelectionCommand.NotifyCanExecuteChanged();
         foreach (var r in Rows) r.NotifyInstallingChanged();
+        foreach (var c in BundleCards) c.Refresh();
     }
 
     internal void OnSelectionChanged()
@@ -72,6 +93,7 @@ public partial class PackageListViewModel : ObservableObject
         // A tick changed by hand drops the bundle's install order; the queue falls back to display order.
         if (!_applyingBundle) _bundleOrder = null;
         SelectedCount = Rows.Count(r => r.IsSelected);
+        OnPropertyChanged(nameof(AllInstallableSelected));
     }
 
     // ---------- Bundles ----------
@@ -79,6 +101,26 @@ public partial class PackageListViewModel : ObservableObject
     /// <summary>The catalog's bundles; the picker is hidden when there are none.</summary>
     public IReadOnlyList<Bundle> Bundles { get; }
     public bool HasBundles => Bundles.Count > 0;
+    public IReadOnlyList<BundleCardViewModel> BundleCards { get; }
+
+    /// <summary>Why a bundle item would not be ticked (null when it is installable), plus its row when it is in the vault.</summary>
+    internal (PackageRowViewModel? Row, string? Skip) Classify(PackageEntry? pkg)
+    {
+        var row = pkg is null ? null : Rows.FirstOrDefault(r => ReferenceEquals(r.Package, pkg));
+        if (row is null) return (null, Strings.NotInVault);
+        if (!row.Allowed) return (row, row.ReasonsText);
+        if (row.Status is not (VersionStatus.NotInstalled or VersionStatus.Older)) return (row, "đã cài trên máy");
+        return (row, null);
+    }
+
+    /// <summary>"Cài bộ này": applies the bundle (ticks + install order), then queues what was ticked.</summary>
+    internal void InstallBundle(Bundle bundle)
+    {
+        if (IsInstalling) return;
+        SelectedBundle = null; // re-applies even when the same bundle was applied before
+        SelectedBundle = bundle;
+        InstallSelected();
+    }
 
     [ObservableProperty]
     private Bundle? _selectedBundle;
@@ -107,12 +149,10 @@ public partial class PackageListViewModel : ObservableObject
             foreach (var r in Rows) r.IsSelected = false;
             foreach (var (item, pkg) in BundleResolver.Resolve(_catalog, bundle))
             {
-                var row = pkg is null ? null : Rows.FirstOrDefault(r => ReferenceEquals(r.Package, pkg));
-                if (row is null) { notices.Add($"{item.PackageId}: {Strings.NotInVault}"); continue; }
-                if (!row.Allowed) { notices.Add($"{row.Name}: {row.ReasonsText}"); continue; }
-                if (order.Contains(row)) continue; // "id" and "id@ver" can resolve to the same package
-                if (row.Status is not (VersionStatus.NotInstalled or VersionStatus.Older)) { notices.Add($"{row.Name}: đã cài trên máy"); continue; }
-                row.IsSelected = true;
+                var (row, skip) = Classify(pkg);
+                if (skip is not null) { notices.Add($"{row?.Name ?? item.PackageId}: {skip}"); continue; }
+                if (order.Contains(row!)) continue; // "id" and "id@ver" can resolve to the same package
+                row!.IsSelected = true;
                 order.Add(row);
             }
         }
@@ -196,6 +236,7 @@ public partial class PackageListViewModel : ObservableObject
         {
             foreach (var r in Rows) { r.IsSelected = false; r.Refresh(); }
             SelectedBundle = null; // clears bundle order and notices too
+            OnPropertyChanged(nameof(AllInstallableSelected));
             IsInstalling = false;
             Current = null;
             _navigate(this);

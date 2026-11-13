@@ -6,8 +6,8 @@
     <Grid Margin="24,18,24,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header: title on the left; toolbar on the right, primary action last -->
@@ -28,57 +28,15 @@
                 <Button Content="Xem lại báo cáo quét" Command="{Binding ViewScanCommand}" Style="{StaticResource SecondaryButton}"
                         Padding="14,8" Margin="0,0,8,0"/>
                 <Button Content="Quản trị" Command="{Binding OpenAdminCommand}" Style="{StaticResource SecondaryButton}"
-                        Padding="14,8" Margin="0,0,8,0"
+                        Padding="14,8"
                         Visibility="{Binding CanOpenAdmin, Converter={StaticResource BoolToVisibility}}"/>
-                <Button Content="{Binding InstallSelectedLabel}" Command="{Binding InstallSelectedCommand}" MinWidth="200"
-                        Padding="18,8"/>
             </StackPanel>
         </Grid>
 
-        <!-- Bundle bar: picking a bundle ticks its not-yet-installed packages in install order; hidden when the catalog has none -->
-        <Border Grid.Row="1" Margin="0,0,0,12" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
-                BorderThickness="1" CornerRadius="8" Padding="14,10"
-                Visibility="{Binding HasBundles, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="240"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Bộ cài đặt" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    <ComboBox Grid.Column="1" Style="{StaticResource AppComboBox}" ItemsSource="{Binding Bundles}"
-                              SelectedItem="{Binding SelectedBundle}" DisplayMemberPath="Name"
-                              AutomationProperties.Name="Chọn bộ cài đặt"/>
-                    <Button Grid.Column="2" Content="Bỏ chọn tất cả" Command="{Binding ClearSelectionCommand}"
-                            Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="8,0,14,0"/>
-                    <TextBlock Grid.Column="3" Text="{Binding SelectedBundle.Description}" Style="{StaticResource Muted}"
-                               VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding SelectedBundle.Description}"/>
-                </Grid>
-                <!-- Packages of the bundle that were not ticked, with the reason -->
-                <Border Background="{StaticResource WarnBgBrush}" CornerRadius="6" Padding="12,8" Margin="0,10,0,0"
-                        Visibility="{Binding HasBundleNotices, Converter={StaticResource BoolToVisibility}}">
-                    <StackPanel>
-                        <TextBlock Text="Các phần mềm sau trong bộ không được tick:" Foreground="{StaticResource WarnBrush}"
-                                   FontSize="13" FontWeight="SemiBold"/>
-                        <ItemsControl ItemsSource="{Binding BundleNotices}" Focusable="False" Margin="0,3,0,0">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding StringFormat='• {0}'}" Foreground="{StaticResource WarnBrush}" FontSize="13"
-                                               Margin="0,1,0,0"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
-
-        <Border Grid.Row="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
-                BorderThickness="1" CornerRadius="8" Grid.IsSharedSizeScope="True">
-            <Grid>
+        <TabControl Grid.Row="1" Style="{StaticResource ReportTabs}" ItemContainerStyle="{StaticResource ReportTab}">
+        <TabItem Header="Tất cả phần mềm">
+            <!-- Negative margin cancels the tab template's content padding so the list runs edge to edge -->
+            <Grid Margin="-20,-14" Grid.IsSharedSizeScope="True">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -95,6 +53,8 @@
                             <ColumnDefinition Width="190"/>
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Actions"/>
                         </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" Style="{StaticResource RowCheck}" IsChecked="{Binding AllInstallableSelected, Mode=TwoWay}"
+                                  AutomationProperties.Name="Chọn tất cả phần mềm có thể cài"/>
                         <TextBlock Grid.Column="2" Text="Phần mềm" Style="{StaticResource ColumnHeader}"/>
                         <TextBlock Grid.Column="3" Text="Trên máy" Style="{StaticResource ColumnHeader}"/>
                         <TextBlock Grid.Column="4" Text="Trạng thái" Style="{StaticResource ColumnHeader}"/>
@@ -269,6 +229,66 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+            </Grid>
+        </TabItem>
+
+        <TabItem Header="Bộ cài đặt">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="-20,-14">
+                <ItemsControl ItemsSource="{Binding BundleCards}" Margin="20,14" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:BundleCardViewModel}">
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                                    BorderThickness="1" CornerRadius="8" Padding="16,14" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" Margin="0,2,0,8"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding Description, Converter={StaticResource NullToCollapsed}}"/>
+                                        <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <TextBlock Text="{Binding Name}" MinWidth="180"/>
+                                                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Muted}" MinWidth="150"/>
+                                                        <TextBlock Text="{Binding SkipReason}" Foreground="{StaticResource WarnBrush}" FontSize="12"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding SkipReason, Converter={StaticResource NullToCollapsed}}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Cài bộ này" Command="{Binding InstallCommand}" VerticalAlignment="Top"
+                                            Padding="18,8" AutomationProperties.Name="{Binding Name, StringFormat='Cài bộ {0}'}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </TabItem>
+        </TabControl>
+
+        <!-- Bottom action bar: only while at least one row is ticked -->
+        <Border Grid.Row="2" Margin="0,12,0,0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1" CornerRadius="8" Padding="16,10"
+                Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding SelectedCountText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="Hủy chọn" Command="{Binding ClearSelectionCommand}"
+                        Style="{StaticResource SecondaryButton}" Padding="14,8" Margin="0,0,8,0"/>
+                <Button Grid.Column="2" Content="{Binding InstallSelectedLabel}" Command="{Binding InstallSelectedCommand}"
+                        MinWidth="200" Padding="18,8"/>
             </Grid>
         </Border>
     </Grid>

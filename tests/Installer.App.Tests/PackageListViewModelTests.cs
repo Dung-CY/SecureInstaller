@@ -413,6 +413,55 @@ public class PackageListViewModelTests
         Assert.False(h.Vm.HasBundleNotices);
     }
 
+
+    [Fact]
+    public void Header_select_all_ticks_installable_rows_then_clears()
+    {
+        // A not installed, B equal (not installable), C older, Foo blocked
+        var h = Harness.Create(BundleCat(out _), Report(LicenseVerdict.CrackSuspected),
+            x => x.Installed = p => p.Name == "B" ? "1.0" : p.Name == "C" ? "0.5" : null);
+        Assert.False(h.Vm.AllInstallableSelected);
+        h.Vm.AllInstallableSelected = true;
+        Assert.Equal(new[] { "A", "C" }, h.Vm.Rows.Where(r => r.IsSelected).Select(r => r.Name));
+        Assert.True(h.Vm.AllInstallableSelected);
+        h.Vm.AllInstallableSelected = false;
+        Assert.Equal(0, h.Vm.SelectedCount);
+    }
+
+    [Fact]
+    public void Action_bar_shows_only_with_a_tick()
+    {
+        var h = Harness.Create(BundleCat(out _), Report(LicenseVerdict.CrackSuspected));
+        Assert.False(h.Vm.HasSelection);
+        h.Vm.Rows[0].IsSelected = true;
+        Assert.True(h.Vm.HasSelection);
+        Assert.Equal("Đã chọn 1 phần mềm", h.Vm.SelectedCountText);
+        h.Vm.ClearSelectionCommand.Execute(null);
+        Assert.False(h.Vm.HasSelection);
+    }
+
+    [Fact]
+    public void Bundle_card_lists_items_and_installs_only_installable()
+    {
+        var h = Harness.Create(BundleCat(out _), Report(LicenseVerdict.CrackSuspected), x => x.Installed = p => p.Name == "A" ? "1.0" : null);
+        var card = Assert.Single(h.Vm.BundleCards);
+        Assert.Equal("Văn phòng", card.Name);
+        Assert.Equal(new[] { "C", "Foo", "ghost", "A" }, card.Items.Select(i => i.Name));
+        Assert.Null(card.Items[0].SkipReason);
+        Assert.Equal("Không có trong kho", card.Items[2].SkipReason);
+        Assert.Equal("đã cài trên máy", card.Items[3].SkipReason);
+        Assert.True(card.InstallCommand.CanExecute(null));
+        card.InstallCommand.Execute(null);
+        Assert.Equal(new[] { "C" }, h.Installs);
+    }
+
+    [Fact]
+    public void Bundle_card_disabled_when_nothing_installable()
+    {
+        var h = Harness.Create(BundleCat(out _), Report(LicenseVerdict.CrackSuspected), x => x.Installed = p => p.Name == "A" || p.Name == "C" ? "1.0" : null);
+        Assert.False(h.Vm.BundleCards[0].InstallCommand.CanExecute(null));
+    }
+
     [Fact]
     public void Bundle_skips_newer_and_incomparable_with_notice()
     {
