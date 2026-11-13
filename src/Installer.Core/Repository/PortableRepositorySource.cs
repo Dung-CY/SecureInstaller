@@ -26,7 +26,7 @@ public sealed class PortableRepositorySource : IRepositorySource
         if (string.IsNullOrEmpty(docName) || docName != Path.GetFileName(docName) || docName is "." or ".."
             || !pkg.Docs.Contains(docName, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException("Tên tài liệu không hợp lệ", nameof(docName));
-        var path = Path.Combine(PackageBuilder.DocsDirFor(pkg, _session.Store.Root), docName + ".enc");
+        var path = PackageBuilder.DocFileFor(pkg, _session.Store.Root, docName);
         return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true));
     }
 
