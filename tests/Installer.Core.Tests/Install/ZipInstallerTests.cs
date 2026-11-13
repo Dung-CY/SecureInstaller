@@ -107,4 +107,25 @@ public class ZipInstallerTests : IDisposable
         }
         finally { try { if (Directory.Exists(link)) Directory.Delete(link, false); } catch { } }
     }
+
+    [Fact]
+    public async Task Zip_failure_removes_files_it_created_but_not_preexisting()
+    {
+        var target = Path.Combine(_root, "t");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "cu.txt"), "old");
+        File.WriteAllText(Path.Combine(target, "b.txt"), "old-b");
+        var z = MakeZip("a.txt", "thu muc/c.txt", "b.txt", "d.txt");
+        var prog = new FailOnReport(3);   // fails after the third entry was written
+        var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", target, TimeSpan.FromMinutes(1)), prog, CancellationToken.None);
+        Assert.Equal(InstallStatus.Failed, o.Status);
+        Assert.Equal(new[] { "b.txt", "cu.txt" }, Directory.GetFileSystemEntries(target).Select(Path.GetFileName).OrderBy(x => x));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(target, "cu.txt")));
+    }
+
+    private sealed class FailOnReport(int n) : IProgress<InstallProgress>
+    {
+        int _i;
+        public void Report(InstallProgress v) { if (++_i == n) throw new IOException("disk full"); }
+    }
 }

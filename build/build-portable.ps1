@@ -61,6 +61,9 @@ if ($InitVault) {
     }
 }
 
+# Windows PowerShell 5.1 mangles '"' when passing arguments to a native exe, so the vault would get a different password.
+if ($plain -and $plain.Contains('"')) { $plain = $null; throw 'Mật khẩu không được chứa dấu ngoặc kép (")' }
+
 function Publish-Project([string]$proj, [string]$dest) {
     & $dotnet publish (Join-Path $repo $proj) -c $Configuration -r win-x64 --self-contained `
         -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o $dest

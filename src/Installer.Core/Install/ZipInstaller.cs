@@ -13,12 +13,14 @@ public sealed class ZipInstaller : IInstallerRunner
     {
         if (string.IsNullOrWhiteSpace(req.TargetDir))
             return new InstallOutcome(InstallStatus.Failed, null, "Thiếu thư mục đích");
+        var created = new List<string>();   // files and folders this run created, removed again on failure or cancel
+        bool ok = false;
         try
         {
             ct.ThrowIfCancellationRequested();
             var target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(req.TargetDir));
             SafePath.EnsureNoReparseAncestors(target);
-            Directory.CreateDirectory(target);
+            CreateDir(target, created);
             var prefix = Path.TrimEndingDirectorySeparator(target) + Path.DirectorySeparatorChar;
 
             using var za = ZipFile.OpenRead(req.InstallerPath);
@@ -37,15 +39,17 @@ public sealed class ZipInstaller : IInstallerRunner
             {
                 ct.ThrowIfCancellationRequested();
                 if (entries[i].Name == "")
-                    Directory.CreateDirectory(dests[i]);
+                    CreateDir(dests[i], created);
                 else
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(dests[i])!);
+                    CreateDir(Path.GetDirectoryName(dests[i])!, created);
+                    if (!File.Exists(dests[i])) created.Add(dests[i]);
                     entries[i].ExtractToFile(dests[i], overwrite: true);
                 }
                 progress.Report(new InstallProgress((i + 1) * 100 / entries.Count, "Đang giải nén"));
             }
             progress.Report(new InstallProgress(100, "Hoàn tất"));
+            ok = true;
             return new InstallOutcome(InstallStatus.Success, 0, "Cài đặt thành công");
         }
         catch (UnsafePathException)
@@ -60,5 +64,30 @@ public sealed class ZipInstaller : IInstallerRunner
         {
             return new InstallOutcome(InstallStatus.Failed, null, Errors.ErrorText.ForUser(ex), ex.ToString());
         }
+        finally
+        {
+            if (!ok) Cleanup(created);
+        }
+    }
+
+    // shortcut: a file that existed before and was overwritten keeps the new content, upgrade to backups if partial upgrades bite.
+    private static void Cleanup(List<string> created)
+    {
+        for (int i = created.Count - 1; i >= 0; i--)   // newest first, so folders are empty when reached
+        {
+            try
+            {
+                if (File.Exists(created[i])) File.Delete(created[i]);
+                else if (Directory.Exists(created[i]) && !Directory.EnumerateFileSystemEntries(created[i]).Any()) Directory.Delete(created[i]);
+            }
+            catch (Exception) { }
+        }
+    }
+
+    private static void CreateDir(string dir, List<string> created)
+    {
+        var missing = new Stack<string>();
+        for (var d = dir; !string.IsNullOrEmpty(d) && !Directory.Exists(d); d = Path.GetDirectoryName(d)) missing.Push(d);
+        foreach (var d in missing) { Directory.CreateDirectory(d); created.Add(d); }
     }
 }

@@ -473,4 +473,25 @@ public class InstallServiceTests : IDisposable
         public IReadOnlyList<string> GetSubKeyNames(RegistryHive hive, RegistryView view, string path) => throw new IOException("boom");
         public object? GetValue(RegistryHive hive, RegistryView view, string path, string name) => throw new IOException("boom");
     }
+
+    [Theory]
+    [InlineData("../thoat.txt")]
+    [InlineData("a.txt:luong")]
+    public void ExtractZip_rejects_entries_escaping_the_workspace(string entry)
+    {
+        var zip = Path.Combine(_tmp, "z.zip");
+        using (var za = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            using (var w = new StreamWriter(za.CreateEntry(entry).Open())) w.Write("x");
+        Assert.Throws<IOException>(() => InstallService.ExtractZip(zip, Path.Combine(_tmp, "ra"), CancellationToken.None));
+        Assert.False(File.Exists(Path.Combine(_tmp, "thoat.txt")));
+    }
+
+    [Fact]
+    public void ExtractZip_observes_cancellation()
+    {
+        var zip = Path.Combine(_tmp, "z.zip");
+        using (var za = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create)) za.CreateEntry("a.txt");
+        using var cts = new CancellationTokenSource(); cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => InstallService.ExtractZip(zip, Path.Combine(_tmp, "ra"), cts.Token));
+    }
 }

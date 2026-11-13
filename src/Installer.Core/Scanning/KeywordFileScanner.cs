@@ -86,12 +86,8 @@ public sealed class KeywordFileScanner
         bool Expired() => ct.IsCancellationRequested || sw.Elapsed >= limit;
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var opts = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint,
-        };
+        // Own recursion: hidden/system and cloud-placeholder (OneDrive) folders are entered; only junctions and symlinks are skipped.
+        var opts = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = 0 };
 
         var paths = new List<string>();
         foreach (var r in cfg.Paths ?? new())
@@ -108,19 +104,37 @@ public sealed class KeywordFileScanner
             {
                 var root = Environment.ExpandEnvironmentVariables(raw);
                 if (!Directory.Exists(root)) continue;
-                foreach (var file in Directory.EnumerateFiles(root, "*", opts))
+                var pending = new Stack<string>();
+                pending.Push(root);
+                while (pending.Count > 0)
                 {
-                    if (Expired()) return new(matches, true, false);
-                    if (!NameMatches(Path.GetFileName(file), keywords)) continue;
-                    if (!seen.Add(Path.GetFullPath(file))) continue;
-                    if (matches.Count >= MaxMatches) return new(matches, false, true);
-                    matches.Add(file);
+                    var dir = pending.Pop();
+                    try
+                    {
+                        foreach (var file in Directory.EnumerateFiles(dir, "*", opts))
+                        {
+                            if (Expired()) return new(matches, true, false);
+                            if (!NameMatches(Path.GetFileName(file), keywords)) continue;
+                            if (!seen.Add(Path.GetFullPath(file))) continue;
+                            if (matches.Count >= MaxMatches) return new(matches, false, true);
+                            matches.Add(file);
+                        }
+                        foreach (var sub in new DirectoryInfo(dir).EnumerateDirectories("*", opts))
+                        {
+                            if (Expired()) return new(matches, true, false);
+                            if (!ShouldSkipDir(sub)) pending.Push(sub.FullName);
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { }
         }
         return new(matches, false, false);
     }
+
+    /// <summary>Junctions and symlinks lead outside the scanned tree (or loop); other reparse points such as OneDrive placeholders are real folders.</summary>
+    internal static bool ShouldSkipDir(FileSystemInfo d) => d.Attributes.HasFlag(FileAttributes.ReparsePoint) && d.LinkTarget != null;
 
     /// <summary>Keywords must already be NFC-normalized and non-blank.</summary>
     internal static bool NameMatches(string fileName, IReadOnlyList<string> keywords)

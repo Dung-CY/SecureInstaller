@@ -302,4 +302,18 @@ public class VaultAdminTests : IDisposable
         Assert.Equal(1, s2.Catalog.Version);
         Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
     }
+
+    [Theory]
+    [InlineData("INSTALLDIR=\"C:\\My -x\" ALLUSERS=1", true)]
+    [InlineData("TARGET=\"D:\\Dự án /qn\"", true)]
+    [InlineData("ALLUSERS=1 /qn", false)]
+    [InlineData("-quiet", false)]
+    public void Msi_silent_args_quote_aware(string args, bool ok)
+    {
+        var (_, _, a) = NewVault();
+        var m = new { id = "m", name = "M", version = "1.0", installer_type = "msi", installer_file = "setup.exe", silent_args = args };
+        var src = SamplePackage.Create(_tmp, manifestOverride: System.Text.Json.JsonSerializer.Serialize(m));
+        if (ok) a.AddPackage(src);
+        else Assert.Throws<InvalidDataException>(() => a.AddPackage(src));
+    }
 }

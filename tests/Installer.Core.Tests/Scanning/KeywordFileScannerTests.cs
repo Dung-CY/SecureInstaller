@@ -100,4 +100,32 @@ public class KeywordFileScannerTests : IDisposable
         var r = new KeywordFileScanner().Scan(Cfg(new[] { "mật".Normalize(NormalizationForm.FormC) }, new[] { _root }), CancellationToken.None);
         Assert.Single(r.MatchedFiles);
     }
+
+    [Fact]
+    public void Keyword_scan_skips_junctions_but_enters_hidden_and_normal_dirs()
+    {
+        var outside = _root + "_ngoai";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "mat-ngoai.txt"), "x");
+        var hidden = Path.Combine(_root, "An");
+        Directory.CreateDirectory(Path.Combine(hidden, "sub"));
+        File.SetAttributes(hidden, FileAttributes.Directory | FileAttributes.Hidden);
+        File.WriteAllText(Path.Combine(hidden, "sub", "mat-an.txt"), "x");
+        var link = Path.Combine(_root, "lien-ket");
+        try
+        {
+            Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, outside);
+            Assert.True(KeywordFileScanner.ShouldSkipDir(new DirectoryInfo(link)));
+            Assert.False(KeywordFileScanner.ShouldSkipDir(new DirectoryInfo(hidden)));
+
+            var r = new KeywordFileScanner().Scan(Cfg(new[] { "mat" }, new[] { _root }), CancellationToken.None);
+
+            Assert.Equal(new[] { Path.Combine(hidden, "sub", "mat-an.txt") }, r.MatchedFiles);
+        }
+        finally
+        {
+            try { Directory.Delete(link, false); } catch { }
+            try { Directory.Delete(outside, true); } catch { }
+        }
+    }
 }

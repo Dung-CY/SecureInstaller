@@ -93,7 +93,7 @@ public sealed class VaultAdmin
         if (!Same(updated.Version!, version) && _s.Catalog.Packages.Any(p => Same(p.Id, id) && Same(p.Version, updated.Version!)))
             throw new Errors.UserMessageException($"Phần mềm {id} phiên bản {updated.Version} đã tồn tại");
         if (old.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(updated.SilentArgs) &&
-            updated.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
+            PackageBuilder.MsiTokens(updated.SilentArgs).Any(t => t[0] is '/' or '-'))
             throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
         var entry = updated with
         {

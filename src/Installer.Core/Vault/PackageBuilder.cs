@@ -53,7 +53,7 @@ public static class PackageBuilder
         if (!SafeName.IsMatch(m.Version)) throw new InvalidDataException("Trường version chứa ký tự không hợp lệ");
 
         if (m.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(m.SilentArgs) &&
-            m.SilentArgs.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(t => t[0] is '/' or '-'))
+            MsiTokens(m.SilentArgs).Any(t => t[0] is '/' or '-'))
             throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
 
         if (m.Uninstall is { } u)
@@ -102,6 +102,23 @@ public static class PackageBuilder
             m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown,
             string.IsNullOrEmpty(m.UninstallScript) ? null : m.UninstallScript);
         return new Manifest(entry, docs);
+    }
+
+    /// <summary>Splits on whitespace outside double quotes, so INSTALLDIR="C:\My -x" stays one token.</summary>
+    internal static IEnumerable<string> MsiTokens(string args)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool quoted = false;
+        foreach (var ch in args + " ")
+        {
+            if (ch == '"') quoted = !quoted;
+            if (char.IsWhiteSpace(ch) && !quoted)
+            {
+                if (sb.Length > 0) yield return sb.ToString();
+                sb.Clear();
+            }
+            else sb.Append(ch);
+        }
     }
 
     static void CheckScript(string field, string name)

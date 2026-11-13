@@ -113,19 +113,37 @@ public sealed class InstallService
             {
                 using var cipher = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var plain = new FileStream(zipPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                PackageCrypto.Decrypt(cipher, plain, key);
+                PackageCrypto.Decrypt(cipher, plain, key, ct);
             }, ct).ConfigureAwait(false);
         }
         catch (PackageCorruptException) { return false; }
         try { File.Delete(encPath); } catch { }
 
         ct.ThrowIfCancellationRequested();
-        try { await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, pkgDir, true), ct).ConfigureAwait(false); }
+        try { await Task.Run(() => ExtractZip(zipPath, pkgDir, ct), ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
         catch (Exception) { return false; }
         try { File.Delete(zipPath); } catch { }
         ct.ThrowIfCancellationRequested();
         return true;
+    }
+
+    /// <summary>ZipFile.ExtractToDirectory with a cancellation check per entry; keeps its zip-slip guard.</summary>
+    internal static void ExtractZip(string zipPath, string dest, CancellationToken ct)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dest)) + Path.DirectorySeparatorChar;
+        Directory.CreateDirectory(root);
+        using var za = ZipFile.OpenRead(zipPath);
+        foreach (var e in za.Entries)
+        {
+            ct.ThrowIfCancellationRequested();
+            var full = Path.GetFullPath(Path.Combine(root, e.FullName));
+            if (e.FullName.Contains(':') || !full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Zip entry escapes the destination: " + e.FullName);
+            if (e.Name.Length == 0) { Directory.CreateDirectory(full); continue; }
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            e.ExtractToFile(full, overwrite: true);
+        }
     }
 
     private async Task<InstallOutcome> RunCoreAsync(PackageEntry pkg, TempWorkspace ws, IProgress<InstallProgress> progress,
@@ -215,7 +233,7 @@ public sealed class InstallService
             await Task.Run(() =>
             {
                 using var dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                PackageCrypto.Decrypt(src, dst, key);
+                PackageCrypto.Decrypt(src, dst, key, ct);
             }, ct).ConfigureAwait(false);
         }
         catch
