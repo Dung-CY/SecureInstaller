@@ -55,8 +55,11 @@ public sealed class InstallService
         if (_marker != null && outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
         {
             string? uninstallKey = null;
-            if (before != null) try { uninstallKey = _scanner!.PickNewKey(before, pkg.Detect, pkg); } catch (Exception) { }
-            try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now, uninstallKey); }
+            if (before != null) try { uninstallKey = _scanner!.PickNewKey(before, pkg.Detect); } catch (Exception) { }
+            string? zipDir = null;
+            if (pkg.InstallerType == InstallerType.Zip && !string.IsNullOrWhiteSpace(pkg.TargetDir))
+                try { zipDir = Path.GetFullPath(Environment.ExpandEnvironmentVariables(pkg.TargetDir)); } catch (Exception) { }
+            try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now, uninstallKey, zipDir); }
             catch (Exception ex) { markerError = "Không ghi được dấu cài đặt: " + ex.Message; }
         }
 

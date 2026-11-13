@@ -53,15 +53,19 @@ public sealed class InstalledAppsScanner
 
     private static readonly Regex Word = new(@"[A-Za-z]{3,}", RegexOptions.Compiled);
 
-    /// <summary>Last resort when neither the marker nor Detect finds the app: a visible HKLM row with the package version and a shared word (3+ letters) in the name.</summary>
+    /// <summary>
+    /// Last resort when neither the marker nor Detect finds the app: a visible HKLM row with the package version whose name
+    /// shares two words (3+ letters) with the package name, or its only word. One common word such as "Microsoft" is not enough.
+    /// </summary>
     private InstalledApp? FallbackRow(PackageEntry pkg)
     {
         var words = Word.Matches(pkg.Name).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (words.Count == 0) return null;
+        var need = Math.Min(2, words.Count);
         foreach (var k in SnapshotMachineKeys())
             if (FindByKey(k) is { SystemComponent: false, DisplayVersion: { } v } a
                 && VersionComparer.Compare(v, pkg.Version) == 0
-                && Word.Matches(a.DisplayName).Any(m => words.Contains(m.Value)))
+                && Word.Matches(a.DisplayName).Select(m => m.Value).Where(words.Contains).Distinct(StringComparer.OrdinalIgnoreCase).Count() >= need)
                 return a;
         return null;
     }
@@ -101,7 +105,7 @@ public sealed class InstalledAppsScanner
     public bool KeyExists(InstalledApp app) => !app.PerUser && !app.IsMarker && FindByKey(KeyOf(app.Is64Bit, app.KeyName)) != null;
 
     /// <summary>Picks the Uninstall key an install created: after minus <paramref name="before"/>, else the Find(Detect) HKLM row.</summary>
-    public string? PickNewKey(IReadOnlySet<string> before, DetectRule detect, PackageEntry? pkg = null)
+    public string? PickNewKey(IReadOnlySet<string> before, DetectRule detect)
     {
         // Hidden (SystemComponent=1) keys are child components of a bundle, never the entry to uninstall.
         var added = SnapshotMachineKeys().Where(k => !before.Contains(k) && FindByKey(k) is not { SystemComponent: true }).ToList();
@@ -109,15 +113,19 @@ public sealed class InstalledAppsScanner
         if (added.Count > 1)
         {
             var rows = added.Select(k => (Key: k, App: FindByKey(k))).Where(x => x.App != null).ToList();
+            if (detect.ProductCode is { Length: > 0 } code
+                && rows.FirstOrDefault(r => string.Equals(r.App!.KeyName, code, StringComparison.OrdinalIgnoreCase)) is { Key: { } byCode })
+                return byCode;
             Regex? rx = null;
             try { if (detect.DisplayNameRegex is not null) rx = new Regex(detect.DisplayNameRegex, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
             catch (ArgumentException) { }
             if (rx != null)
                 foreach (var r in rows)
                     try { if (rx.IsMatch(r.App!.DisplayName)) return r.Key; } catch (RegexMatchTimeoutException) { }
-            return rows.FirstOrDefault(r => r.App!.UninstallString != null).Key;
+            return null; // ambiguous (e.g. a redistributable came along): record nothing rather than a wrong program
         }
-        var found = Find(detect).FirstOrDefault(a => !a.PerUser) ?? (pkg == null ? null : FallbackRow(pkg));
+        // The name/version guess is never written to the marker, so a wrong guess does not stick.
+        var found = Find(detect).FirstOrDefault(a => !a.PerUser);
         return found == null ? null : KeyOf(found.Is64Bit, found.KeyName);
     }
 

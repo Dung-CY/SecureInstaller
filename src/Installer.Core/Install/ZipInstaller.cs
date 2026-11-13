@@ -38,6 +38,8 @@ public sealed class ZipInstaller : IInstallerRunner
             for (int i = 0; i < entries.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
+                // A folder under the target may have been swapped for a junction since the last install.
+                SafePath.EnsureNoReparseAncestors(dests[i]);
                 if (entries[i].Name == "")
                     CreateDir(dests[i], created);
                 else

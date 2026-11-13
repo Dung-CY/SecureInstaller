@@ -136,8 +136,10 @@ public class InstalledAppsScannerTests
         // several: regex match wins over the first
         reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\B", V("Foo App", "1"));
         Assert.Equal("64|B", s.PickNewKey(before, new DetectRule(null, "^Foo")));
-        // several, no regex match: first with an UninstallString
-        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule(null, "^Nope")));
+        // several, no regex match: ambiguous, nothing recorded
+        Assert.Null(s.PickNewKey(before, new DetectRule(null, "^Nope")));
+        // several: the product code wins even without a regex
+        Assert.Equal("32|A", s.PickNewKey(before, new DetectRule("a", null)));
     }
 
     static PackageEntry Pk(string id, string name, string ver, string? regex) =>
@@ -156,7 +158,7 @@ public class InstalledAppsScannerTests
         reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\{5F1E0000-0000-0000-0000-000000000002}", new() { ["SystemComponent"] = 1 });
         reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry32, U + @"\{de6c0000-0000-0000-0000-000000000003}",
             new() { ["DisplayName"] = DN, ["DisplayVersion"] = "8.0.11.34123", ["QuietUninstallString"] = "\"C:\\ProgramData\\Package Cache\\{de6c}\\runtime.exe\" /uninstall /quiet" });
-        Assert.Equal("32|{de6c0000-0000-0000-0000-000000000003}", s.PickNewKey(before, new DetectRule(null, "Desktop Runtime"), Pk("net", ".NET Desktop Runtime", "8.0.11", null)));
+        Assert.Equal("32|{de6c0000-0000-0000-0000-000000000003}", s.PickNewKey(before, new DetectRule(null, "Desktop Runtime")));
 
         // Find skips the hidden child, but an exact ProductCode still counts
         var found = Assert.Single(s.Find(new DetectRule(null, "Desktop Runtime")));
@@ -182,9 +184,19 @@ public class InstalledAppsScannerTests
         var row = Assert.Single(s.FindForPackage(pkg));
         Assert.Equal("Bit4id - Universal MW (x)", row.KeyName);
         Assert.False(row.IsMarker);
-        // no new key after the install: same fallback
-        Assert.Equal("32|Bit4id - Universal MW (x)", s.PickNewKey(s.SnapshotMachineKeys(), pkg.Detect, pkg));
+        // the name/version guess is never written to the install marker
+        Assert.Null(s.PickNewKey(s.SnapshotMachineKeys(), pkg.Detect));
         // a different version does not match
         Assert.Empty(s.FindForPackage(pkg with { Version = "2.0" }));
+    }
+
+    [Fact]
+    public void Fallback_needs_two_shared_words_not_just_the_vendor()
+    {
+        var reg = new FakeRegistry();
+        reg.AddKey(RegistryHive.LocalMachine, RegistryView.Registry64, U + @"\Bar", V("Microsoft Bar", "16.0.1"));
+        var s = new InstalledAppsScanner(reg);
+        Assert.Empty(s.FindForPackage(Pk("foo", "Microsoft Foo Tools", "16.0.1", "^nothing")));
+        Assert.Single(s.FindForPackage(Pk("bar", "Microsoft Bar", "16.0.1", "^nothing")));
     }
 }

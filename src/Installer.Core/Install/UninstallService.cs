@@ -35,14 +35,18 @@ public sealed class UninstallService(IRepositorySource repo, InstallMarker marke
     /// <c>InstallerType</c>; after that: zip (InstallerType), msi (InstallerType), then a machine-wide (HKLM)
     /// QuietUninstallString. HKCU (PerUser) data and marker rows are never used.
     /// </summary>
-    private static Plan? Resolve(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
+    private Plan? Resolve(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
     {
-        try { return ResolveCore(pkg, installed); }
+        string? recorded = null;
+        try { recorded = marker.ReadTargetDir(pkg.Id); } catch (Exception) { }
+        try { return ResolveCore(pkg, installed, recorded); }
         catch (Exception) { return null; }
     }
 
-    private static Plan? ResolveCore(PackageEntry pkg, IReadOnlyList<InstalledApp> installed)
+    private static Plan? ResolveCore(PackageEntry pkg, IReadOnlyList<InstalledApp> installed, string? recordedDir)
     {
+        // The folder actually installed to wins: target_dir may have been edited since (e.g. to a shared parent).
+        Plan? ZipFor(PackageEntry p) => !string.IsNullOrWhiteSpace(recordedDir) ? new ZipPlan(recordedDir) : UninstallService.ZipFor(p);
         var type = pkg.Uninstall?.Type;
         bool Is(string t) => string.Equals(type, t, StringComparison.OrdinalIgnoreCase);
 

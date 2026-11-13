@@ -218,7 +218,10 @@ public partial class PackageListViewModel : ObservableObject
     {
         if (IsInstalling || !row.CanUninstall) return;
         var pkg = row.Package;
-        if (!_confirm($"Gỡ {pkg.Name} {row.InstalledVersionRaw ?? pkg.Version} khỏi máy?")) return;
+        // Name the program(s) Windows will actually remove, so a wrong detection is visible before confirming.
+        var targets = row.Matches.Where(a => !a.PerUser && !a.IsMarker).Select(a => a.DisplayName).Distinct().ToList();
+        var detail = targets.Count == 0 ? "" : "\n\nChương trình trên máy: " + string.Join(", ", targets);
+        if (!_confirm($"Gỡ {pkg.Name} {row.InstalledVersionRaw ?? pkg.Version} khỏi máy?{detail}")) return;
         // Only this package's own matches are handed to the uninstaller.
         var matches = row.Matches;
         RunQueue(UninstallQueueTitle, new[] { pkg }, (p, pr, ct) => _uninstall(p, matches, pr, ct),

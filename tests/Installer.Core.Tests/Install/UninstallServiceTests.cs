@@ -371,4 +371,23 @@ public class UninstallServiceTests : IDisposable
         if (ws != null) Assert.True(ws.Deleted);
         Assert.False(MarkerExists(reg));
     }
+
+    [Fact]
+    public async Task Zip_uninstall_deletes_the_recorded_folder_not_an_edited_target_dir()
+    {
+        var (svc, _, _, reg) = Make();
+        var parent = Path.Combine(_tmp, "Tools");
+        var installed = Path.Combine(parent, "A");
+        var other = Path.Combine(parent, "Khac");
+        Directory.CreateDirectory(installed);
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "giu.txt"), "x");
+        reg.SetString(RegistryHive.LocalMachine, RegistryView.Registry64, MarkerKey, "TargetDir", installed);
+
+        var o = await svc.UninstallAsync(Pkg(InstallerType.Zip, parent), None, "u", Hw, NoProgress, CancellationToken.None);
+
+        Assert.Equal(InstallStatus.Success, o.Status);
+        Assert.False(Directory.Exists(installed));
+        Assert.True(File.Exists(Path.Combine(other, "giu.txt")));
+    }
 }

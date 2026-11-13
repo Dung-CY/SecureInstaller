@@ -21,13 +21,21 @@ public sealed class InstallMarker(IRegistryReader reg, IRegistryWriter writer)
         if (!IsValid(id)) throw new ArgumentException("Invalid package id for install marker.", nameof(id));
     }
 
-    public void Write(string packageId, string version, DateTimeOffset at, string? uninstallKey = null)
+    public void Write(string packageId, string version, DateTimeOffset at, string? uninstallKey = null, string? targetDir = null)
     {
         Check(packageId);
         var path = Root + "\\" + packageId;
         writer.SetString(Hive, View, path, "Version", version);
         writer.SetString(Hive, View, path, "InstalledAt", at.ToString("o", CultureInfo.InvariantCulture));
         if (uninstallKey != null) writer.SetString(Hive, View, path, "UninstallKey", uninstallKey);
+        if (targetDir != null) writer.SetString(Hive, View, path, "TargetDir", targetDir);
+    }
+
+    /// <summary>The expanded folder a zip package was extracted to, when one was recorded.</summary>
+    public string? ReadTargetDir(string packageId)
+    {
+        Check(packageId);
+        return reg.GetValue(Hive, View, Root + "\\" + packageId, "TargetDir") as string;
     }
 
     /// <summary>"64|subkey" or "32|subkey" of the package's HKLM Uninstall entry, when one was recorded.</summary>

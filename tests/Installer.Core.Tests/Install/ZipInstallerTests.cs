@@ -128,4 +128,23 @@ public class ZipInstallerTests : IDisposable
         int _i;
         public void Report(InstallProgress v) { if (++_i == n) throw new IOException("disk full"); }
     }
+
+    [Fact]
+    public async Task Zip_refuses_to_write_through_a_junction_under_the_target()
+    {
+        var target = Path.Combine(_root, "t");
+        var outside = Path.Combine(_root, "ngoai");
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(outside);
+        var link = Path.Combine(target, "bin");
+        Installer.Core.Tests.Platform.SafePathTests.MakeJunction(link, outside);
+        try
+        {
+            var z = MakeZip("bin/evil.dll");
+            var o = await new ZipInstaller().RunAsync(new InstallRequest(InstallerType.Zip, z, "", target, TimeSpan.FromMinutes(1)), new Collect(), CancellationToken.None);
+            Assert.Equal(InstallStatus.Failed, o.Status);
+            Assert.Empty(Directory.GetFileSystemEntries(outside));
+        }
+        finally { try { Directory.Delete(link, false); } catch { } }
+    }
 }

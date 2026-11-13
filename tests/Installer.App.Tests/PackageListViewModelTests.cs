@@ -235,7 +235,7 @@ public class PackageListViewModelTests
 
         h.Confirm = _ => false;
         a.UninstallCommand.Execute(null);
-        Assert.Equal("Gỡ A 0.9 khỏi máy?", Assert.Single(h.Confirms));
+        Assert.Equal("Gỡ A 0.9 khỏi máy?\n\nChương trình trên máy: A", Assert.Single(h.Confirms));
         Assert.Empty(h.Nav);
 
         h.Confirm = _ => true;
