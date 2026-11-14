@@ -37,7 +37,10 @@ public partial class PackageRowViewModel : ObservableObject
 
     [ObservableProperty] private string _installedVersion = "—";
     [ObservableProperty] private string _statusText = "";
-    [ObservableProperty] private VersionStatus _status;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowInstall))] private VersionStatus _status;
+
+    /// <summary>The install button is hidden once the machine has this version or a newer one.</summary>
+    public bool ShowInstall => Status is not (VersionStatus.Equal or VersionStatus.Newer);
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(InstallCommand))] private bool _allowed;
     [ObservableProperty] private string _reasonsText = "";
     [ObservableProperty] private bool _needsDowngradeConfirm;
