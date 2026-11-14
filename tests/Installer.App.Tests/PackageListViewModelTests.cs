@@ -510,4 +510,15 @@ public class PackageListViewModelTests
         Assert.False(h.Vm.IsInstalling);
         Assert.True(b.InstallCommand.CanExecute(null));
     }
+
+    [Theory]
+    [InlineData(null, true)]     // not installed
+    [InlineData("0.9", true)]    // older on the machine
+    [InlineData("1.0", false)]   // same version
+    [InlineData("2.0", false)]   // newer on the machine
+    public void Install_button_hidden_when_machine_has_same_or_newer(string? installed, bool shown)
+    {
+        var h = Harness.Create(Cat(Pkg("A", "1.0")), Report(), x => x.Installed = _ => installed);
+        Assert.Equal(shown, h.Vm.Rows[0].ShowInstall);
+    }
 }

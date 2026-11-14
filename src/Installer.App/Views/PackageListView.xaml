@@ -196,6 +196,7 @@
 
                                 <!-- Actions: install, uninstall and guides each get their own column -->
                                     <Button Grid.Column="4" Content="Cài đặt" Command="{Binding InstallCommand}" Style="{StaticResource RowButton}"
+                                            Visibility="{Binding ShowInstall, Converter={StaticResource BoolToVisibility}}"
                                             VerticalAlignment="Center"
                                             AutomationProperties.Name="{Binding Name, StringFormat='Cài đặt {0}'}"/>
                                     <ItemsControl Grid.Column="6" ItemsSource="{Binding Docs}" Focusable="False" Margin="8,0,0,0" VerticalAlignment="Center"
