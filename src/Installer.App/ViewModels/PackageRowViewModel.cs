@@ -37,10 +37,11 @@ public partial class PackageRowViewModel : ObservableObject
 
     [ObservableProperty] private string _installedVersion = "—";
     [ObservableProperty] private string _statusText = "";
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowInstall))] private VersionStatus _status;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NeedsInstall)), NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private VersionStatus _status;
 
-    /// <summary>The install button is hidden once the machine has this version or a newer one.</summary>
-    public bool ShowInstall => Status is not (VersionStatus.Equal or VersionStatus.Newer);
+    /// <summary>False once the machine has this version or a newer one: the install button stays visible but greyed out.</summary>
+    public bool NeedsInstall => Status is not (VersionStatus.Equal or VersionStatus.Newer);
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(InstallCommand))] private bool _allowed;
     [ObservableProperty] private string _reasonsText = "";
     [ObservableProperty] private bool _needsDowngradeConfirm;
@@ -121,7 +122,7 @@ public partial class PackageRowViewModel : ObservableObject
         UninstallCommand.NotifyCanExecuteChanged();
     }
 
-    private bool CanInstall() => Allowed && !_owner.IsInstalling;
+    private bool CanInstall() => Allowed && NeedsInstall && !_owner.IsInstalling;
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private void Install() => _owner.StartInstall(new[] { this });

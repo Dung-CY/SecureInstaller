@@ -52,9 +52,53 @@ public sealed class MsiInstaller : IInstallerRunner
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static readonly Regex ActionName = new(@"Action \d+:\d+:\d+:\s*([^.]+)\.", RegexOptions.Compiled);
 
-    public Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct) =>
-        RunMsiAsync(() => MsiNative.MsiInstallProductW(req.InstallerPath,
-            ("ACTION=INSTALL REBOOT=ReallySuppress " + req.SilentArgs).Trim()), req.Timeout, progress, ct);
+    /// <summary>Verbose MSI logs: %ProgramData%\SecureInstaller\logs\msi. Kept only when the install fails.</summary>
+    public static string LogDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SecureInstaller", "logs", "msi");
+
+    /// <summary>Starts msiexec.exe (by full System32 path, never via PATH); the fallback when the in-process API fails.</summary>
+    internal Func<InstallRequest, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> RunMsiexec { get; init; } =
+        (r, p, c) => new ExeInstaller().RunAsync(r, p, c);
+
+    internal string LogDirectory { get; init; } = LogDir;
+
+    internal Func<string, string, uint> InstallProduct { get; init; } = MsiNative.MsiInstallProductW;
+
+    public async Task<InstallOutcome> RunAsync(InstallRequest req, IProgress<InstallProgress> progress, CancellationToken ct)
+    {
+        string? log = null;
+        try
+        {
+            Directory.CreateDirectory(LogDirectory);
+            log = Path.Combine(LogDirectory, $"{Path.GetFileNameWithoutExtension(req.InstallerPath)}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        }
+        catch (Exception) { }
+
+        var outcome = await RunMsiAsync(() =>
+        {
+            if (log != null) MsiNative.MsiEnableLogW(MsiNative.INSTALLLOGMODE_VERBOSE_ALL, log, MsiNative.INSTALLLOGATTRIBUTES_FLUSHEACHLINE);
+            try { return InstallProduct(req.InstallerPath, ("ACTION=INSTALL REBOOT=ReallySuppress " + req.SilentArgs).Trim()); }
+            finally { if (log != null) MsiNative.MsiEnableLogW(0, null, 0); }
+        }, req.Timeout, progress, ct).ConfigureAwait(false);
+
+        // 1603 (fatal error) seen on real machines where "msiexec /i x.msi /qn /norestart" succeeds: retry once that way.
+        if (outcome.ExitCode == 1603 && !ct.IsCancellationRequested)
+        {
+            progress.Report(new InstallProgress(null, "Thử lại bằng msiexec"));
+            var msiexec = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "msiexec.exe");
+            var args = $"/i \"{req.InstallerPath}\" /qn /norestart REBOOT=ReallySuppress {req.SilentArgs}".Trim()
+                + (log != null ? $" /L*v+ \"{log}\"" : "");
+            outcome = await RunMsiexec(req with { InstallerPath = msiexec, SilentArgs = args }, progress, ct).ConfigureAwait(false);
+        }
+
+        if (log == null) return outcome;
+        if (outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
+        {
+            try { File.Delete(log); } catch (Exception) { }
+            return outcome;
+        }
+        return File.Exists(log) ? outcome with { Message = outcome.Message + ". Log chi tiết: " + log } : outcome;
+    }
 
     /// <summary>Shared MSI machinery: global gate, silent UI, progress parsing, cancel via IDCANCEL, timeout.
     /// <paramref name="nativeCall"/> runs on a dedicated thread while the external UI handler is registered.</summary>

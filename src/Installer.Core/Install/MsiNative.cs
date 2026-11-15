@@ -26,6 +26,13 @@ internal static class MsiNative
     [DllImport("msi.dll", CharSet = CharSet.Unicode)]
     public static extern uint MsiInstallProductW(string szPackagePath, string szCommandLine);
 
+    // Same as msiexec /L*v: every message type plus verbose output, flushed line by line so a crash keeps the log.
+    public const uint INSTALLLOGMODE_VERBOSE_ALL = 0x1FDF;
+    public const uint INSTALLLOGATTRIBUTES_FLUSHEACHLINE = 2;
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint MsiEnableLogW(uint dwLogMode, string? szLogFile, uint dwLogAttributes);
+
     public const int INSTALLSTATE_ABSENT = 2;
 
     [DllImport("msi.dll", CharSet = CharSet.Unicode)]

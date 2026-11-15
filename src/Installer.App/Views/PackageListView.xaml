@@ -195,10 +195,19 @@
                                 </StackPanel>
 
                                 <!-- Actions: install, uninstall and guides each get their own column -->
-                                    <Button Grid.Column="4" Content="Cài đặt" Command="{Binding InstallCommand}" Style="{StaticResource RowButton}"
-                                            Visibility="{Binding ShowInstall, Converter={StaticResource BoolToVisibility}}"
+                                    <Button Grid.Column="4" Content="Cài đặt" Command="{Binding InstallCommand}" ToolTipService.ShowOnDisabled="True"
                                             VerticalAlignment="Center"
-                                            AutomationProperties.Name="{Binding Name, StringFormat='Cài đặt {0}'}"/>
+                                            AutomationProperties.Name="{Binding Name, StringFormat='Cài đặt {0}'}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource RowButton}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding NeedsInstall}" Value="False">
+                                                        <Setter Property="ToolTip" Value="Máy đã có bản này hoặc mới hơn"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
                                     <ItemsControl Grid.Column="6" ItemsSource="{Binding Docs}" Focusable="False" Margin="8,0,0,0" VerticalAlignment="Center"
                                                   Visibility="{Binding HasDocs, Converter={StaticResource BoolToVisibility}}">
                                         <ItemsControl.ItemsPanel>
