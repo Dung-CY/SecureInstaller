@@ -55,6 +55,9 @@ Packager CLI (admin tooling): `SecureInstaller.Packager <init|add-package|update
   5. a command derived from `UninstallString` by installer kind.
 
   Script packages run their `uninstall_script` from a workspace. An uninstall counts as successful only once the targeted Uninstall key has disappeared.
+- After login, `SessionSetupViewModel` asks for the unit (`ComputerName.NormalizeUnit`, e.g. `LamThao`, session only) and offers a computer rename (`SetComputerNameEx`; over 15 chars is warned, not refused). The machine's last scan is cached per vault in `%ProgramData%\SecureInstaller\last-scan-<vaultId>.enc` (VK-encrypted) and reused while the BIOS serial and host name match; "Quét lại" rescans.
+- `DuLieu\<package id>` next to the exe (plain, not in the vault) is copied into a package's `Data.TargetDir` after a successful install, with optional `tên gốc => tên mới` renames (`{DonVi}`).
+- MSI installs write a verbose log to `%ProgramData%\SecureInstaller\logs\msi` (kept only on failure); error 1603 retries once via `System32\msiexec.exe /i /qn /norestart`.
 - Logging never throws; if the vault is read-only or unplugged it falls back to `%ProgramData%\SecureInstaller\logs` and syncs back on the next writable login.
 - Crack detection is heuristic only: verdicts `Genuine / Suspicious / CrackSuspected / Unknown / NotInstalled`, always with evidence; read failures must yield `Unknown`, never `CrackSuspected`. Lab testing uses only `slmgr /skms 127.0.0.2`, never real crack tools.
 
