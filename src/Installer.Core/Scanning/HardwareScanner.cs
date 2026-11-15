@@ -3,7 +3,7 @@ using Installer.Core.Platform;
 namespace Installer.Core.Scanning;
 
 public record DiskInfo(string Model, string? Serial, string? InterfaceType);
-public record NicInfo(string Name, string Mac);
+public record NicInfo(string Name, string Mac, string? PnpDeviceId = null);
 public record DeviceInfo(string Name, string? PnpClass, string DeviceId);
 public record HardwareInfo(string Hostname, string? Manufacturer, string? Model, string? BiosSerial,
     List<DiskInfo> Disks, List<NicInfo> Nics, List<DeviceInfo> Peripherals, List<string> Errors);
@@ -37,11 +37,11 @@ public sealed class HardwareScanner
             disks.Add(new DiskInfo(Str(r, "Model") ?? "", Str(r, "SerialNumber"), Str(r, "InterfaceType")));
 
         foreach (var r in Run("Win32_NetworkAdapter",
-                     "SELECT Name, MACAddress FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE AND MACAddress IS NOT NULL", errors))
+                     "SELECT Name, MACAddress, PNPDeviceID FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE AND MACAddress IS NOT NULL", errors))
         {
             var mac = Str(r, "MACAddress");
             if (mac == null) continue;
-            nics.Add(new NicInfo(Str(r, "Name") ?? "", mac));
+            nics.Add(new NicInfo(Str(r, "Name") ?? "", mac, Str(r, "PNPDeviceID")));
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

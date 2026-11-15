@@ -85,4 +85,22 @@ public class ScanHistoryTests
         Assert.Null(e.ScanReportJson);
         Assert.Equal("scan", e.Action);
     }
+
+    [Fact]
+    public void Line_follows_the_unit_maker_serial_mac_disks_format()
+    {
+        var lic = new Installer.Core.Licensing.LicenseInfo("Windows", "Pro", Installer.Core.Licensing.LicenseChannel.Retail, true, null, null,
+            Installer.Core.Licensing.LicenseVerdict.Genuine, new());
+        var hw = new HardwareInfo("PC-01", "Dell Inc.", "OptiPlex", "7X9K2L3",
+            new() { new DiskInfo("SSD", " S4EVNX0N123 ", "SCSI"), new DiskInfo("HDD", "WD-WCC4E1", "IDE"), new DiskInfo("USB", null, "USB") },
+            new()
+            {
+                new NicInfo("Intel Ethernet", "AA:BB:CC:00:11:22", @"PCI\VEN_8086&DEV_15BB\3&11583659&0&FE"),
+                new NicInfo("Wi-Fi USB", "AA:BB:CC:00:11:33", @"USB\VID_0BDA&PID_8179\00E04C0001"),
+                new NicInfo("Hyper-V Virtual Ethernet", "00:15:5D:01:02:03", @"ROOT\VMS_MP\0000"),
+            }, new(), new());
+        var r = new ScanReport(DateTimeOffset.Now, hw, new NetworkHistory(new(), true), lic, lic, new KeywordScanResult(new(), false, false), Unit: "LamThao");
+
+        Assert.Equal("LamThao | Dell Inc. | 7X9K2L3 | AA:BB:CC:00:11:22;AA:BB:CC:00:11:33 | S4EVNX0N123;WD-WCC4E1", ScanHistory.Line(r));
+    }
 }

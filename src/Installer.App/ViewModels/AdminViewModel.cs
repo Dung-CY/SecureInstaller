@@ -63,6 +63,12 @@ public sealed record ScanHistoryRow(ScanHistoryItem Item)
     public string Hostname => Item.Hostname;
     public string Username => Item.Username;
     public string BiosSerial => string.IsNullOrEmpty(Item.BiosSerial) ? "—" : Item.BiosSerial;
+    public string Unit => Item.Report.Unit ?? "—";
+    public string Manufacturer => Item.Report.Hardware.Manufacturer ?? "—";
+    public string Macs => string.Join("; ", ScanHistory.PhysicalMacs(Item.Report.Hardware));
+    public string DiskSerials => string.Join("; ", ScanHistory.DiskSerials(Item.Report.Hardware));
+    public string Line => ScanHistory.Line(Item.Report);
+    public string Summary => $"Người dùng: {Username}\nWindows: {WindowsText}\nOffice: {OfficeText}";
     public string WindowsText => Item.Report.Windows is { } w ? DisplayText.Of(w.Verdict) : "—";
     public string OfficeText => Item.Report.Office is { } o ? DisplayText.Of(o.Verdict) : "—";
     public bool WindowsWarn => Item.Report.Windows?.Verdict is Installer.Core.Licensing.LicenseVerdict.CrackSuspected;
@@ -620,7 +626,7 @@ public partial class AdminViewModel : ObservableObject
     {
         HistoryPageIndex = 0;
         var m = HistoryMachineFilter?.Trim() ?? "";
-        _filteredHistory = _history.Where(h => InDateRange(h.Ts, HistoryFrom, HistoryTo) && Matches(h.Hostname, m)).ToList();
+        _filteredHistory = _history.Where(h => InDateRange(h.Ts, HistoryFrom, HistoryTo) && (Matches(h.Hostname, m) || Matches(h.Report.Unit, m))).ToList();
         ShowHistoryPage();
     }
 
@@ -671,6 +677,20 @@ public partial class AdminViewModel : ObservableObject
         catch (Exception ex) { Error = ErrorText.ForUser(ex); return; }
         SelectedTabIndex = HistoryTabIndex;
         _navigate(report);
+    }
+
+    [RelayCommand]
+    private void ExportHistoryCsv()
+    {
+        var path = _pickSavePath();
+        if (string.IsNullOrEmpty(path)) return;
+        Error = null; Status = null;
+        try
+        {
+            CsvExporter.ExportScans(_filteredHistory, path);
+            Status = $"Đã xuất {_filteredHistory.Count} lần quét";
+        }
+        catch (Exception ex) { Error = ErrorText.ForUser(ex); }
     }
 
     [RelayCommand]
