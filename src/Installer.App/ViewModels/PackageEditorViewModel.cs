@@ -91,7 +91,7 @@ public partial class PackageEditorViewModel : ObservableObject
         _keepIconPngB64 = existing.IconPngB64;
         _id = existing.Id; _name = existing.Name; _version = existing.Version; _type = existing.InstallerType; _kind = existing.Kind;
         _silentArgs = existing.SilentArgs; _targetDir = existing.TargetDir; _timeoutText = existing.TimeoutSec.ToString();
-        _productCode = existing.Detect?.ProductCode; _displayNameRegex = existing.Detect?.DisplayNameRegex;
+        _productCode = existing.Detect?.ProductCode; _loadedRegex = existing.Detect?.DisplayNameRegex; _displayNameText = _loadedText = TextOf(_loadedRegex);
         var rules = (existing.Rules ?? new()).Select(r => r?.Type).ToHashSet();
         _blockIfWindowsCracked = rules.Contains("block_if_windows_cracked");
         _blockIfOfficeCracked = rules.Contains("block_if_office_cracked");
@@ -99,8 +99,9 @@ public partial class PackageEditorViewModel : ObservableObject
         _blockIfKeywordFile = rules.Contains("block_if_keyword_file");
         _requireInternet = rules.Contains("require_internet");
         _uninstall = existing.Uninstall;
+        _dataEnabled = existing.Data is not null;
         _dataTargetDir = existing.Data?.TargetDir ?? "";
-        _dataRenamesText = string.Join("\n", existing.Data?.Renames ?? new());
+        _dataFilesText = string.Join("\n", existing.Data?.Files ?? new());
         _origType = existing.InstallerType; _origKind = existing.Kind;
         ExistingFiles.Add(new ExistingFileRow("Bộ cài", existing.InstallerFile, false, () => { PickInstaller(); return InstallerPath; },
             () => { InstallerPath = null; Type = _origType; Kind = _origKind; }));
@@ -134,7 +135,18 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string _silentArgs = "";
     [ObservableProperty] private string? _targetDir;
     [ObservableProperty] private string _timeoutText = "1800";
-    [ObservableProperty] private string? _displayNameRegex;
+    // The name field takes plain text ("Notepad++"); the stored rule is a regex built from it. A hand-written regex
+    // from an older vault is shown as is and kept while the field is left untouched.
+    private readonly string? _loadedRegex;
+    private readonly string _loadedText = "";
+    static readonly Regex AutoPattern = new(@"^\(\?<!\[A-Za-z0-9\]\)(.+)\(\?!\[A-Za-z\]\)$");
+    static string AutoRegex(string name) => "(?<![A-Za-z0-9])" + Regex.Escape(name) + "(?![A-Za-z])";
+    static string TextOf(string? regex) =>
+        regex is null ? "" : AutoPattern.Match(regex) is { Success: true } m ? Regex.Unescape(m.Groups[1].Value) : regex;
+
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DisplayNameRegex))] private string _displayNameText = "";
+    public string? DisplayNameRegex => DisplayNameText.Trim() is not { Length: > 0 } t ? null
+        : DisplayNameText == _loadedText && _loadedRegex is not null ? _loadedRegex : AutoRegex(t);
     [ObservableProperty] private bool _keepOld;
 
     partial void OnInstallerPathChanged(string? value) { if (IsEdit && value is null) KeepOld = false; }
@@ -172,11 +184,12 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string? _preScriptPath;
     [ObservableProperty] private string? _postScriptPath;
     [ObservableProperty] private string? _uninstallScriptPath;
-    /// <summary>Folder the software creates; DuLieu\&lt;mã phần mềm&gt; is copied there after a successful install.</summary>
+    /// <summary>Off: nothing is copied. On: the listed files of DuLieu\&lt;mã phần mềm&gt; go to DataTargetDir after a successful install.</summary>
+    [ObservableProperty] private bool _dataEnabled;
     [ObservableProperty] private string _dataTargetDir = "";
-    /// <summary>One "tên gốc => tên mới" per line; files without a line keep their names.</summary>
-    [ObservableProperty] private string _dataRenamesText = "";
-    public string DataFolderHint => $"Chép thư mục DuLieu\\{(string.IsNullOrWhiteSpace(Id) ? "<mã phần mềm>" : Id.Trim())} (bên cạnh SecureInstaller.exe, không mã hóa) vào thư mục này sau khi cài thành công. Để trống nếu không cần.";
+    /// <summary>One file per line: "tên trong DuLieu => tên khi chép" or just a name.</summary>
+    [ObservableProperty] private string _dataFilesText = "";
+    public string DataFolderHint => $"Thư mục phần mềm tạo ra sau khi cài. File lấy từ DuLieu\\{(string.IsNullOrWhiteSpace(Id) ? "<mã phần mềm>" : Id.Trim())} bên cạnh SecureInstaller.exe (không mã hóa).";
     [ObservableProperty] private string _scriptTimeoutText = "300";
 
     [ObservableProperty] private bool _blockIfWindowsCracked;
@@ -228,9 +241,9 @@ public partial class PackageEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(Version) && version is not null) Version = LeadingVersion.Match(version).Value;
         if (string.IsNullOrWhiteSpace(Id) && !string.IsNullOrWhiteSpace(Name)) Id = Slug(Name);
         if (Type == InstallerType.Msi && string.IsNullOrWhiteSpace(_productCode) && code is not null) _productCode = code;
-        if (Type == InstallerType.Exe && string.IsNullOrWhiteSpace(DisplayNameRegex) && name is not null
+        if (Type == InstallerType.Exe && string.IsNullOrWhiteSpace(DisplayNameText) && name is not null
             && TrailingVersion.Replace(name.Trim(), "") is { Length: > 0 } baseName)
-            DisplayNameRegex = "(?<![A-Za-z0-9])" + Regex.Escape(baseName) + "(?![A-Za-z])";
+            DisplayNameText = baseName;
     }
 
     private static void AddDistinct(ObservableCollection<string> list, IEnumerable<string> files)
@@ -305,9 +318,9 @@ public partial class PackageEditorViewModel : ObservableObject
             edit = new PackageEdit(_existing, kept, changed);
         }
         DataCopy? data = null;
-        if (!string.IsNullOrWhiteSpace(DataTargetDir))
+        if (DataEnabled)
         {
-            data = new DataCopy(DataTargetDir.Trim(), DataRenamesText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
+            data = new DataCopy(DataTargetDir.Trim(), DataFilesText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
             if (Installer.Core.Install.DataCopier.Validate(data) is { } dataErr) return dataErr;
         }
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",

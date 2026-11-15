@@ -266,22 +266,28 @@
                                 </StackPanel>
                             </Grid>
                             <StackPanel Style="{StaticResource Field}">
-                                <TextBlock Text="Nhận biết theo tên hiển thị (biểu thức chính quy)" Style="{StaticResource Label}"/>
-                                <TextBox Text="{Binding DisplayNameRegex, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                         AutomationProperties.Name="Nhận biết theo tên hiển thị"/>
+                                <TextBlock Text="Tên phần mềm trên máy (để nhận biết đã cài)" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding DisplayNameText, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Tên phần mềm trên máy"/>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Gõ tên như trong Settings → Apps, ví dụ Notepad++. Tự điền khi chọn file .exe; để trống với file .msi. Chỉ sửa khi app nhận sai trạng thái đã cài."/>
                             </StackPanel>
-                            <StackPanel Style="{StaticResource Field}">
-                                <TextBlock Text="Thư mục nhận dữ liệu sau khi cài (không bắt buộc)" Style="{StaticResource Label}"/>
-                                <TextBox Text="{Binding DataTargetDir, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Thư mục nhận dữ liệu"/>
-                                <TextBlock Text="{Binding DataFolderHint}" Style="{StaticResource Hint}"/>
-                            </StackPanel>
-                            <StackPanel Style="{StaticResource Field}">
-                                <TextBlock Text="Đổi tên file khi chép (mỗi dòng một file)" Style="{StaticResource Label}"/>
-                                <TextBox Text="{Binding DataRenamesText, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                         AcceptsReturn="True" Height="64" VerticalScrollBarVisibility="Auto"
-                                         AutomationProperties.Name="Đổi tên file khi chép"/>
-                                <TextBlock Text="Dạng: tên gốc => tên mới, ví dụ config.xml => config_{DonVi}.xml. {DonVi} là đơn vị nhập lúc đăng nhập. File không có dòng nào giữ nguyên tên." Style="{StaticResource Hint}"/>
+                            <CheckBox Content="Chép dữ liệu theo đơn vị sau khi cài" IsChecked="{Binding DataEnabled}" Margin="0,4,0,8"/>
+                            <StackPanel Margin="24,0,0,0" Visibility="{Binding DataEnabled, Converter={StaticResource BoolToVisibility}}">
+                                <StackPanel Style="{StaticResource Field}">
+                                    <TextBlock Text="Thư mục nhận dữ liệu" Style="{StaticResource Label}"/>
+                                    <TextBox Text="{Binding DataTargetDir, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Thư mục nhận dữ liệu"/>
+                                    <TextBlock Text="{Binding DataFolderHint}" Style="{StaticResource Hint}"/>
+                                </StackPanel>
+                                <StackPanel Style="{StaticResource Field}">
+                                    <TextBlock Text="Các file cần chép (mỗi dòng một file)" Style="{StaticResource Label}"/>
+                                    <TextBox Text="{Binding DataFilesText, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                             AcceptsReturn="True" Height="64" VerticalScrollBarVisibility="Auto"
+                                             AutomationProperties.Name="Các file cần chép"/>
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="Dạng: tên trong DuLieu => tên khi chép. Ví dụ {DonVi}.txt => config.txt lấy file LamThao.txt của đơn vị LamThao và chép thành config.txt. Dòng không có => thì giữ nguyên tên. Chỉ các file được ghi mới được chép."/>
+                                </StackPanel>
                             </StackPanel>
                                 </StackPanel>
                             </Expander>

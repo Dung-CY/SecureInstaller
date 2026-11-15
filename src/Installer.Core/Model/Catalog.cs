@@ -17,8 +17,9 @@ public record PackageEntry(string Id, string Name, string Version, InstallerType
     InstallerKind Kind = InstallerKind.Unknown, string? UninstallScript = null, List<string>? Extras = null,
     DataCopy? Data = null);
 
-/// <summary>After install, copy DuLieu\&lt;id&gt; (next to the exe, not encrypted) into TargetDir; Renames: "tên gốc =&gt; tên mới".</summary>
-public record DataCopy(string TargetDir, List<string>? Renames);
+/// <summary>After install, copy the listed files of DuLieu\&lt;id&gt; (next to the exe, not encrypted) into TargetDir.
+/// Each line: "tên trong DuLieu =&gt; tên khi chép" or just a name; {DonVi} is the session's unit.</summary>
+public record DataCopy(string TargetDir, List<string>? Files);
 
 /// <summary>Type: "msi" | "command" | "zip".</summary>
 public record UninstallSpec(string Type, string? Command = null, string? Args = null);

@@ -344,23 +344,40 @@ public class PackageEditorViewModelTests
     }
 
     [Fact]
-    public void Data_copy_settings_load_validate_and_save()
+    public void Data_copy_is_off_unless_ticked_and_needs_a_file_list()
     {
-        var vm = Make(Stored() with { Data = new DataCopy(@"C:\QLVBDH\Config", new() { "a.xml => b_{DonVi}.xml" }) });
-        Assert.Equal((@"C:\QLVBDH\Config", "a.xml => b_{DonVi}.xml"), (vm.DataTargetDir, vm.DataRenamesText));
-        Assert.Contains(@"DuLieu\p", vm.DataFolderHint);
-
-        vm.DataRenamesText = "a.xml => ../b.xml";
-        vm.SaveCommand.Execute(null);
-        Assert.Null(_saved);
-        Assert.StartsWith("Dòng đổi tên không hợp lệ", vm.Error);
-
-        vm.DataRenamesText = "a.xml => b.xml\r\n\n c.ini => d.ini ";
-        vm.SaveCommand.Execute(null);
-        Assert.Equal(new[] { "a.xml => b.xml", "c.ini => d.ini" }, _saved!.Data!.Renames);
-
-        vm.DataTargetDir = "  ";
+        var vm = Make(Stored());
+        Assert.False(vm.DataEnabled);
         vm.SaveCommand.Execute(null);
         Assert.Null(_saved!.Data);
+
+        vm.DataEnabled = true;
+        vm.DataTargetDir = @"C:\QLVBDH\Config";
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("Nhập ít nhất một file cần chép", vm.Error);
+
+        vm.DataFilesText = "{DonVi}.txt => config.txt\r\n\n huongdan.pdf ";
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(new[] { "{DonVi}.txt => config.txt", "huongdan.pdf" }, _saved!.Data!.Files);
+
+        var again = Make(Stored() with { Data = _saved.Data });
+        Assert.True(again.DataEnabled);
+        Assert.Equal("{DonVi}.txt => config.txt\nhuongdan.pdf", again.DataFilesText);
+        Assert.Contains(@"DuLieu\p", again.DataFolderHint);
+    }
+
+    [Fact]
+    public void Display_name_is_plain_text_and_old_regexes_survive_untouched()
+    {
+        var vm = Make(Stored() with { Detect = new DetectRule(null, @"(?<![A-Za-z0-9])Notepad\+\+(?![A-Za-z])") });
+        Assert.Equal("Notepad++", vm.DisplayNameText);
+        vm.DisplayNameText = "LibreOffice ";
+        Assert.Equal("(?<![A-Za-z0-9])LibreOffice(?![A-Za-z])", vm.DisplayNameRegex);
+        vm.DisplayNameText = "";
+        Assert.Null(vm.DisplayNameRegex);
+
+        var old = Make(Stored() with { Detect = new DetectRule(null, "^Bit4id") });
+        Assert.Equal("^Bit4id", old.DisplayNameText);
+        Assert.Equal("^Bit4id", old.DisplayNameRegex);
     }
 }
