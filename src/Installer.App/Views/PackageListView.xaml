@@ -35,12 +35,24 @@
                         <TextBlock Style="{StaticResource Muted}" TextWrapping="NoWrap">
                             <Run Text="Phát triển bởi"/> <Run Text="DungCY" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
                         </TextBlock>
+                        <TextBlock Text="{Binding MachineText}" FontSize="12" Margin="0,2,0,0" TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding MachineText}"
+                                   Visibility="{Binding MachineText, Converter={StaticResource NullToCollapsed}}"/>
                     </StackPanel>
                 </StackPanel>
                 <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,6,0,0"
                            Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding RescanCommand}" Style="{StaticResource TileButton}" Margin="0,0,10,0"
+                        AutomationProperties.Name="Quét lại máy" ToolTip="Quét lại toàn bộ máy (mất vài phút)"
+                        Visibility="{Binding CanRescan, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="22" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="Quét lại" FontSize="12" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
                 <Button Command="{Binding ViewScanCommand}" Style="{StaticResource TileButton}" Margin="0,0,10,0"
                         AutomationProperties.Name="Xem lại báo cáo quét">
                     <StackPanel>

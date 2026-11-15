@@ -36,6 +36,33 @@ public sealed class AppServices
         _repo = new PortableRepositorySource(session, _log);
         Main.SetVault(session.Catalog, session.Store.IsReadOnly);
 
+        var sys = new SystemInfo();
+        var cache = new LastScanCache(session.Store.Meta.VaultId, session.VaultKey);
+        string? serial = null;
+        try { serial = new HardwareScanner(new Wmi(), sys).BiosSerial(); } catch (Exception) { }
+        var cached = cache.Load(serial, sys.Hostname);
+        Main.NavigateTo(new SessionSetupViewModel(sys.Hostname, ComputerName.PendingName(), sys.IsDomainJoined, cached?.Unit,
+            name =>
+            {
+                ComputerName.Rename(name);
+                _repo.WriteLog(new LogEntry(DateTimeOffset.Now, session.Username, sys.Hostname, serial, "rename", null, null, "ok", null,
+                    $"Đổi tên máy {sys.Hostname} → {name} (có hiệu lực sau khi khởi động lại)"));
+            },
+            info =>
+            {
+                _info = info;
+                if (cached == null) { Scan(session, cache); return; }
+                // Same machine already scanned: reuse it; only a different unit is worth a new history line.
+                var report = cached with { Unit = info.Unit };
+                if (cached.Unit != info.Unit) { LogScan(session, report); cache.Save(report); }
+                ShowPackages(session, report);
+            }));
+    }
+
+    private SessionInfo? _info;
+
+    private void Scan(VaultSession session, LastScanCache cache)
+    {
         var wmi = new Wmi();
         var reg = new RegistryReader();
         var sys = new SystemInfo();
@@ -48,13 +75,25 @@ public sealed class AppServices
         var vm = new ScanReportViewModel(
             async (progress, ct) =>
             {
-                var report = await scanner.ScanAsync(session.Catalog, progress, ct);
+                var report = await scanner.ScanAsync(session.Catalog, progress, ct) with { Unit = _info?.Unit };
                 LogScan(session, report);
+                cache.Save(report);
                 return report;
             },
             report => ShowPackages(session, report));
         Main.NavigateTo(vm);
         _ = vm.ScanCommand.ExecuteAsync(null);
+    }
+
+    private string MachineText(ScanReport r)
+    {
+        var parts = new List<string>();
+        if (r.Unit is { Length: > 0 } u) parts.Add("Đơn vị: " + u);
+        var host = "Máy: " + r.Hardware.Hostname;
+        if (_info?.PendingComputerName is { } next) host += $" (→ {next} sau khi khởi động lại)";
+        parts.Add(host);
+        parts.Add("Quét lúc " + r.ScannedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"));
+        return string.Join(" · ", parts);
     }
 
     private void ShowPackages(VaultSession session, ScanReport report)
@@ -76,7 +115,9 @@ public sealed class AppServices
             // `matches` is FindForPackage(pkg) for this package only (captured by the row).
             (pkg, matches, progress, ct) => uninstallService.UninstallAsync(pkg, matches, session.Username, report.Hardware, progress, ct),
             uninstallService.CanUninstall,
-            session.IsAdmin ? () => ShowAdmin(session, report) : null));
+            session.IsAdmin ? () => ShowAdmin(session, report) : null,
+            MachineText(report),
+            () => Scan(session, new LastScanCache(session.Store.Meta.VaultId, session.VaultKey))));
     }
 
     private void ShowAdmin(VaultSession session, ScanReport report)

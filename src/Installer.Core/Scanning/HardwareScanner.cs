@@ -59,6 +59,13 @@ public sealed class HardwareScanner
         return new HardwareInfo(_sys.Hostname, manufacturer, model, biosSerial, disks, nics, peripherals, errors);
     }
 
+    /// <summary>One cheap WMI query, used to recognise the machine without a full scan; null when unreadable.</summary>
+    public string? BiosSerial()
+    {
+        var bios = Run("Win32_BIOS", "SELECT SerialNumber FROM Win32_BIOS", new List<string>());
+        return bios.Count > 0 ? Str(bios[0], "SerialNumber") : null;
+    }
+
     private IReadOnlyList<IReadOnlyDictionary<string, object?>> Run(string cls, string wql, List<string> errors)
     {
         try { return _wmi.Query(wql); }
