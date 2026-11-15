@@ -95,6 +95,7 @@ public sealed class VaultAdmin
         if (old.InstallerType == InstallerType.Msi && !string.IsNullOrWhiteSpace(updated.SilentArgs) &&
             PackageBuilder.MsiTokens(updated.SilentArgs).Any(t => t[0] is '/' or '-'))
             throw new InvalidDataException("silent_args của phần mềm MSI chỉ được chứa thuộc tính dạng TÊN=giá_trị (không dùng /qn, /norestart...)");
+        if (updated.Data is { } data && Install.DataCopier.Validate(data) is { } dataErr) throw new InvalidDataException(dataErr);
         var entry = updated with
         {
             InstallerType = old.InstallerType, InstallerFile = old.InstallerFile, Docs = old.Docs, PreScript = old.PreScript,

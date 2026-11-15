@@ -494,4 +494,26 @@ public class InstallServiceTests : IDisposable
         using var cts = new CancellationTokenSource(); cts.Cancel();
         Assert.ThrowsAny<OperationCanceledException>(() => InstallService.ExtractZip(zip, Path.Combine(_tmp, "ra"), cts.Token));
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Data_folder_is_copied_only_after_a_successful_install(bool ok)
+    {
+        var e = NewVault();
+        var pkg = new VaultAdmin(e.Session).AddPackage(SamplePackage.CreateZip(_tmp, Path.Combine(_tmp, "t3"), "[]"));
+        var dataRoot = Path.Combine(_tmp, "DuLieu");
+        Directory.CreateDirectory(Path.Combine(dataRoot, pkg.Id));
+        File.WriteAllText(Path.Combine(dataRoot, pkg.Id, "config.xml"), "c");
+        var target = Path.Combine(_tmp, "Nhận dữ liệu");
+        pkg = pkg with { Data = new DataCopy(target, new() { "config.xml => config_{DonVi}.xml" }) };
+        var runner = new FakeRunner { Outcome = ok ? new InstallOutcome(InstallStatus.Success, 0, "Cài đặt thành công") : new InstallOutcome(InstallStatus.Failed, 5, "boom") };
+        var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
+            () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work"))) { DataRoot = dataRoot, Unit = () => "LamThao" };
+
+        var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
+
+        Assert.Equal(ok, File.Exists(Path.Combine(target, "config_LamThao.xml")));
+        if (ok) Assert.Equal("Cài đặt thành công. Đã chép 1 file dữ liệu", res.Message);
+    }
 }

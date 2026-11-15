@@ -270,6 +270,19 @@
                                 <TextBox Text="{Binding DisplayNameRegex, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
                                          AutomationProperties.Name="Nhận biết theo tên hiển thị"/>
                             </StackPanel>
+                            <StackPanel Style="{StaticResource Field}">
+                                <TextBlock Text="Thư mục nhận dữ liệu sau khi cài (không bắt buộc)" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding DataTargetDir, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Thư mục nhận dữ liệu"/>
+                                <TextBlock Text="{Binding DataFolderHint}" Style="{StaticResource Hint}"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource Field}">
+                                <TextBlock Text="Đổi tên file khi chép (mỗi dòng một file)" Style="{StaticResource Label}"/>
+                                <TextBox Text="{Binding DataRenamesText, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                         AcceptsReturn="True" Height="64" VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Đổi tên file khi chép"/>
+                                <TextBlock Text="Dạng: tên gốc => tên mới, ví dụ config.xml => config_{DonVi}.xml. {DonVi} là đơn vị nhập lúc đăng nhập. File không có dòng nào giữ nguyên tên." Style="{StaticResource Hint}"/>
+                            </StackPanel>
                                 </StackPanel>
                             </Expander>
                         </StackPanel>

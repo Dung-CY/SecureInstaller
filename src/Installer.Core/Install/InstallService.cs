@@ -27,6 +27,11 @@ public sealed class InstallService
         _repo = repo; _runners = runners; _workspaceFactory = workspaceFactory ?? (() => TempWorkspace.Create());
     }
 
+    /// <summary>Folder holding DuLieu\&lt;package id&gt;; null disables the data copy.</summary>
+    public string? DataRoot { get; init; }
+    /// <summary>The unit entered for this session, used by {DonVi} in rename rules.</summary>
+    public Func<string?>? Unit { get; init; }
+
     private static string DocsBase => Path.Combine(Path.GetTempPath(), "SI_docs");
 
     public async Task<InstallOutcome> InstallAsync(PackageEntry pkg, string username, HardwareInfo hw,
@@ -61,6 +66,20 @@ public sealed class InstallService
                 try { zipDir = Path.GetFullPath(Environment.ExpandEnvironmentVariables(pkg.TargetDir)); } catch (Exception) { }
             try { _marker.Write(pkg.Id, pkg.Version, DateTimeOffset.Now, uninstallKey, zipDir); }
             catch (Exception ex) { markerError = "Không ghi được dấu cài đặt: " + ex.Message; }
+        }
+
+        if (DataRoot != null && pkg.Data is { } data && outcome.Status is InstallStatus.Success or InstallStatus.RebootRequired)
+        {
+            try
+            {
+                var n = DataCopier.Copy(Path.Combine(DataRoot, pkg.Id), data, Unit?.Invoke());
+                if (n > 0) outcome = outcome with { Message = outcome.Message + $". Đã chép {n} file dữ liệu" };
+            }
+            catch (Exception ex)
+            {
+                outcome = outcome with { Message = outcome.Message + ". Không chép được dữ liệu: " + ErrorText.ForUser(ex) };
+                detail = detail == null ? ex.ToString() : detail + "; " + ex;
+            }
         }
 
         var parts = new List<string>();

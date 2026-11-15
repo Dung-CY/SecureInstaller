@@ -103,7 +103,11 @@ public sealed class AppServices
         // UninstallService removes it.
         var marker = new InstallMarker(new RegistryReader(), new RegistryWriter());
         var apps = new InstalledAppsScanner(new RegistryReader(), marker);
-        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker, scanner: apps);
+        var installService = new InstallService(_repo!, new InstallerRunnerFactory(), marker: marker, scanner: apps)
+        {
+            DataRoot = Path.Combine(_root, DataCopier.FolderName),
+            Unit = () => _info?.Unit,
+        };
         var uninstallService = new UninstallService(_repo!, marker, _ => new ExeInstaller(), apps.KeyExists);
         Main.NavigateTo(new PackageListViewModel(session.Catalog, report,
             pkg => apps.FindForPackage(pkg),

@@ -99,6 +99,8 @@ public partial class PackageEditorViewModel : ObservableObject
         _blockIfKeywordFile = rules.Contains("block_if_keyword_file");
         _requireInternet = rules.Contains("require_internet");
         _uninstall = existing.Uninstall;
+        _dataTargetDir = existing.Data?.TargetDir ?? "";
+        _dataRenamesText = string.Join("\n", existing.Data?.Renames ?? new());
         _origType = existing.InstallerType; _origKind = existing.Kind;
         ExistingFiles.Add(new ExistingFileRow("Bộ cài", existing.InstallerFile, false, () => { PickInstaller(); return InstallerPath; },
             () => { InstallerPath = null; Type = _origType; Kind = _origKind; }));
@@ -120,7 +122,7 @@ public partial class PackageEditorViewModel : ObservableObject
     /// <summary>Stored files are kept as they are unless a row is set to Thay or Bỏ.</summary>
     public string? EditHint => IsEdit ? "Các file hiện có được giữ nguyên; chọn Thay hoặc Bỏ để đổi." : null;
 
-    [ObservableProperty] private string _id = "";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DataFolderHint))] private string _id = "";
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _version = "";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(InstallerFileName), nameof(InstallerSubtitle), nameof(TypeLabel), nameof(KeepOldEnabled), nameof(KeepOldHint))]
@@ -170,6 +172,11 @@ public partial class PackageEditorViewModel : ObservableObject
     [ObservableProperty] private string? _preScriptPath;
     [ObservableProperty] private string? _postScriptPath;
     [ObservableProperty] private string? _uninstallScriptPath;
+    /// <summary>Folder the software creates; DuLieu\&lt;mã phần mềm&gt; is copied there after a successful install.</summary>
+    [ObservableProperty] private string _dataTargetDir = "";
+    /// <summary>One "tên gốc => tên mới" per line; files without a line keep their names.</summary>
+    [ObservableProperty] private string _dataRenamesText = "";
+    public string DataFolderHint => $"Chép thư mục DuLieu\\{(string.IsNullOrWhiteSpace(Id) ? "<mã phần mềm>" : Id.Trim())} (bên cạnh SecureInstaller.exe, không mã hóa) vào thư mục này sau khi cài thành công. Để trống nếu không cần.";
     [ObservableProperty] private string _scriptTimeoutText = "300";
 
     [ObservableProperty] private bool _blockIfWindowsCracked;
@@ -297,10 +304,16 @@ public partial class PackageEditorViewModel : ObservableObject
                 || (PreScriptPath ?? PostScriptPath ?? UninstallScriptPath) is not null || ExistingFiles.Any(r => !r.IsKeep);
             edit = new PackageEdit(_existing, kept, changed);
         }
+        DataCopy? data = null;
+        if (!string.IsNullOrWhiteSpace(DataTargetDir))
+        {
+            data = new DataCopy(DataTargetDir.Trim(), DataRenamesText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
+            if (Installer.Core.Install.DataCopier.Validate(data) is { } dataErr) return dataErr;
+        }
         draft = new PackageDraft(Id!.Trim(), Name.Trim(), Version.Trim(), Type, InstallerPath, SilentArgs?.Trim() ?? "",
             Opt(TargetDir), timeout, new DetectRule(Opt(_productCode), Opt(DisplayNameRegex)), extras,
             docs, IconPath, pre, post, scriptTimeout, rules, _uninstall,
-            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind, uninst, entries, edit);
+            _postActions.ToList(), IconPath is null ? KeepIconPngB64 : null, Kind, uninst, entries, edit, data);
         return null;
     }
 
