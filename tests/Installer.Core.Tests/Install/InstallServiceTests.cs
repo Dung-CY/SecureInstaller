@@ -506,7 +506,7 @@ public class InstallServiceTests : IDisposable
         Directory.CreateDirectory(Path.Combine(dataRoot, pkg.Id));
         File.WriteAllText(Path.Combine(dataRoot, pkg.Id, "config.xml"), "c");
         var target = Path.Combine(_tmp, "Nhận dữ liệu");
-        pkg = pkg with { Data = new DataCopy(target, new() { "config.xml => config_{DonVi}.xml" }) };
+        pkg = pkg with { Data = new DataCopy(target, new() { "config.xml => config_{DonVi}.xml", "{DonVi}.ini => app.ini" }) };
         var runner = new FakeRunner { Outcome = ok ? new InstallOutcome(InstallStatus.Success, 0, "Cài đặt thành công") : new InstallOutcome(InstallStatus.Failed, 5, "boom") };
         var svc = new InstallService(new PortableRepositorySource(e.Session, e.Log), new InstallerRunnerFactory(_ => runner),
             () => TempWorkspace.Create(Path.Combine(Path.GetTempPath(), "SItest_ws", "work"))) { DataRoot = dataRoot, Unit = () => "LamThao" };
@@ -514,6 +514,6 @@ public class InstallServiceTests : IDisposable
         var res = await svc.InstallAsync(pkg, "admin", Hw, new Progress<InstallProgress>(), CancellationToken.None);
 
         Assert.Equal(ok, File.Exists(Path.Combine(target, "config_LamThao.xml")));
-        if (ok) Assert.Equal("Cài đặt thành công. Đã chép 1 file dữ liệu", res.Message);
+        if (ok) Assert.Equal("Cài đặt thành công. Đã chép 1 file dữ liệu. Không có file dữ liệu cho đơn vị LamThao: LamThao.ini", res.Message);
     }
 }

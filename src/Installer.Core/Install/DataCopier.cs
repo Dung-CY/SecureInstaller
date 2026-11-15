@@ -2,29 +2,35 @@ using Installer.Core.Platform;
 
 namespace Installer.Core.Install;
 
+/// <summary>Files copied, and the listed files that were not in the data folder (names after {DonVi} is filled in).</summary>
+public sealed record DataCopyResult(int Copied, List<string> Missing);
+
 /// <summary>
-/// After a package installs, copies the shared, unencrypted folder <c>DuLieu\&lt;package id&gt;</c> (next to the exe)
-/// into the folder the software created. Rename rules ("tên gốc =&gt; tên mới", the new name may use {DonVi})
-/// apply per file; files without a rule keep their names.
+/// After a package installs, copies the files listed in its <see cref="Model.DataCopy"/> from the shared, unencrypted
+/// folder <c>DuLieu\&lt;package id&gt;</c> (next to the exe) into the folder the software created. Only listed files
+/// are copied, so data kept for other units never reaches this machine. Line forms:
+/// <c>{DonVi}.txt =&gt; config.txt</c> (pick the unit's file, copy it under a common name) or <c>huongdan.pdf</c> (same name).
 /// </summary>
 public static class DataCopier
 {
     public const string FolderName = "DuLieu";
 
-    /// <summary>Null when every rule is well formed, otherwise the first problem.</summary>
+    /// <summary>Null when the settings are usable, otherwise the first problem.</summary>
     public static string? Validate(Model.DataCopy d)
     {
         if (string.IsNullOrWhiteSpace(d.TargetDir)) return "Nhập thư mục nhận dữ liệu";
-        foreach (var line in d.Renames ?? new())
-            if (Parse(line) is null) return $"Dòng đổi tên không hợp lệ: {line} (dạng: tên gốc => tên mới)";
+        var lines = (d.Files ?? new()).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+        if (lines.Count == 0) return "Nhập ít nhất một file cần chép";
+        foreach (var line in lines)
+            if (Parse(line) is null) return $"Dòng không hợp lệ: {line} (dạng: tên trong DuLieu => tên khi chép)";
         return null;
     }
 
     static (string From, string To)? Parse(string line)
     {
         var i = line.IndexOf("=>", StringComparison.Ordinal);
-        if (i < 0) return null;
-        var from = Rel(line[..i]); var to = Rel(line[(i + 2)..]);
+        var from = Rel(i < 0 ? line : line[..i]);
+        var to = i < 0 ? from : Rel(line[(i + 2)..]);
         return from is null || to is null ? null : (from, to);
     }
 
@@ -36,29 +42,31 @@ public static class DataCopier
         return r;
     }
 
-    /// <summary>Copies <paramref name="sourceDir"/> into the expanded target. Returns how many files were copied
-    /// (0 when the source folder does not exist); throws on an unsafe target or an I/O failure.</summary>
-    public static int Copy(string sourceDir, Model.DataCopy d, string? unit)
+    /// <summary>Copies each listed file into the expanded target; throws on an invalid line, an unsafe target or an I/O failure.</summary>
+    public static DataCopyResult Copy(string sourceDir, Model.DataCopy d, string? unit)
     {
-        if (!Directory.Exists(sourceDir)) return 0;
+        if (Validate(d) is { } err) throw new InvalidDataException(err);
         var target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(d.TargetDir));
         var root = Path.TrimEndingDirectorySeparator(target) + Path.DirectorySeparatorChar;
-        var renames = (d.Renames ?? new()).Select(Parse).OfType<(string From, string To)>()
-            .ToDictionary(r => r.From, r => r.To.Replace("{DonVi}", unit ?? "", StringComparison.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
         var src = Path.TrimEndingDirectorySeparator(Path.GetFullPath(sourceDir)) + Path.DirectorySeparatorChar;
-        var count = 0;
-        foreach (var file in Directory.EnumerateFiles(src, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }))
+        string Fill(string s) => s.Replace("{DonVi}", unit ?? "", StringComparison.OrdinalIgnoreCase);
+        var copied = 0;
+        var missing = new List<string>();
+        foreach (var line in d.Files!.Where(l => !string.IsNullOrWhiteSpace(l)))
         {
-            var rel = file[src.Length..].Replace('\\', '/');
-            var destRel = renames.TryGetValue(rel, out var to) ? to : rel;
-            if (Rel(destRel) is null) throw new InvalidDataException("Tên mới không hợp lệ: " + destRel);
-            var dest = Path.GetFullPath(Path.Combine(target, destRel));
-            if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Tên mới không hợp lệ: " + destRel);
+            var (fromRaw, toRaw) = Parse(line)!.Value;
+            string from = Fill(fromRaw), to = Fill(toRaw);
+            if (Rel(from) is null || Rel(to) is null) throw new InvalidDataException("Tên file không hợp lệ: " + line);
+            var file = Path.GetFullPath(Path.Combine(src, from));
+            var dest = Path.GetFullPath(Path.Combine(target, to));
+            if (!file.StartsWith(src, StringComparison.OrdinalIgnoreCase) || !dest.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Tên file không hợp lệ: " + line);
+            if (!File.Exists(file) || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) { missing.Add(from); continue; }
             SafePath.EnsureNoReparseAncestors(dest);
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             File.Copy(file, dest, overwrite: true);
-            count++;
+            copied++;
         }
-        return count;
+        return new DataCopyResult(copied, missing);
     }
 }

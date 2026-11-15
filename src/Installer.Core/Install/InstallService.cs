@@ -72,8 +72,12 @@ public sealed class InstallService
         {
             try
             {
-                var n = DataCopier.Copy(Path.Combine(DataRoot, pkg.Id), data, Unit?.Invoke());
-                if (n > 0) outcome = outcome with { Message = outcome.Message + $". Đã chép {n} file dữ liệu" };
+                var unit = Unit?.Invoke();
+                var r = DataCopier.Copy(Path.Combine(DataRoot, pkg.Id), data, unit);
+                var msg = outcome.Message;
+                if (r.Copied > 0) msg += $". Đã chép {r.Copied} file dữ liệu";
+                if (r.Missing.Count > 0) msg += $". Không có file dữ liệu cho đơn vị {unit}: {string.Join(", ", r.Missing)}";
+                outcome = outcome with { Message = msg };
             }
             catch (Exception ex)
             {
