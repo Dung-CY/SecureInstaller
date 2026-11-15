@@ -4,7 +4,7 @@ namespace Installer.Core.Scanning;
 
 public record DiskInfo(string Model, string? Serial, string? InterfaceType);
 public record NicInfo(string Name, string Mac, string? PnpDeviceId = null);
-public record DeviceInfo(string Name, string? PnpClass, string DeviceId);
+public record DeviceInfo(string Name, string? PnpClass, string DeviceId, DateTime? FirstConnected = null, DateTime? LastConnected = null);
 public record HardwareInfo(string Hostname, string? Manufacturer, string? Model, string? BiosSerial,
     List<DiskInfo> Disks, List<NicInfo> Nics, List<DeviceInfo> Peripherals, List<string> Errors);
 
@@ -16,8 +16,9 @@ public sealed class HardwareScanner
 
     private readonly IWmi _wmi;
     private readonly ISystemInfo _sys;
+    private readonly IDeviceDates? _dates;
 
-    public HardwareScanner(IWmi wmi, ISystemInfo sys) { _wmi = wmi; _sys = sys; }
+    public HardwareScanner(IWmi wmi, ISystemInfo sys, IDeviceDates? dates = null) { _wmi = wmi; _sys = sys; _dates = dates; }
 
     public HardwareInfo Scan()
     {
@@ -53,7 +54,8 @@ public sealed class HardwareScanner
             var match = PeripheralPrefixes.Any(p => id.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || (cls != null && PeripheralClasses.Contains(cls));
             if (!match || !seen.Add(id)) continue;
-            peripherals.Add(new DeviceInfo(Str(r, "Name") ?? "", cls, id));
+            var (first, last) = _dates?.Get(id) ?? (null, null);
+            peripherals.Add(new DeviceInfo(Str(r, "Name") ?? "", cls, id, first, last));
         }
 
         return new HardwareInfo(_sys.Hostname, manufacturer, model, biosSerial, disks, nics, peripherals, errors);

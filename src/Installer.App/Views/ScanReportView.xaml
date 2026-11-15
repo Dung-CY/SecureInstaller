@@ -136,6 +136,10 @@
                                     <TextBlock Text="{Binding Name}"/>
                                     <TextBlock Text="{Binding DeviceId}" Style="{StaticResource Muted}" TextWrapping="NoWrap"
                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding DeviceId}"/>
+                                    <TextBlock Style="{StaticResource Muted}" TextWrapping="NoWrap">
+                                        <Run Text="Cắm lần đầu:"/> <Run Text="{Binding FirstConnected, Mode=OneWay, StringFormat='dd/MM/yyyy HH:mm', TargetNullValue='Không rõ'}"/>
+                                        <Run Text=" · Gần nhất:"/> <Run Text="{Binding LastConnected, Mode=OneWay, StringFormat='dd/MM/yyyy HH:mm', TargetNullValue='Không rõ'}"/>
+                                    </TextBlock>
                                 </StackPanel>
                             </DataTemplate>
                         </TreeView.Resources>
