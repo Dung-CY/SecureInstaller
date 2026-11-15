@@ -10,7 +10,7 @@ public record PackageDraft(string Id, string Name, string Version, InstallerType
     List<string> DocFiles, string? IconPath, string? PreScriptPath, string? PostScriptPath, int ScriptTimeoutSec,
     List<RuleSpec> Rules, UninstallSpec? Uninstall, List<PostAction>? PostActions = null, string? KeepIconPngB64 = null,
     InstallerKind Kind = InstallerKind.Unknown, string? UninstallScriptPath = null,
-    List<ExtraFile>? ExtraEntries = null, PackageEdit? Edit = null);
+    List<ExtraFile>? ExtraEntries = null, PackageEdit? Edit = null, DataCopy? Data = null);
 
 /// <summary>An extra file with the relative path (forward slashes) it keeps under installer.</summary>
 public record ExtraFile(string Source, string Rel);
@@ -31,7 +31,8 @@ public static class PackageSource
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PostScript,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ScriptTimeoutSec,
         InstallerKind InstallerKind,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? UninstallScript);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? UninstallScript,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DataCopy? Data);
 
     /// <summary>Writes installer\, docs\, scripts\, icon.png and manifest.json into <paramref name="tempDir"/> and returns it.</summary>
     public static string Create(PackageDraft d, string tempDir)
@@ -65,7 +66,7 @@ public static class PackageSource
         var manifest = new ManifestOut(d.Id, d.Name, d.Version, d.Type, installerFile, d.SilentArgs, d.TargetDir,
             d.TimeoutSec, d.Detect, docs, postActions, d.Rules, d.Uninstall, pre, post,
             scripts.Count > 0 ? d.ScriptTimeoutSec : null, d.Kind,
-            d.UninstallScriptPath is null ? null : Path.GetFileName(d.UninstallScriptPath));
+            d.UninstallScriptPath is null ? null : Path.GetFileName(d.UninstallScriptPath), d.Data);
         File.WriteAllBytes(Path.Combine(tempDir, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, Json.Options));
         return tempDir;
     }
@@ -134,6 +135,6 @@ public static class PackageSource
         Name = d.Name, Version = d.Version, SilentArgs = d.SilentArgs, TargetDir = d.TargetDir, TimeoutSec = d.TimeoutSec,
         Detect = d.Detect, PostActions = d.PostActions ?? new(), Rules = d.Rules, Uninstall = d.Uninstall,
         ScriptTimeoutSec = d.ScriptTimeoutSec > 0 ? d.ScriptTimeoutSec : e.ScriptTimeoutSec, Kind = d.Kind,
-        IconPngB64 = d.IconPath is null ? d.KeepIconPngB64 : e.IconPngB64
+        IconPngB64 = d.IconPath is null ? d.KeepIconPngB64 : e.IconPngB64, Data = d.Data
     };
 }

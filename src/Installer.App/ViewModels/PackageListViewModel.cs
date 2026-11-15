@@ -32,8 +32,11 @@ public partial class PackageListViewModel : ObservableObject
         Func<string, bool> confirm, Action<string> openFile, Action<object> navigate,
         Func<PackageEntry, IReadOnlyList<InstalledApp>, IProgress<InstallProgress>, CancellationToken, Task<InstallOutcome>> uninstall,
         Func<PackageEntry, IReadOnlyList<InstalledApp>, bool> canUninstall,
-        Action? openAdmin = null)
+        Action? openAdmin = null, string? machineText = null, Action? rescan = null)
     {
+        MachineText = machineText;
+        CanRescan = rescan != null;
+        RescanCommand = new RelayCommand(() => rescan?.Invoke(), () => !IsInstalling);
         CanOpenAdmin = openAdmin != null;
         OpenAdminCommand = new RelayCommand(() => openAdmin?.Invoke());
         _catalog = catalog; _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
@@ -46,6 +49,11 @@ public partial class PackageListViewModel : ObservableObject
         Bundles = catalog.Bundles ?? new();
         BundleCards = Bundles.Select(b => new BundleCardViewModel(b, this)).ToList();
     }
+
+    /// <summary>"Đơn vị: … · Máy: … · Quét lúc …" under the title.</summary>
+    public string? MachineText { get; }
+    public bool CanRescan { get; }
+    public IRelayCommand RescanCommand { get; }
 
     public bool CanOpenAdmin { get; }
     public IRelayCommand OpenAdminCommand { get; }
@@ -82,6 +90,7 @@ public partial class PackageListViewModel : ObservableObject
     partial void OnIsInstallingChanged(bool value)
     {
         ClearSelectionCommand.NotifyCanExecuteChanged();
+        RescanCommand.NotifyCanExecuteChanged();
         foreach (var r in Rows) r.NotifyInstallingChanged();
         foreach (var c in BundleCards) c.Refresh();
     }

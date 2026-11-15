@@ -79,4 +79,19 @@ public class HardwareScannerTests
         var rows = new Installer.Core.Platform.Wmi().Query("SELECT SerialNumber FROM Win32_BIOS");
         Assert.True(rows.Count >= 1);
     }
+
+    sealed class FakeDates : Installer.Core.Platform.IDeviceDates
+    {
+        public (DateTime? First, DateTime? Last) Get(string id) =>
+            id.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ? (new DateTime(2026, 1, 2), new DateTime(2026, 11, 15)) : (null, null);
+    }
+
+    [Fact]
+    public void Peripherals_carry_windows_device_dates_when_known()
+    {
+        var info = new HardwareScanner(Build(), new FakeSystemInfo { Hostname = "PC01" }, new FakeDates()).Scan();
+        var flash = info.Peripherals.Single(p => p.Name == "Flash");
+        Assert.Equal((new DateTime(2026, 1, 2), new DateTime(2026, 11, 15)), (flash.FirstConnected, flash.LastConnected));
+        Assert.Null(info.Peripherals.Single(p => p.Name == "Printer").FirstConnected);
+    }
 }

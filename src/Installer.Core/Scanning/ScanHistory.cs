@@ -8,6 +8,23 @@ public record ScanHistoryItem(DateTimeOffset Ts, string Username, string Hostnam
 
 public static class ScanHistory
 {
+    /// <summary>Cards on the PCI or USB bus; VPN, Hyper-V and other software adapters are left out.
+    /// Reports written before the bus was recorded keep every adapter.</summary>
+    public static IEnumerable<string> PhysicalMacs(HardwareInfo hw) => (hw.Nics ?? new())
+        .Where(n => n.PnpDeviceId is null || n.PnpDeviceId.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase)
+                    || n.PnpDeviceId.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase))
+        .Select(n => n.Mac).Distinct(StringComparer.OrdinalIgnoreCase);
+
+    public static IEnumerable<string> DiskSerials(HardwareInfo hw) =>
+        (hw.Disks ?? new()).Select(d => d.Serial?.Trim()).OfType<string>().Where(s => s.Length > 0);
+
+    /// <summary>"Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng;…"</summary>
+    public static string Line(ScanReport r) => string.Join(" | ", new[]
+    {
+        r.Unit ?? "", r.Hardware.Manufacturer ?? "", r.Hardware.BiosSerial ?? "",
+        string.Join(";", PhysicalMacs(r.Hardware)), string.Join(";", DiskSerials(r.Hardware)),
+    });
+
     public static List<ScanHistoryItem> From(IEnumerable<LogEntry> entries)
     {
         var list = new List<ScanHistoryItem>();

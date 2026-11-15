@@ -19,10 +19,12 @@ public sealed class UsbStorageHistoryScanner
     private readonly IEventLogReader _events;
     private readonly IFileTextReader _files;
     private readonly string _infDir;
+    private readonly IDeviceDates? _dates;
 
-    public UsbStorageHistoryScanner(IRegistryReader reg, IEventLogReader events, IFileTextReader files, string? infDir = null)
+    public UsbStorageHistoryScanner(IRegistryReader reg, IEventLogReader events, IFileTextReader files, string? infDir = null,
+        IDeviceDates? dates = null)
     {
-        _reg = reg; _events = events; _files = files;
+        _reg = reg; _events = events; _files = files; _dates = dates;
         _infDir = infDir ?? Path.Combine(Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows", "INF");
     }
 
@@ -60,7 +62,9 @@ public sealed class UsbStorageHistoryScanner
                 var t = e.TimeCreated;   // IEventLogReader contract: already local
                 if (last is null || t > last) last = t;
             }
-            result.Add(new UsbStorageRecord(name, serial, id, first[i], last));
+            // Logs can be cleared or rotated; Windows' own device record fills what they no longer show.
+            var (devFirst, devLast) = _dates?.Get(id) ?? (null, null);
+            result.Add(new UsbStorageRecord(name, serial, id, first[i] ?? devFirst, last ?? devLast));
         }
         return result;
     }

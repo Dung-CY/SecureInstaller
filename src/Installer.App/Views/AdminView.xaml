@@ -410,7 +410,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <WrapPanel Grid.Row="0" Margin="0,0,0,12">
-                        <TextBlock Text="Máy" Style="{StaticResource FilterLabel}"/>
+                        <TextBlock Text="Máy / đơn vị" Style="{StaticResource FilterLabel}"/>
                         <TextBox Text="{Binding HistoryMachineFilter, UpdateSourceTrigger=PropertyChanged}" Width="140" Margin="0,0,14,0"
                                  AutomationProperties.Name="Lọc theo máy"/>
                         <TextBlock Text="Từ ngày" Style="{StaticResource FilterLabel}"/>
@@ -418,6 +418,7 @@
                         <TextBlock Text="Đến ngày" Style="{StaticResource FilterLabel}"/>
                         <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding HistoryTo}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <Button Content="Tải lại" Command="{Binding LoadLogsCommand}" Style="{StaticResource SecondaryButton}"/>
+                        <Button Content="Xuất CSV" Command="{Binding ExportHistoryCsvCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"/>
                         <TextBlock Style="{StaticResource LoadingHint}"/>
                     </WrapPanel>
 
@@ -454,32 +455,45 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Máy" Width="1.2*">
+                                <DataGridTemplateColumn Header="Đơn vị" Width="1*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
-                                            <TextBlock Text="{Binding Hostname}" Style="{StaticResource CellText}" FontWeight="SemiBold"
-                                                       ToolTip="{Binding BiosSerial, StringFormat='Serial BIOS: {0}'}"/>
+                                            <TextBlock Text="{Binding Unit}" Style="{StaticResource CellText}" ToolTip="{Binding Unit}" FontWeight="SemiBold"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Người dùng" Width="1*">
+                                <DataGridTemplateColumn Header="Máy" Width="1.1*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
-                                            <TextBlock Text="{Binding Username}" Style="{StaticResource CellText}"/>
+                                            <TextBlock Text="{Binding Hostname}" Style="{StaticResource CellText}" ToolTip="{Binding Summary}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Windows" Width="1.1*">
+                                <DataGridTemplateColumn Header="Hãng máy" Width="1*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
-                                            <TextBlock Text="{Binding WindowsText}" Style="{StaticResource WindowsCell}"/>
+                                            <TextBlock Text="{Binding Manufacturer}" Style="{StaticResource CellText}" ToolTip="{Binding Manufacturer}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Office" Width="1.1*">
+                                <DataGridTemplateColumn Header="Số seri máy" Width="1*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
-                                            <TextBlock Text="{Binding OfficeText}" Style="{StaticResource OfficeCell}"/>
+                                            <TextBlock Text="{Binding BiosSerial}" Style="{StaticResource CellText}" ToolTip="{Binding BiosSerial}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="MAC card vật lý" Width="1.2*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
+                                            <TextBlock Text="{Binding Macs}" Style="{StaticResource CellText}" ToolTip="{Binding Macs}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Seri ổ cứng" Width="1.2*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
+                                            <TextBlock Text="{Binding DiskSerials}" Style="{StaticResource CellText}" ToolTip="{Binding DiskSerials}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

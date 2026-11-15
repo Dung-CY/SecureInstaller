@@ -342,4 +342,25 @@ public class PackageEditorViewModelTests
         }
         finally { Directory.Delete(Path.GetDirectoryName(dir)!, true); }
     }
+
+    [Fact]
+    public void Data_copy_settings_load_validate_and_save()
+    {
+        var vm = Make(Stored() with { Data = new DataCopy(@"C:\QLVBDH\Config", new() { "a.xml => b_{DonVi}.xml" }) });
+        Assert.Equal((@"C:\QLVBDH\Config", "a.xml => b_{DonVi}.xml"), (vm.DataTargetDir, vm.DataRenamesText));
+        Assert.Contains(@"DuLieu\p", vm.DataFolderHint);
+
+        vm.DataRenamesText = "a.xml => ../b.xml";
+        vm.SaveCommand.Execute(null);
+        Assert.Null(_saved);
+        Assert.StartsWith("Dòng đổi tên không hợp lệ", vm.Error);
+
+        vm.DataRenamesText = "a.xml => b.xml\r\n\n c.ini => d.ini ";
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(new[] { "a.xml => b.xml", "c.ini => d.ini" }, _saved!.Data!.Renames);
+
+        vm.DataTargetDir = "  ";
+        vm.SaveCommand.Execute(null);
+        Assert.Null(_saved!.Data);
+    }
 }

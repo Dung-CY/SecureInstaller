@@ -3,8 +3,8 @@ using Installer.Core.Platform;
 namespace Installer.Core.Scanning;
 
 public record DiskInfo(string Model, string? Serial, string? InterfaceType);
-public record NicInfo(string Name, string Mac);
-public record DeviceInfo(string Name, string? PnpClass, string DeviceId);
+public record NicInfo(string Name, string Mac, string? PnpDeviceId = null);
+public record DeviceInfo(string Name, string? PnpClass, string DeviceId, DateTime? FirstConnected = null, DateTime? LastConnected = null);
 public record HardwareInfo(string Hostname, string? Manufacturer, string? Model, string? BiosSerial,
     List<DiskInfo> Disks, List<NicInfo> Nics, List<DeviceInfo> Peripherals, List<string> Errors);
 
@@ -16,8 +16,9 @@ public sealed class HardwareScanner
 
     private readonly IWmi _wmi;
     private readonly ISystemInfo _sys;
+    private readonly IDeviceDates? _dates;
 
-    public HardwareScanner(IWmi wmi, ISystemInfo sys) { _wmi = wmi; _sys = sys; }
+    public HardwareScanner(IWmi wmi, ISystemInfo sys, IDeviceDates? dates = null) { _wmi = wmi; _sys = sys; _dates = dates; }
 
     public HardwareInfo Scan()
     {
@@ -37,11 +38,11 @@ public sealed class HardwareScanner
             disks.Add(new DiskInfo(Str(r, "Model") ?? "", Str(r, "SerialNumber"), Str(r, "InterfaceType")));
 
         foreach (var r in Run("Win32_NetworkAdapter",
-                     "SELECT Name, MACAddress FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE AND MACAddress IS NOT NULL", errors))
+                     "SELECT Name, MACAddress, PNPDeviceID FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE AND MACAddress IS NOT NULL", errors))
         {
             var mac = Str(r, "MACAddress");
             if (mac == null) continue;
-            nics.Add(new NicInfo(Str(r, "Name") ?? "", mac));
+            nics.Add(new NicInfo(Str(r, "Name") ?? "", mac, Str(r, "PNPDeviceID")));
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -53,10 +54,18 @@ public sealed class HardwareScanner
             var match = PeripheralPrefixes.Any(p => id.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || (cls != null && PeripheralClasses.Contains(cls));
             if (!match || !seen.Add(id)) continue;
-            peripherals.Add(new DeviceInfo(Str(r, "Name") ?? "", cls, id));
+            var (first, last) = _dates?.Get(id) ?? (null, null);
+            peripherals.Add(new DeviceInfo(Str(r, "Name") ?? "", cls, id, first, last));
         }
 
         return new HardwareInfo(_sys.Hostname, manufacturer, model, biosSerial, disks, nics, peripherals, errors);
+    }
+
+    /// <summary>One cheap WMI query, used to recognise the machine without a full scan; null when unreadable.</summary>
+    public string? BiosSerial()
+    {
+        var bios = Run("Win32_BIOS", "SELECT SerialNumber FROM Win32_BIOS", new List<string>());
+        return bios.Count > 0 ? Str(bios[0], "SerialNumber") : null;
     }
 
     private IReadOnlyList<IReadOnlyDictionary<string, object?>> Run(string cls, string wql, List<string> errors)

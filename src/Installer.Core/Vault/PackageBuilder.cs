@@ -32,6 +32,7 @@ public static class PackageBuilder
         public string? PostScript { get; set; }
         public int? ScriptTimeoutSec { get; set; }
         public string? UninstallScript { get; set; }
+        public DataCopy? Data { get; set; }
     }
 
     internal sealed record Manifest(PackageEntry Entry, List<string> DocNames);
@@ -64,6 +65,8 @@ public static class PackageBuilder
             if (u.Type == "command" && string.IsNullOrWhiteSpace(u.Command))
                 throw new InvalidDataException("uninstall.command là bắt buộc khi type là command");
         }
+
+        if (m.Data is { } data && Install.DataCopier.Validate(data) is { } dataErr) throw new InvalidDataException(dataErr);
 
         var isScript = m.InstallerType == InstallerType.Script;
         var instSub = isScript ? "scripts" : "installer";
@@ -101,7 +104,7 @@ public static class PackageBuilder
             docs, m.PostActions ?? new(), m.Rules ?? new(), "", "", "", 0, null, null, m.Uninstall,
             string.IsNullOrEmpty(m.PreScript) ? null : m.PreScript, string.IsNullOrEmpty(m.PostScript) ? null : m.PostScript,
             m.ScriptTimeoutSec ?? 600, m.InstallerKind ?? Model.InstallerKind.Unknown,
-            string.IsNullOrEmpty(m.UninstallScript) ? null : m.UninstallScript);
+            string.IsNullOrEmpty(m.UninstallScript) ? null : m.UninstallScript, Data: m.Data);
         return new Manifest(entry, docs);
     }
 
