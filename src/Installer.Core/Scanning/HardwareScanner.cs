@@ -31,8 +31,7 @@ public sealed class HardwareScanner
         var cs = Run("Win32_ComputerSystem", "SELECT Manufacturer, Model FROM Win32_ComputerSystem", errors);
         if (cs.Count > 0) { manufacturer = Str(cs[0], "Manufacturer"); model = Str(cs[0], "Model"); }
 
-        var bios = Run("Win32_BIOS", "SELECT SerialNumber FROM Win32_BIOS", errors);
-        if (bios.Count > 0) biosSerial = Str(bios[0], "SerialNumber");
+        biosSerial = MachineSerial(errors);
 
         foreach (var r in Run("Win32_DiskDrive", "SELECT Model, SerialNumber, InterfaceType FROM Win32_DiskDrive", errors))
             disks.Add(new DiskInfo(Str(r, "Model") ?? "", Str(r, "SerialNumber"), Str(r, "InterfaceType")));
@@ -61,11 +60,24 @@ public sealed class HardwareScanner
         return new HardwareInfo(_sys.Hostname, manufacturer, model, biosSerial, disks, nics, peripherals, errors);
     }
 
-    /// <summary>One cheap WMI query, used to recognise the machine without a full scan; null when unreadable.</summary>
-    public string? BiosSerial()
+    /// <summary>Cheap WMI queries, used to recognise the machine without a full scan; null when unreadable.</summary>
+    public string? BiosSerial() => MachineSerial(new List<string>());
+
+    // Values board makers leave in the BIOS when they never set a serial.
+    static readonly HashSet<string> PlaceholderSerials = new(StringComparer.OrdinalIgnoreCase)
     {
-        var bios = Run("Win32_BIOS", "SELECT SerialNumber FROM Win32_BIOS", new List<string>());
-        return bios.Count > 0 ? Str(bios[0], "SerialNumber") : null;
+        "Default string", "To be filled by O.E.M.", "To Be Filled By O.E.M.", "System Serial Number", "Not Specified",
+        "Not Applicable", "None", "OEM", "O.E.M.", "0", "00000000", "Base Board Serial Number", "Chassis Serial Number",
+    };
+
+    /// <summary>BIOS serial; when it is a placeholder such as "Default string", the mainboard serial instead (or null).</summary>
+    private string? MachineSerial(List<string> errors)
+    {
+        static string? Real(string? s) => s is null || PlaceholderSerials.Contains(s) ? null : s;
+        var bios = Run("Win32_BIOS", "SELECT SerialNumber FROM Win32_BIOS", errors);
+        if (bios.Count > 0 && Real(Str(bios[0], "SerialNumber")) is { } b) return b;
+        var board = Run("Win32_BaseBoard", "SELECT SerialNumber FROM Win32_BaseBoard", errors);
+        return board.Count > 0 ? Real(Str(board[0], "SerialNumber")) : null;
     }
 
     private IReadOnlyList<IReadOnlyDictionary<string, object?>> Run(string cls, string wql, List<string> errors)

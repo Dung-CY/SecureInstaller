@@ -429,7 +429,10 @@
                         <TextBlock Text="Đến ngày" Style="{StaticResource FilterLabel}"/>
                         <DatePicker Style="{StaticResource AppDatePicker}" SelectedDate="{Binding HistoryTo}" Margin="0,0,14,0" VerticalAlignment="Center"/>
                         <Button Content="Tải lại" Command="{Binding LoadLogsCommand}" Style="{StaticResource SecondaryButton}"/>
-                        <Button Content="Xuất CSV" Command="{Binding ExportHistoryCsvCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"/>
+                        <Button Content="Xuất CSV" Command="{Binding ExportHistoryCsvCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                                ToolTip="Bảng Excel chia cột: Người dùng, Đơn vị, Hãng máy, Số seri máy, MAC card vật lý, Seri ổ cứng"/>
+                        <Button Content="Xuất theo mẫu" Command="{Binding ExportHistoryTextCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                                ToolTip="File .txt, mỗi máy một dòng: Người dùng | Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng"/>
                         <TextBlock Style="{StaticResource LoadingHint}"/>
                     </WrapPanel>
 
@@ -463,6 +466,13 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
                                             <TextBlock Text="{Binding TimeText}" Style="{StaticResource CellText}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Người dùng" Width="0.9*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ScanHistoryRow}">
+                                            <TextBlock Text="{Binding Username}" Style="{StaticResource CellText}" ToolTip="{Binding Username}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

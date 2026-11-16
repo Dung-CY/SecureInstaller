@@ -101,6 +101,22 @@ public class ScanHistoryTests
             }, new(), new());
         var r = new ScanReport(DateTimeOffset.Now, hw, new NetworkHistory(new(), true), lic, lic, new KeywordScanResult(new(), false, false), Unit: "LamThao");
 
-        Assert.Equal("LamThao | Dell Inc. | 7X9K2L3 | AA:BB:CC:00:11:22;AA:BB:CC:00:11:33 | S4EVNX0N123;WD-WCC4E1", ScanHistory.Line(r));
+        var item = new ScanHistoryItem(DateTimeOffset.Now, "admin", "PC-01", "7X9K2L3", r);
+        Assert.Equal("admin | LamThao | Dell Inc. | 7X9K2L3 | AA:BB:CC:00:11:22;AA:BB:CC:00:11:33 | S4EVNX0N123;WD-WCC4E1", ScanHistory.Line(item));
+
+        var dir = Path.Combine(Path.GetTempPath(), "SI_exp " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            ScanHistory.ExportText(new[] { item }, Path.Combine(dir, "a.txt"));
+            Assert.Equal(new[] { ScanHistory.ColumnNames, ScanHistory.Line(item) }, File.ReadAllLines(Path.Combine(dir, "a.txt")));
+            CsvExporter.ExportScans(new[] { item }, Path.Combine(dir, "a.csv"));
+            Assert.Equal(new[]
+            {
+                "Người dùng,Đơn vị,Hãng máy,Số seri máy,MAC card vật lý,Seri ổ cứng",
+                "admin,LamThao,Dell Inc.,7X9K2L3,AA:BB:CC:00:11:22;AA:BB:CC:00:11:33,S4EVNX0N123;WD-WCC4E1",
+            }, File.ReadAllLines(Path.Combine(dir, "a.csv")));
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }

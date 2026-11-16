@@ -94,4 +94,18 @@ public class HardwareScannerTests
         Assert.Equal((new DateTime(2026, 1, 2), new DateTime(2026, 11, 15)), (flash.FirstConnected, flash.LastConnected));
         Assert.Null(info.Peripherals.Single(p => p.Name == "Printer").FirstConnected);
     }
+
+    [Theory]
+    [InlineData("Default string", "BSN12345", "BSN12345")]
+    [InlineData("To be filled by O.E.M.", "Default string", null)]
+    [InlineData("PF2ABCD", "BSN12345", "PF2ABCD")]
+    public void Placeholder_bios_serial_falls_back_to_the_mainboard(string bios, string board, string? expected)
+    {
+        var w = Build();
+        w.Rows["Win32_BIOS"] = new() { R(("SerialNumber", bios)) };
+        w.Rows["Win32_BaseBoard"] = new() { R(("SerialNumber", board)) };
+        var hw = new HardwareScanner(w, new FakeSystemInfo { Hostname = "PC01" });
+        Assert.Equal(expected, hw.Scan().BiosSerial);
+        Assert.Equal(expected, hw.BiosSerial());
+    }
 }

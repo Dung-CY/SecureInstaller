@@ -18,12 +18,21 @@ public static class ScanHistory
     public static IEnumerable<string> DiskSerials(HardwareInfo hw) =>
         (hw.Disks ?? new()).Select(d => d.Serial?.Trim()).OfType<string>().Where(s => s.Length > 0);
 
-    /// <summary>"Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng;…"</summary>
-    public static string Line(ScanReport r) => string.Join(" | ", new[]
+    public const string ColumnNames = "Người dùng | Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng";
+
+    /// <summary>The fields of one scan in export order: user, unit, maker, serial, physical MACs, disk serials (lists joined by ";").</summary>
+    public static string[] Fields(ScanHistoryItem i) => new[]
     {
-        r.Unit ?? "", r.Hardware.Manufacturer ?? "", r.Hardware.BiosSerial ?? "",
-        string.Join(";", PhysicalMacs(r.Hardware)), string.Join(";", DiskSerials(r.Hardware)),
-    });
+        i.Username ?? "", i.Report.Unit ?? "", i.Report.Hardware.Manufacturer ?? "", i.Report.Hardware.BiosSerial ?? "",
+        string.Join(";", PhysicalMacs(i.Report.Hardware)), string.Join(";", DiskSerials(i.Report.Hardware)),
+    };
+
+    /// <summary>"Người dùng | Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng;…"</summary>
+    public static string Line(ScanHistoryItem i) => string.Join(" | ", Fields(i));
+
+    /// <summary>Text file in the user's template: a header line, then one " | " line per scan, oldest first.</summary>
+    public static void ExportText(IEnumerable<ScanHistoryItem> items, string path) =>
+        File.WriteAllLines(path, items.OrderBy(i => i.Ts).Select(Line).Prepend(ColumnNames), new System.Text.UTF8Encoding(true));
 
     public static List<ScanHistoryItem> From(IEnumerable<LogEntry> entries)
     {

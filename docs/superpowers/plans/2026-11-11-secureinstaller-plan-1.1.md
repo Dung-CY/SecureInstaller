@@ -1213,3 +1213,10 @@ Replaces the check-box row. One row of rounded toggle buttons, each with a colou
 - Selected: solid fill in that colour, white text and dot. Not selected: light tint, coloured border, coloured text.
 - Same selection rules as before (multi-select, "Toàn bộ" exclusive).
 - The row status pill "Chưa cài" turns orange to match (Cần cập nhật stays blue, Đã cài green).
+
+### Scan history export (2026-11-16, approved)
+
+- "Xuất CSV": Excel columns Người dùng, Đơn vị, Hãng máy, Số seri máy, MAC card vật lý, Seri ổ cứng (no time column).
+- "Xuất theo mẫu": .txt with a header line, then `Người dùng | Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng` per scan.
+- A placeholder BIOS serial ("Default string", "To be filled by O.E.M." …) falls back to the mainboard serial.
+- History grid gains a "Người dùng" column after "Thời gian".
