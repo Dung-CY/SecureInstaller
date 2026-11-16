@@ -522,4 +522,59 @@ public class PackageListViewModelTests
         Assert.Equal(shown, h.Vm.Rows[0].NeedsInstall);
         Assert.Equal(shown, h.Vm.Rows[0].InstallCommand.CanExecute(null));
     }
+
+    // A installed (same), B older on the machine, C not installed, D newer on the machine
+    static Harness FilterHarness() => Harness.Create(Cat(Pkg("A", "1.0"), Pkg("B", "2.0"), Pkg("C", "1.0"), Pkg("D", "1.0")), Report(),
+        x => x.Installed = p => p.Name switch { "A" => "1.0", "B" => "1.0", "D" => "3.0", _ => null });
+
+    [Fact]
+    public void List_counts_states_and_puts_not_installed_and_outdated_first()
+    {
+        var vm = FilterHarness().Vm;
+        Assert.Equal((4, 1, 1, 2), (vm.CountAll, vm.CountNotInstalled, vm.CountOlder, vm.CountInstalled));
+        Assert.Equal(new[] { "B", "C", "A", "D" }, vm.VisibleRows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public void Filter_boxes_combine_and_toggle_toan_bo()
+    {
+        var vm = FilterHarness().Vm;
+        vm.FilterOlder = true;
+        Assert.False(vm.FilterAll);
+        Assert.Equal(new[] { "B" }, vm.VisibleRows.Select(r => r.Name));
+        vm.FilterNotInstalled = true;
+        Assert.Equal(new[] { "B", "C" }, vm.VisibleRows.Select(r => r.Name));
+
+        vm.FilterOlder = false; vm.FilterNotInstalled = false;   // nothing specific left: back to everything
+        Assert.True(vm.FilterAll);
+        Assert.Equal(4, vm.VisibleRows.Count);
+
+        vm.FilterInstalled = true;
+        vm.FilterAll = true;   // ticking "Toàn bộ" clears the specific boxes
+        Assert.False(vm.FilterInstalled);
+        Assert.Equal(4, vm.VisibleRows.Count);
+    }
+
+    [Fact]
+    public void Select_all_ticks_only_rows_the_filter_shows()
+    {
+        var vm = FilterHarness().Vm;
+        vm.FilterOlder = true;
+        vm.AllInstallableSelected = true;
+        Assert.Equal(new[] { "B" }, vm.Rows.Where(r => r.IsSelected).Select(r => r.Name));
+    }
+
+    [Fact]
+    public void Hidden_packages_are_not_listed_counted_or_installed_from_a_bundle()
+    {
+        var hidden = Pkg("H", "1.0") with { Hidden = true };
+        var cat = Cat(Pkg("A", "1.0"), hidden) with { Bundles = new() { new Bundle("b", "Bộ", "", new() { new BundleItem("id-H1.0"), new BundleItem("id-A1.0") }) } };
+        var h = Harness.Create(cat, Report());
+        Assert.Equal(new[] { "A" }, h.Vm.VisibleRows.Select(r => r.Name));
+        Assert.Equal(1, h.Vm.CountAll);
+        var card = Assert.Single(h.Vm.BundleCards);
+        Assert.Equal("Phần mềm đang ẩn", card.Items.Single(i => i.Name == "id-H1.0").SkipReason);
+        card.InstallCommand.Execute(null);
+        Assert.Equal(new[] { "A" }, h.Installs);
+    }
 }

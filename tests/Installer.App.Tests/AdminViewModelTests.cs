@@ -728,4 +728,22 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         Assert.Equal(new[] { "a.ini", "b.txt" }, repacked.Extras);
         Assert.Equal("/VERYSILENT", repacked.SilentArgs);
     }
+
+    [Fact]
+    public async Task Hien_box_hides_and_shows_a_package_on_the_install_list()
+    {
+        var s = Login();
+        var src = MakePackage(_tmp);
+        var vm = Make(s, () => src);
+        await vm.AddPackageCommand.ExecuteAsync(null);
+        Assert.True(Assert.Single(vm.Packages).Visible);
+
+        await vm.ToggleVisibleCommand.ExecuteAsync(vm.Packages[0]);
+        Assert.True(Assert.Single(s.Catalog.Packages).Hidden);
+        Assert.False(Assert.Single(vm.Packages).Visible);
+        Assert.Equal("Đã ẩn Demo demo 1.0 khỏi danh sách cài", vm.Status);
+
+        await vm.ToggleVisibleCommand.ExecuteAsync(vm.Packages[0]);
+        Assert.False(Assert.Single(s.Catalog.Packages).Hidden);
+    }
 }

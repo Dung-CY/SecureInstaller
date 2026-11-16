@@ -15,7 +15,7 @@ public record PackageEntry(string Id, string Name, string Version, InstallerType
     long BlobSize = 0, string? DocsKeyB64 = null, string? IconPngB64 = null, UninstallSpec? Uninstall = null,
     string? PreScript = null, string? PostScript = null, int ScriptTimeoutSec = 600,
     InstallerKind Kind = InstallerKind.Unknown, string? UninstallScript = null, List<string>? Extras = null,
-    DataCopy? Data = null);
+    DataCopy? Data = null, bool Hidden = false);
 
 /// <summary>After install, copy the listed files of DuLieu\&lt;id&gt; (next to the exe, not encrypted) into TargetDir.
 /// Each line: "tên trong DuLieu =&gt; tên khi chép" or just a name; {DonVi} is the session's unit.</summary>

@@ -20,6 +20,7 @@ public static class Strings
     public const string UninstallIncomplete = "Gỡ chưa hoàn tất";
     public const string UninstallFolderFailed = "Không xóa được thư mục cài đặt";
     public const string NotInVault = "Không có trong kho";
+    public const string PackageHidden = "Phần mềm đang ẩn";
     public const string ReasonWindowsCracked = "Windows có dấu hiệu crack";
     public const string ReasonOfficeCracked = "Office có dấu hiệu crack";
     public const string ReasonInstalledGte = "Đã cài phiên bản {0} (bằng hoặc mới hơn)";

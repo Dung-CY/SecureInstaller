@@ -95,6 +95,17 @@
                             <DataGridTextColumn Header="Mã phần mềm" Binding="{Binding Id}" Width="1*"/>
                             <DataGridTextColumn Header="Loại" Binding="{Binding InstallerType}" Width="80"/>
                             <DataGridTextColumn Header="Tài liệu" Binding="{Binding DocCount}" Width="80"/>
+                            <DataGridTemplateColumn Header="Hiện" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:AdminPackageRow}">
+                                        <CheckBox IsChecked="{Binding Visible, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  ToolTip="Bỏ tích để ẩn khỏi danh sách cài của người dùng (vẫn giữ trong kho)"
+                                                  AutomationProperties.Name="{Binding Name, StringFormat='Hiện {0} trong danh sách cài'}"
+                                                  Command="{Binding DataContext.ToggleVisibleCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                  CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">

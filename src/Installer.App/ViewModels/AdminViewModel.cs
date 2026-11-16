@@ -14,7 +14,8 @@ using Installer.Core.Versioning;
 
 namespace Installer.App.ViewModels;
 
-public sealed record AdminPackageRow(string Name, string Version, string Id, string InstallerType, int DocCount);
+/// <summary>Visible: shown on the users' install list (unticking hides it there, it stays in the vault).</summary>
+public sealed record AdminPackageRow(string Name, string Version, string Id, string InstallerType, int DocCount, bool Visible = true);
 
 /// <summary>One software item in the bundle picker: ticked rows form the bundle, in the order they appear.</summary>
 public sealed partial class BundlePickRow : ObservableObject
@@ -140,7 +141,7 @@ public partial class AdminViewModel : ObservableObject
         nameof(NewPackageCommand), nameof(EditPackageCommand),
         nameof(RemovePackageCommand), nameof(AddUserCommand), nameof(RemoveUserCommand),
         nameof(ResetPasswordCommand), nameof(SaveSettingsCommand), nameof(SaveBundleCommand), nameof(RemoveBundleCommand),
-        nameof(OpenScanCommand))]
+        nameof(OpenScanCommand), nameof(ToggleVisibleCommand))]
     [NotifyPropertyChangedFor(nameof(BusyMessage))]
     private bool _isBusy;
 
@@ -192,7 +193,7 @@ public partial class AdminViewModel : ObservableObject
     {
         Packages = _session.Catalog.Packages
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(p => p.Version, StringComparer.Ordinal)
-            .Select(p => new AdminPackageRow(p.Name, p.Version, p.Id, p.InstallerType.ToString().ToLowerInvariant(), p.Docs.Count))
+            .Select(p => new AdminPackageRow(p.Name, p.Version, p.Id, p.InstallerType.ToString().ToLowerInvariant(), p.Docs.Count, !p.Hidden))
             .ToList();
         SelectedPackage = null;
         OnPropertyChanged(nameof(Packages));
@@ -228,6 +229,19 @@ public partial class AdminViewModel : ObservableObject
         if (SelectedPackage is not { } sel) return;
         if (!_confirm($"Xóa phần mềm {sel.Name} {sel.Version}?")) return;
         await Run(() => Admin.RemovePackage(sel.Id, sel.Version), $"Đã xóa phần mềm {sel.Name} {sel.Version}");
+        RefreshPackages();
+    }
+
+    /// <summary>The "Hiện" box: saves at once; the row is rebuilt from the catalog so a failed save shows the old state.</summary>
+    [RelayCommand(CanExecute = nameof(CanMutate))]
+    private async Task ToggleVisible(AdminPackageRow? row)
+    {
+        if (row is null) return;
+        var e = _session.Catalog.Packages.FirstOrDefault(p => p.Id == row.Id && p.Version == row.Version);
+        if (e is null) return;
+        var hide = !e.Hidden;
+        await Run(() => Admin.UpdatePackageInfo(e.Id, e.Version, e with { Hidden = hide }),
+            hide ? $"Đã ẩn {e.Name} {e.Version} khỏi danh sách cài" : $"Đã hiện {e.Name} {e.Version} trong danh sách cài");
         RefreshPackages();
     }
 
