@@ -15,11 +15,24 @@ public sealed partial class SessionSetupViewModel : ObservableObject
     private readonly Action<SessionInfo> _onContinue;
 
     public SessionSetupViewModel(string currentName, string? pendingName, bool domainJoined, string? lastUnit,
-        Action<string> rename, Action<SessionInfo> onContinue)
+        Action<string> rename, Action<SessionInfo> onContinue, Func<Installer.Core.Platform.BitLockerResult>? disableBitLocker = null)
     {
         CurrentName = currentName; PendingName = pendingName; DomainJoined = domainJoined;
         _rename = rename; _onContinue = onContinue;
         _unit = lastUnit ?? "";
+        if (disableBitLocker != null) BitLockerNotice = DescribeBitLocker(disableBitLocker());
+    }
+
+    /// <summary>Result of the post-login BitLocker turn-off, shown at the bottom; null when the feature is off.</summary>
+    public string? BitLockerNotice { get; }
+
+    internal static string DescribeBitLocker(Installer.Core.Platform.BitLockerResult r)
+    {
+        if (!r.Supported) return "BitLocker: bản Windows này không hỗ trợ quản lý BitLocker.";
+        var parts = new List<string>();
+        if (r.TurnedOff.Count > 0) parts.Add("đang tắt ổ " + string.Join(", ", r.TurnedOff) + " (đang giải mã)");
+        if (r.AlreadyOff.Count > 0) parts.Add("ổ " + string.Join(", ", r.AlreadyOff) + " đã tắt sẵn");
+        return "BitLocker: " + (parts.Count > 0 ? string.Join("; ", parts) + "." : "không có ổ nào bật BitLocker.");
     }
 
     public string CurrentName { get; }

@@ -26,9 +26,12 @@ public record UninstallSpec(string Type, string? Command = null, string? Args = 
 public record BundleItem(string PackageId, string? Version = null);
 public record Bundle(string Id, string Name, string Description, List<BundleItem> Items);
 
+/// <summary>Require: block the install list while Secure Boot is on. Message: admin-editable warning text (null = default).</summary>
+public record SecureBootPolicy(bool Require, string? Message);
+
 public record Catalog(int Version, DateTimeOffset UpdatedAt, List<PackageEntry> Packages,
     KeywordScanConfig KeywordScan, List<CrackSignature> CrackSignatures,
-    List<Bundle>? Bundles = null, int Format = 1)
+    List<Bundle>? Bundles = null, int Format = 1, bool DisableBitLocker = false, SecureBootPolicy? SecureBoot = null)
 {
     public static Catalog Empty() => new(0, DateTimeOffset.UtcNow, new(),
         new KeywordScanConfig(new(), new(), 60),

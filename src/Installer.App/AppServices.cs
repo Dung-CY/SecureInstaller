@@ -10,6 +10,7 @@ using Installer.Core.Licensing;
 using Installer.Core.Logging;
 using Installer.Core.Platform;
 using Installer.Core.Scanning;
+using Installer.Core;
 using Installer.Core.Vault;
 using Installer.Core.Versioning;
 
@@ -55,8 +56,9 @@ public sealed class AppServices
                 // Same machine already scanned: reuse it; only a different unit is worth a new history line.
                 var report = cached with { Unit = info.Unit };
                 if (cached.Unit != info.Unit) { LogScan(session, report); cache.Save(report); }
-                ShowPackages(session, report);
-            }));
+                EnterInstall(session, report);
+            },
+            session.Catalog.DisableBitLocker ? () => new BitLockerControl().DisableAll() : null));
     }
 
     private SessionInfo? _info;
@@ -81,7 +83,7 @@ public sealed class AppServices
                 cache.Save(report);
                 return report;
             },
-            report => ShowPackages(session, report));
+            report => EnterInstall(session, report));
         Main.NavigateTo(vm);
         _ = vm.ScanCommand.ExecuteAsync(null);
     }
@@ -95,6 +97,31 @@ public sealed class AppServices
         parts.Add(host);
         parts.Add("Quét lúc " + r.ScannedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"));
         return string.Join(" · ", parts);
+    }
+
+    /// <summary>Secure Boot gate before the install list; passes straight through when the check is off or Secure Boot is off/legacy.</summary>
+    private void EnterInstall(VaultSession session, ScanReport report)
+    {
+        if (session.Catalog.SecureBoot is { Require: true } p && new SecureBootInfo().Enabled == true)
+        {
+            Main.NavigateTo(new SecureBootBlockViewModel(
+                string.IsNullOrWhiteSpace(p.Message) ? Strings.SecureBootDefaultMessage : p.Message!,
+                SecureBootGuide.For(report.Hardware.Manufacturer),
+                () => new SecureBootInfo().Enabled,
+                Restart, () => System.Windows.Application.Current.Shutdown(),
+                () => ShowPackages(session, report)));
+            return;
+        }
+        ShowPackages(session, report);
+    }
+
+    private void Restart()
+    {
+        if (!ConfirmYesNo("Khởi động lại máy ngay bây giờ?")) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "shutdown.exe"), "/r /t 0")
+            { UseShellExecute = false, CreateNoWindow = true }); }
+        catch (Exception ex) { System.Windows.MessageBox.Show("Không khởi động lại được: " + ex.Message, "SecureInstaller"); }
     }
 
     private void ShowPackages(VaultSession session, ScanReport report)

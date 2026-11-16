@@ -371,6 +371,17 @@
                                    Style="{StaticResource FieldLabel}" FontSize="13" Margin="0,0,0,4"/>
                         <TextBox Text="{Binding SignaturesText}" AcceptsReturn="True" Height="140"
                                  FontFamily="Consolas" VerticalScrollBarVisibility="Auto" Margin="0,0,0,14"/>
+
+                        <Border BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0" Margin="0,0,0,12"/>
+                        <TextBlock Text="Bảo mật máy" Style="{StaticResource FieldLabel}" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <CheckBox Content="Tự tắt BitLocker trên mọi ổ sau khi đăng nhập" IsChecked="{Binding DisableBitLocker}" Margin="0,0,0,10"
+                                  ToolTip="Giải mã mọi ổ đang bật BitLocker. Không có trên Windows Home."/>
+                        <CheckBox Content="Bắt buộc tắt Secure Boot trước khi cài" IsChecked="{Binding RequireSecureBoot}" Margin="0,0,0,6"
+                                  ToolTip="Nếu máy còn bật Secure Boot, chặn vào danh sách cài cho đến khi tắt và khởi động lại."/>
+                        <TextBlock Text="Nội dung cảnh báo Secure Boot" Style="{StaticResource FieldLabel}" FontSize="12" Margin="24,0,0,4"/>
+                        <TextBox Text="{Binding SecureBootMessage}" AcceptsReturn="True" Height="60" Margin="24,0,0,14"
+                                 VerticalScrollBarVisibility="Auto" IsEnabled="{Binding RequireSecureBoot}"/>
+
                         <Button Content="Lưu cấu hình" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" Padding="18,7"/>
                     </StackPanel>
                 </ScrollViewer>

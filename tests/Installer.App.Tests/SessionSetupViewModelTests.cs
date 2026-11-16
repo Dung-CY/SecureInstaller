@@ -65,4 +65,27 @@ public class SessionSetupViewModelTests
         Assert.Empty(_renamed);
         Assert.Equal(new SessionInfo("HoaBinh", "OLD-PENDING"), _done);
     }
+
+    [Fact]
+    public void No_bitlocker_notice_when_the_feature_is_off()
+    {
+        var vm = new SessionSetupViewModel("PC", null, false, null, _ => { }, _ => { });
+        Assert.Null(vm.BitLockerNotice);
+    }
+
+    [Fact]
+    public void Bitlocker_notice_lists_turned_off_and_already_off_drives()
+    {
+        var r = new Installer.Core.Platform.BitLockerResult(true, new[] { "C:", "D:" }, new[] { "E:" });
+        var vm = new SessionSetupViewModel("PC", null, false, null, _ => { }, _ => { }, () => r);
+        Assert.Equal("BitLocker: đang tắt ổ C:, D: (đang giải mã); ổ E: đã tắt sẵn.", vm.BitLockerNotice);
+    }
+
+    [Fact]
+    public void Bitlocker_notice_says_unsupported_on_home()
+    {
+        var vm = new SessionSetupViewModel("PC", null, false, null, _ => { }, _ => { },
+            () => new Installer.Core.Platform.BitLockerResult(false, System.Array.Empty<string>(), System.Array.Empty<string>()));
+        Assert.Equal("BitLocker: bản Windows này không hỗ trợ quản lý BitLocker.", vm.BitLockerNotice);
+    }
 }
