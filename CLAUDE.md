@@ -16,6 +16,7 @@ The user communicates in Vietnamese; reply in Vietnamese. All UI strings are Vie
 ## Environment
 
 - Windows 11 LTSC (no winget). .NET SDK 8.0.428 is installed per-user at `%LOCALAPPDATA%\Microsoft\dotnet` and added to the user PATH. A runtime-only `dotnet` (from installing .NET Desktop Runtime) may come first on PATH and has no SDK — call `%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe` by full path. The build script picks a dotnet that has an SDK by itself.
+- **Must run on every Windows 10 and 11 edition** (Home, Pro, Enterprise, Education, LTSC) and version; see `docs/compatibility.md`. Edition/hardware-specific features (BitLocker, Secure Boot) must degrade gracefully, never crash. Build is self-contained `win-x64` (no .NET needed on target); x86 is not built and .NET 8 needs Win10 1607+.
 - The repo lives at `D:\Claude Code\SecureInstaller` (parent folder has a space). Quote paths everywhere; several tests deliberately use Vietnamese/space paths such as `Dự án 1` because end users' paths may contain them.
 
 ## Commands
