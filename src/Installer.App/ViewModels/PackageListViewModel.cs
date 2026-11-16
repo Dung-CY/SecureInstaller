@@ -42,12 +42,76 @@ public partial class PackageListViewModel : ObservableObject
         _catalog = catalog; _scan = scan; _install = install; _uninstall = uninstall; _extractDoc = extractDoc; _confirm = confirm;
         _openFile = openFile; _navigate = navigate;
         var byVersionDesc = Comparer<string>.Create((a, b) => VersionComparer.Compare(b, a) ?? string.CompareOrdinal(b, a));
-        var sorted = catalog.Packages
+        // Packages the admin hid never reach the main screen.
+        var sorted = catalog.Packages.Where(p => !p.Hidden)
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(p => p.Version, byVersionDesc);
         foreach (var p in sorted) Rows.Add(new PackageRowViewModel(p, scan, findInstalled, canUninstall, this));
         Bundles = catalog.Bundles ?? new();
         BundleCards = Bundles.Select(b => new BundleCardViewModel(b, this)).ToList();
+        ApplyFilter();
+    }
+
+    // ---------- Filter, counts and sort ----------
+
+    /// <summary>0 = Chưa cài, 1 = Cần cập nhật, 2 = Đã cài (Equal, Newer, Incomparable).</summary>
+    private static int Group(PackageRowViewModel r) => r.Status switch
+    {
+        VersionStatus.NotInstalled => 0,
+        VersionStatus.Older => 1,
+        _ => 2,
+    };
+
+    /// <summary>What the list shows: filtered, with not-installed and outdated software first.</summary>
+    public ObservableCollection<PackageRowViewModel> VisibleRows { get; } = new();
+
+    [ObservableProperty] private bool _filterAll = true;
+    [ObservableProperty] private bool _filterNotInstalled;
+    [ObservableProperty] private bool _filterOlder;
+    [ObservableProperty] private bool _filterInstalled;
+    private bool _syncingFilter;
+
+    public int CountAll => Rows.Count;
+    public int CountNotInstalled => Rows.Count(r => Group(r) == 0);
+    public int CountOlder => Rows.Count(r => Group(r) == 1);
+    public int CountInstalled => Rows.Count(r => Group(r) == 2);
+
+    partial void OnFilterAllChanged(bool value) => SyncFilter(all: true);
+    partial void OnFilterNotInstalledChanged(bool value) => SyncFilter(all: false);
+    partial void OnFilterOlderChanged(bool value) => SyncFilter(all: false);
+    partial void OnFilterInstalledChanged(bool value) => SyncFilter(all: false);
+
+    /// <summary>"Toàn bộ" clears the specific boxes; a specific box clears "Toàn bộ"; no box at all means "Toàn bộ".</summary>
+    private void SyncFilter(bool all)
+    {
+        if (_syncingFilter) return;
+        _syncingFilter = true;
+        try
+        {
+            if (all && FilterAll) FilterNotInstalled = FilterOlder = FilterInstalled = false;
+            else FilterAll = !(FilterNotInstalled || FilterOlder || FilterInstalled);
+        }
+        finally { _syncingFilter = false; }
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        bool Shown(PackageRowViewModel r) => FilterAll || Group(r) switch
+        {
+            0 => FilterNotInstalled,
+            1 => FilterOlder,
+            _ => FilterInstalled,
+        };
+        // OrderBy is stable, so the name/version order of Rows is kept inside each group.
+        var list = Rows.Where(Shown).OrderBy(r => Group(r) <= 1 ? 0 : 1).ToList();
+        VisibleRows.Clear();
+        foreach (var r in list) VisibleRows.Add(r);
+        OnPropertyChanged(nameof(CountAll));
+        OnPropertyChanged(nameof(CountNotInstalled));
+        OnPropertyChanged(nameof(CountOlder));
+        OnPropertyChanged(nameof(CountInstalled));
+        OnPropertyChanged(nameof(AllInstallableSelected));
     }
 
     /// <summary>"Đơn vị: … · Máy: … · Quét lúc …" under the title.</summary>
@@ -78,11 +142,12 @@ public partial class PackageListViewModel : ObservableObject
     /// <summary>Header checkbox: true when every installable row is ticked. Setting true ticks them all; false clears every tick.</summary>
     public bool AllInstallableSelected
     {
-        get { var inst = Rows.Where(IsInstallable).ToList(); return inst.Count > 0 && inst.All(r => r.IsSelected); }
+        get { var inst = VisibleRows.Where(IsInstallable).ToList(); return inst.Count > 0 && inst.All(r => r.IsSelected); }
         set
         {
             if (IsInstalling) { OnPropertyChanged(); return; }
-            foreach (var r in Rows) r.IsSelected = value && IsInstallable(r);
+            // Only what the filter shows gets ticked; rows hidden by the filter are cleared too.
+            foreach (var r in Rows) r.IsSelected = value && IsInstallable(r) && VisibleRows.Contains(r);
             OnPropertyChanged();
         }
     }
@@ -114,7 +179,7 @@ public partial class PackageListViewModel : ObservableObject
     internal (PackageRowViewModel? Row, string? Skip) Classify(PackageEntry? pkg)
     {
         var row = pkg is null ? null : Rows.FirstOrDefault(r => ReferenceEquals(r.Package, pkg));
-        if (row is null) return (null, Strings.NotInVault);
+        if (row is null) return (null, pkg?.Hidden == true ? Strings.PackageHidden : Strings.NotInVault);
         if (!row.Allowed) return (row, row.ReasonsText);
         if (row.Status is not (VersionStatus.NotInstalled or VersionStatus.Older)) return (row, "đã cài trên máy");
         return (row, null);
@@ -245,6 +310,7 @@ public partial class PackageListViewModel : ObservableObject
         var vm = CreateQueueVm(title, items, run, () =>
         {
             foreach (var r in Rows) { r.IsSelected = false; r.Refresh(); }
+            ApplyFilter(); // states changed: re-count and re-sort
             SelectedBundle = null; // clears bundle order and notices too
             OnPropertyChanged(nameof(AllInstallableSelected));
             IsInstalling = false;

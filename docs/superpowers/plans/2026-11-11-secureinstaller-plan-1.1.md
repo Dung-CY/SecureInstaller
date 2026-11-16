@@ -1170,3 +1170,33 @@ Execution order: 24, 25, 26, 27, then a demo build, then Task 14 last.
 - Load `frontend-design`, and render `pkg-1-list.png` and `pkg-4-bundle.png`.
 
 **Commit:** `feat: main screen tabs for software and bundles, select-all, bottom action bar`
+
+---
+
+## Addendum 4 (2026-11-16): list filter and package visibility (approved by the user)
+
+**Upgrade path (no code):** a new app version is applied by copying the old `SecureInstaller\vault` folder over the new build. Zipping the vault saves nothing because packages are already compressed and encrypted.
+
+### Filter, counts and sort on "Tất cả phần mềm"
+
+```
+ Lọc:  ☑ Toàn bộ 12   ☐ Chưa cài 5   ☐ Cần cập nhật 3   ☐ Đã cài 4
+ ☐  Google Chrome        Chưa cài              [Cài đặt]
+ ☐  LibreOffice          Cần cập nhật · 24.8   [Cài đặt]
+ ☐  7-Zip                Đã cài · 26.06        [Cài đặt (mờ)] [Gỡ]
+```
+
+- Multi-select check boxes with a count next to each label. "Toàn bộ" is on by default; ticking a specific state clears it; clearing every specific state turns it back on.
+- Groups: Chưa cài = NotInstalled; Cần cập nhật = Older; Đã cài = Equal, Newer and Incomparable.
+- Sort: Chưa cài and Cần cập nhật first, then Đã cài; by name inside a group. The list re-sorts after an install or uninstall queue finishes.
+
+### Admin: which packages users see
+
+```
+ Phần mềm            Phiên bản   Hiện
+ Google Chrome       157.0       ☑
+ Công cụ nội bộ       2.1        ☐   ← hidden from the install list
+```
+
+- New trailing field `PackageEntry.Hidden` (default false, so older catalogs load as visible). The check box saves at once (`VaultAdmin.UpdatePackageInfo`).
+- Hidden packages are not shown, not counted and not installable from the main screen; a bundle item that points at one is skipped with the reason "Phần mềm đang ẩn".

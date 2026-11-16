@@ -136,4 +136,22 @@ public class EditPackageTests : IDisposable
         Assert.Throws<InvalidDataException>(() => PackageSource.Create(D(new ExtraFile(f, @"C:\evil.txt")), Path.Combine(_tmp, "o2")));
         Assert.Throws<InvalidDataException>(() => PackageSource.Create(D(new ExtraFile(f, "d/a.txt"), new ExtraFile(f, "D/A.txt")), Path.Combine(_tmp, "o3")));
     }
+
+    [Fact]
+    public async Task Hidden_survives_metadata_edits_repacks_and_new_versions()
+    {
+        var (_, s, a) = NewVault();
+        var e = AddWithExtras(a);
+        var hidden = a.UpdatePackageInfo(e.Id, e.Version, e with { Hidden = true });
+        Assert.True(Assert.Single(s.Catalog.Packages).Hidden);
+
+        var renamed = a.UpdatePackageInfo(e.Id, e.Version, PackageSource.ApplyMeta(hidden, Draft(hidden, new KeptFiles("setup.exe", null, new(), null, null, null)) with { Name = "Mới" }));
+        Assert.True(renamed.Hidden);
+
+        var repacked = await a.UpdatePackageFilesAsync(Draft(renamed, new KeptFiles("setup.exe", new() { "a.ini" }, new(), null, null, null)), false, Ws);
+        Assert.True(repacked.Hidden);
+
+        var v2 = a.UpdatePackage(e.Id, SamplePackage.Create(_tmp, version: "2.0"), keepOld: false);
+        Assert.True(v2.Hidden);
+    }
 }

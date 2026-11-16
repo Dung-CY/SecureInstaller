@@ -73,6 +73,11 @@ public sealed class VaultAdmin
             throw new Errors.UserMessageException($"Phần mềm {m.Id} phiên bản {m.Version} đã tồn tại");
 
         var entry = PackageBuilder.Build(sourceFolder, _s.Store.Root, _iconFromExe);
+        // A repack or a new version keeps the admin's "hidden from the install list" choice.
+        entry = entry with
+        {
+            Hidden = _s.Catalog.Packages.Any(p => Same(p.Id, id) && p.Hidden && (replaceVersion == null || Same(p.Version, replaceVersion)))
+        };
         var removed = _s.Catalog.Packages.Where(p => Same(p.Id, id) && (keepOld ? Same(p.Version, m.Version)
             : replaceVersion == null || Same(p.Version, replaceVersion))).ToList();
         var packages = _s.Catalog.Packages.Except(removed).Append(entry).ToList();
