@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Installer.App.Converters;
+using Installer.Core;
 using Installer.Core.Errors;
 using Installer.Core.Logging;
 using Installer.Core.Model;
@@ -498,7 +499,14 @@ public partial class AdminViewModel : ObservableObject
         PathsText = string.Join("\n", c.KeywordScan.Paths.Where(p => !IsToken(p)));
         MaxSecondsText = c.KeywordScan.MaxSeconds.ToString();
         SignaturesText = string.Join("\n", c.CrackSignatures.Select(s => $"{s.Kind}|{s.Pattern}"));
+        DisableBitLocker = c.DisableBitLocker;
+        RequireSecureBoot = c.SecureBoot?.Require ?? false;
+        SecureBootMessage = c.SecureBoot?.Message ?? Strings.SecureBootDefaultMessage;
     }
+
+    [ObservableProperty] private bool _disableBitLocker;
+    [ObservableProperty] private bool _requireSecureBoot;
+    [ObservableProperty] private string _secureBootMessage = Strings.SecureBootDefaultMessage;
 
     [RelayCommand(CanExecute = nameof(CanMutate))]
     private async Task SaveSettings()
@@ -530,7 +538,9 @@ public partial class AdminViewModel : ObservableObject
         if (ScanDownloads) paths.Add(KeywordFileScanner.DownloadsToken);
         if (ScanDataDrives) paths.Add(KeywordFileScanner.DataDrivesToken);
         var kw = new KeywordScanConfig(NonEmptyLines(KeywordsText), paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), max);
-        await Run(() => Admin.UpdateSettings(kw, sigs), "Đã lưu cấu hình quét");
+        var msg = SecureBootMessage?.Trim() is { Length: > 0 } t ? t : null;
+        var sb = new SecureBootPolicy(RequireSecureBoot, msg);
+        await Run(() => Admin.UpdateSettings(kw, sigs, DisableBitLocker, sb), "Đã lưu cấu hình");
     }
 
     private static bool IsValidRegex(string p)

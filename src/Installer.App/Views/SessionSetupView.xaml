@@ -42,6 +42,15 @@
                     <TextBlock Text="Tên mới có hiệu lực sau khi khởi động lại máy." Style="{StaticResource Muted}" Margin="0,2,0,0"/>
                 </StackPanel>
 
+                <Border Background="{StaticResource SubtleBrush}" CornerRadius="6" Padding="12,10" Margin="0,16,0,0"
+                        Visibility="{Binding BitLockerNotice, Converter={StaticResource NullToCollapsed}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE785;" FontFamily="Segoe MDL2 Assets" FontSize="16" VerticalAlignment="Top" Margin="0,1,10,0"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="{Binding BitLockerNotice}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                    </StackPanel>
+                </Border>
+
                 <TextBlock Text="{Binding Error}" Style="{StaticResource ErrorText}" Margin="0,14,0,0"
                            Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}"/>
                 <Button Content="Tiếp tục" Command="{Binding ContinueCommand}" IsDefault="True" Margin="0,18,0,0"/>

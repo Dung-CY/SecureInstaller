@@ -25,7 +25,8 @@ public sealed class VaultAdmin
     static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     // Writes a new catalog (Version++, UpdatedAt) and updates the session on success.
-    void Commit(List<PackageEntry> packages, KeywordScanConfig? kw = null, List<CrackSignature>? sigs = null, List<Bundle>? bundles = null)
+    void Commit(List<PackageEntry> packages, KeywordScanConfig? kw = null, List<CrackSignature>? sigs = null, List<Bundle>? bundles = null,
+        bool? disableBitLocker = null, SecureBootPolicy? secureBoot = null, bool secureBootSet = false)
     {
         var c = _s.Catalog;
         var next = c with
@@ -36,7 +37,9 @@ public sealed class VaultAdmin
             Packages = packages,
             KeywordScan = kw ?? c.KeywordScan,
             CrackSignatures = sigs ?? c.CrackSignatures,
-            Bundles = bundles ?? c.Bundles
+            Bundles = bundles ?? c.Bundles,
+            DisableBitLocker = disableBitLocker ?? c.DisableBitLocker,
+            SecureBoot = secureBootSet ? secureBoot : c.SecureBoot
         };
         _s.Store.WriteCatalog(next, _s.VaultKey, _s.SigningPrivateKey!);
         _s.Catalog = next;
@@ -213,8 +216,9 @@ public sealed class VaultAdmin
         _s.Store.UpdateMeta(meta with { Users = meta.Users.Select(u => u == target ? updated : u).ToList() });
     }
 
-    public void UpdateSettings(KeywordScanConfig keywordScan, List<CrackSignature> signatures) =>
-        Commit(_s.Catalog.Packages, keywordScan, signatures);
+    public void UpdateSettings(KeywordScanConfig keywordScan, List<CrackSignature> signatures,
+        bool disableBitLocker, SecureBootPolicy secureBoot) =>
+        Commit(_s.Catalog.Packages, keywordScan, signatures, disableBitLocker: disableBitLocker, secureBoot: secureBoot, secureBootSet: true);
 
     static readonly System.Text.RegularExpressions.Regex BundleId = new(@"^[A-Za-z0-9._-]+\z");
 

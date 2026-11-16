@@ -746,4 +746,35 @@ public class AdminViewModelTests : IClassFixture<VaultTemplateFixture>, IDisposa
         await vm.ToggleVisibleCommand.ExecuteAsync(vm.Packages[0]);
         Assert.False(Assert.Single(s.Catalog.Packages).Hidden);
     }
+
+    [Fact]
+    public async Task Security_settings_save_and_reload()
+    {
+        var s = Login();
+        var vm = Make(s);
+        vm.MaxSecondsText = "60";
+        vm.DisableBitLocker = true;
+        vm.RequireSecureBoot = true;
+        vm.SecureBootMessage = "Tắt Secure Boot giúp cài driver nội bộ.";
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
+        Assert.Null(vm.Error);
+        Assert.True(s.Catalog.DisableBitLocker);
+        Assert.Equal((true, "Tắt Secure Boot giúp cài driver nội bộ."), (s.Catalog.SecureBoot!.Require, s.Catalog.SecureBoot.Message));
+
+        var vm2 = Make(s);
+        Assert.True(vm2.DisableBitLocker);
+        Assert.True(vm2.RequireSecureBoot);
+        Assert.Equal("Tắt Secure Boot giúp cài driver nội bộ.", vm2.SecureBootMessage);
+    }
+
+    [Fact]
+    public async Task Blank_secure_boot_message_stores_null()
+    {
+        var s = Login();
+        var vm = Make(s);
+        vm.MaxSecondsText = "60";
+        vm.SecureBootMessage = "   ";
+        await vm.SaveSettingsCommand.ExecuteAsync(null);
+        Assert.Null(s.Catalog.SecureBoot!.Message);
+    }
 }

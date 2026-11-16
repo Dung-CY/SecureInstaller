@@ -26,4 +26,5 @@ public static class Strings
     public const string ReasonInstalledGte = "Đã cài phiên bản {0} (bằng hoặc mới hơn)";
     public const string ReasonKeywordFiles = "Phát hiện {0} file chứa từ khóa";
     public const string ReasonRequireInternet = "Yêu cầu kết nối internet";
+    public const string SecureBootDefaultMessage = "Máy cần tắt Secure Boot trước khi cài đặt phần mềm. Vui lòng tắt Secure Boot trong BIOS rồi khởi động lại.";
 }

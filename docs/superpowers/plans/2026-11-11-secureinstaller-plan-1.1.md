@@ -1220,3 +1220,31 @@ Replaces the check-box row. One row of rounded toggle buttons, each with a colou
 - "Xuất theo mẫu": .txt with a header line, then `Người dùng | Đơn vị | Hãng máy | Số seri máy | MAC card vật lý | Seri ổ cứng` per scan.
 - A placeholder BIOS serial ("Default string", "To be filled by O.E.M." …) falls back to the mainboard serial.
 - History grid gains a "Người dùng" column after "Thời gian".
+
+---
+
+## Addendum 5 (2026-11-16, approved): BitLocker auto-off and Secure Boot gate
+
+Both are admin fleet actions on the organisation's own machines; the app already runs elevated. Both must degrade gracefully per `docs/compatibility.md` (BitLocker absent on Home; Secure Boot absent on legacy BIOS).
+
+### BitLocker auto-off (approved: auto, with an admin on/off box)
+- Catalog setting `DisableBitLocker` (default false), toggled in Quản trị → Cấu hình.
+- On the "Thông tin máy cài đặt" screen (after login), if enabled, the app turns off BitLocker on every protected fixed drive (begins background decryption) and shows a notice at the bottom, under the unit/rename fields:
+  `🔓 BitLocker: đang tắt ổ C:, D: (đang giải mã). Ổ E: đã tắt sẵn.`
+- On Windows Home / no BitLocker support: `BitLocker: bản Windows này không hỗ trợ quản lý BitLocker.` and continue.
+- `IBitLocker` seam (real impl via WMI `root\cimv2\security\MicrosoftVolumeEncryption`, `Win32_EncryptableVolume` → `DisableKeyProtectors` + `Decrypt`); fake in tests.
+
+### Secure Boot gate (approved: hard block, no skip)
+- Catalog setting `SecureBoot` = `(bool Require, string? Message)`; the message is admin-editable and reusable, the check is on/off, both in Quản trị → Cấu hình.
+- `ISecureBoot.Enabled`: registry `...\Control\SecureBoot\State\UEFISecureBootEnabled` (1 on / 0 off / missing = null legacy).
+- After the scan, if `Require` is on **and** Secure Boot is on, the app shows a block screen instead of the install list — it cannot be skipped:
+  ```
+  ⚠  Secure Boot đang BẬT — chưa thể cài đặt
+  <admin message>
+  Hướng dẫn tắt cho máy <hãng>: <phím BIOS + đường dẫn menu>
+  [ Khởi động lại máy ]   [ Kiểm tra lại ]   [ Thoát ]
+  ```
+  - "Khởi động lại máy": `shutdown /r /t 0` (confirm first).
+  - "Kiểm tra lại": re-reads the registry (after the user disables it and reboots, the app restarts and re-checks anyway).
+  - Secure Boot off or legacy (null): no gate, straight to the install list.
+- `SecureBootGuide`: manufacturer (`Win32_ComputerSystem.Manufacturer`) → BIOS key + menu path for Dell, HP, Lenovo, Asus, MSI, Acer; a generic guide otherwise.
