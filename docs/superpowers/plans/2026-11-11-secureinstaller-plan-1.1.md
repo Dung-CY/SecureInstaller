@@ -1200,3 +1200,16 @@ Execution order: 24, 25, 26, 27, then a demo build, then Task 14 last.
 
 - New trailing field `PackageEntry.Hidden` (default false, so older catalogs load as visible). The check box saves at once (`VaultAdmin.UpdatePackageInfo`).
 - Hidden packages are not shown, not counted and not installable from the main screen; a bundle item that points at one is skipped with the reason "Phần mềm đang ẩn".
+
+### Revision (2026-11-16, approved): coloured pill filters
+
+Replaces the check-box row. One row of rounded toggle buttons, each with a coloured dot, label and count:
+
+```
+ Lọc:  ( ● Toàn bộ 12 )  ( ● Chưa cài 5 )  ( ● Cần cập nhật 3 )  ( ● Đã cài 4 )
+```
+
+- Colours: Toàn bộ slate, Chưa cài orange, Cần cập nhật blue, Đã cài green.
+- Selected: solid fill in that colour, white text and dot. Not selected: light tint, coloured border, coloured text.
+- Same selection rules as before (multi-select, "Toàn bộ" exclusive).
+- The row status pill "Chưa cài" turns orange to match (Cần cập nhật stays blue, Đã cài green).

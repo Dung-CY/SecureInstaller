@@ -87,18 +87,26 @@
                 <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1" Padding="16,10">
                     <WrapPanel>
                         <TextBlock Text="Lọc:" Style="{StaticResource Muted}" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <CheckBox IsChecked="{Binding FilterAll}" Margin="0,0,18,0" VerticalAlignment="Center">
-                            <TextBlock><Run Text="Toàn bộ"/> <Run Text="{Binding CountAll, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding FilterNotInstalled}" Margin="0,0,18,0" VerticalAlignment="Center">
-                            <TextBlock><Run Text="Chưa cài"/> <Run Text="{Binding CountNotInstalled, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding FilterOlder}" Margin="0,0,18,0" VerticalAlignment="Center">
-                            <TextBlock><Run Text="Cần cập nhật"/> <Run Text="{Binding CountOlder, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/></TextBlock>
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding FilterInstalled}" VerticalAlignment="Center">
-                            <TextBlock><Run Text="Đã cài"/> <Run Text="{Binding CountInstalled, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}"/></TextBlock>
-                        </CheckBox>
+                        <ToggleButton Style="{StaticResource FilterPill}" IsChecked="{Binding FilterAll}"
+                                      Tag="{StaticResource SlateBrush}" Background="{StaticResource SubtleBrush}"
+                                      AutomationProperties.Name="Lọc: toàn bộ">
+                            <TextBlock TextWrapping="NoWrap"><Run Text="Toàn bộ"/>  <Run Text="{Binding CountAll, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource FilterPill}" IsChecked="{Binding FilterNotInstalled}"
+                                      Tag="{StaticResource PendingBrush}" Background="{StaticResource PendingBgBrush}"
+                                      AutomationProperties.Name="Lọc: chưa cài">
+                            <TextBlock TextWrapping="NoWrap"><Run Text="Chưa cài"/>  <Run Text="{Binding CountNotInstalled, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource FilterPill}" IsChecked="{Binding FilterOlder}"
+                                      Tag="{StaticResource AccentBrush}" Background="{StaticResource AccentSoftBrush}"
+                                      AutomationProperties.Name="Lọc: cần cập nhật">
+                            <TextBlock TextWrapping="NoWrap"><Run Text="Cần cập nhật"/>  <Run Text="{Binding CountOlder, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource FilterPill}" IsChecked="{Binding FilterInstalled}"
+                                      Tag="{StaticResource SuccessBrush}" Background="{StaticResource SuccessBgBrush}"
+                                      AutomationProperties.Name="Lọc: đã cài">
+                            <TextBlock TextWrapping="NoWrap"><Run Text="Đã cài"/>  <Run Text="{Binding CountInstalled, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                        </ToggleButton>
                     </WrapPanel>
                 </Border>
 
@@ -193,6 +201,9 @@
                                     <Border.Style>
                                         <Style TargetType="Border" BasedOn="{StaticResource Pill}">
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static ver:VersionStatus.NotInstalled}">
+                                                    <Setter Property="Background" Value="{StaticResource PendingBgBrush}"/>
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding Status}" Value="{x:Static ver:VersionStatus.Older}">
                                                     <Setter Property="Background" Value="{StaticResource AccentPillBrush}"/>
                                                 </DataTrigger>
@@ -210,6 +221,9 @@
                                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                 <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
                                                 <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static ver:VersionStatus.NotInstalled}">
+                                                        <Setter Property="Foreground" Value="{StaticResource PendingBrush}"/>
+                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static ver:VersionStatus.Older}">
                                                         <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
                                                     </DataTrigger>
