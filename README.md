@@ -40,4 +40,8 @@ powershell -ExecutionPolicy Bypass -File build/build-portable.ps1 -Out D:\temp\u
 
 Thêm `-WithDemo` để tải sẵn bộ phần mềm thử nghiệm (`-DemoSet office`: Chrome, Edge, LibreOffice, UniKey, 7-Zip).
 
-Danh sách kiểm thử thủ công: [docs/e2e-checklist.md](docs/e2e-checklist.md).
+## Tài liệu
+
+- [Thêm phần mềm cần key bản quyền hợp lệ](docs/huong-dan-key-ban-quyen.md)
+- [Yêu cầu tương thích Windows 10/11](docs/compatibility.md)
+- [Danh sách kiểm thử thủ công](docs/e2e-checklist.md)
