@@ -26,7 +26,7 @@ Yêu cầu: Windows 10/11 64-bit. Không cần cài .NET (đã đóng gói sẵn
 
 ## Nâng cấp lên bản mới
 
-Kho (`vault`) không phụ thuộc phiên bản chương trình. Tải bản mới, giải nén, rồi chép đè thư mục `SecureInstallerault` (và `DuLieu` nếu có) từ bản cũ sang. Phần mềm, tài khoản và mật khẩu giữ nguyên.
+Kho (`vault`) không phụ thuộc phiên bản chương trình. Tải bản mới, giải nén, rồi chép đè thư mục `SecureInstaller\vault` (và `DuLieu` nếu có) từ bản cũ sang. Phần mềm, tài khoản và mật khẩu giữ nguyên.
 
 ## Build từ mã nguồn
 
