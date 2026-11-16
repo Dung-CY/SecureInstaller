@@ -22,19 +22,12 @@ public static class CsvExporter
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
     }
 
-    /// <summary>One row per scan: Thời gian, Đơn vị, Hãng máy, Số seri máy, MAC card vật lý, Seri ổ cứng (lists separated by ";").</summary>
+    /// <summary>One row per scan, Excel columns: Người dùng, Đơn vị, Hãng máy, Số seri máy, MAC card vật lý, Seri ổ cứng.</summary>
     public static void ExportScans(IEnumerable<Scanning.ScanHistoryItem> items, string path)
     {
-        var sb = new StringBuilder("Thời gian,Đơn vị,Hãng máy,Số seri máy,MAC card vật lý,Seri ổ cứng\r\n");
+        var sb = new StringBuilder("Người dùng,Đơn vị,Hãng máy,Số seri máy,MAC card vật lý,Seri ổ cứng\r\n");
         foreach (var i in items.OrderBy(x => x.Ts))
-        {
-            var hw = i.Report.Hardware;
-            sb.Append(string.Join(",", new[]
-            {
-                S(i.Ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)), S(i.Report.Unit), S(hw.Manufacturer),
-                S(hw.BiosSerial), S(string.Join(";", Scanning.ScanHistory.PhysicalMacs(hw))), S(string.Join(";", Scanning.ScanHistory.DiskSerials(hw))),
-            })).Append("\r\n");
-        }
+            sb.Append(string.Join(",", Scanning.ScanHistory.Fields(i).Select(S))).Append("\r\n");
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
     }
 

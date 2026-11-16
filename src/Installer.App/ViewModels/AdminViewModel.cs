@@ -68,7 +68,7 @@ public sealed record ScanHistoryRow(ScanHistoryItem Item)
     public string Manufacturer => Item.Report.Hardware.Manufacturer ?? "—";
     public string Macs => string.Join("; ", ScanHistory.PhysicalMacs(Item.Report.Hardware));
     public string DiskSerials => string.Join("; ", ScanHistory.DiskSerials(Item.Report.Hardware));
-    public string Line => ScanHistory.Line(Item.Report);
+    public string Line => ScanHistory.Line(Item);
     public string Summary => $"Người dùng: {Username}\nWindows: {WindowsText}\nOffice: {OfficeText}";
     public string WindowsText => Item.Report.Windows is { } w ? DisplayText.Of(w.Verdict) : "—";
     public string OfficeText => Item.Report.Office is { } o ? DisplayText.Of(o.Verdict) : "—";
@@ -87,6 +87,8 @@ public partial class AdminViewModel : ObservableObject
     private readonly string _fallbackDir;
     private readonly Func<string?> _pickFolder;
     private readonly Func<string?> _pickSavePath;
+    /// <summary>Save dialog with a suggested file name; the extension picks the file type.</summary>
+    private readonly Func<string, string?> _pickSaveAs;
     private readonly Func<string, bool> _confirm;
     private readonly Action _onBack;
     private VaultAdmin? _admin;
@@ -104,8 +106,9 @@ public partial class AdminViewModel : ObservableObject
         Func<string?> pickSavePath, Func<string, bool> confirm, Action onBack,
         Func<string, byte[]?>? iconFromExe = null, Action<object>? navigate = null,
         Func<string?>? pickFile = null, Func<IReadOnlyList<string>>? pickFiles = null,
-        Func<Installer.Core.Install.TempWorkspace>? workspaceFactory = null)
+        Func<Installer.Core.Install.TempWorkspace>? workspaceFactory = null, Func<string, string?>? pickSaveAs = null)
     {
+        _pickSaveAs = pickSaveAs ?? (_ => pickSavePath());
         _navigate = navigate; _pickFile = pickFile; _pickFiles = pickFiles;
         _workspaceFactory = workspaceFactory ?? (() => Installer.Core.Install.TempWorkspace.Create());
         if (!session.IsAdmin) throw new NotAdminException("Chỉ quản trị viên mới được vào khu vực này.");
@@ -696,13 +699,28 @@ public partial class AdminViewModel : ObservableObject
     [RelayCommand]
     private void ExportHistoryCsv()
     {
-        var path = _pickSavePath();
+        var path = _pickSaveAs("lich-su-quet.csv");
         if (string.IsNullOrEmpty(path)) return;
         Error = null; Status = null;
         try
         {
             CsvExporter.ExportScans(_filteredHistory, path);
             Status = $"Đã xuất {_filteredHistory.Count} lần quét";
+        }
+        catch (Exception ex) { Error = ErrorText.ForUser(ex); }
+    }
+
+    /// <summary>The " | " template as a .txt file.</summary>
+    [RelayCommand]
+    private void ExportHistoryText()
+    {
+        var path = _pickSaveAs("lich-su-quet.txt");
+        if (string.IsNullOrEmpty(path)) return;
+        Error = null; Status = null;
+        try
+        {
+            ScanHistory.ExportText(_filteredHistory, path);
+            Status = $"Đã xuất {_filteredHistory.Count} lần quét theo mẫu";
         }
         catch (Exception ex) { Error = ErrorText.ForUser(ex); }
     }

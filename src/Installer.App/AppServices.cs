@@ -130,7 +130,7 @@ public sealed class AppServices
         // Back rebuilds the package list from the current catalog, which the admin may have changed.
         Main.NavigateTo(new AdminViewModel(session, Path.Combine(_root, "logs"), EncryptedLog.DefaultFallbackDir(),
             PickFolder, PickSavePath, ConfirmYesNo, () => ShowPackages(session, report),
-            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo, PickFile, PickFiles));
+            p => Installer.Core.Platform.IconExtractor.ExtractPng(p), Main.NavigateTo, PickFile, PickFiles, pickSaveAs: PickSaveAs));
     }
 
     private static string? PickFile()
@@ -149,6 +149,14 @@ public sealed class AppServices
     {
         var dlg = new OpenFolderDialog { Title = "Chọn thư mục phần mềm" };
         return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    private static string? PickSaveAs(string fileName)
+    {
+        var filter = Path.GetExtension(fileName).Equals(".txt", StringComparison.OrdinalIgnoreCase)
+            ? "Văn bản (*.txt)|*.txt" : "CSV (*.csv)|*.csv";
+        var dlg = new SaveFileDialog { Filter = filter, FileName = fileName };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
 
     private static string? PickSavePath()
